@@ -47,7 +47,7 @@ coco-llm-council validate live-smoke-20260522161928 --json
 
 ```text
 compileall: pass
-unittest: 11 tests passed
+unittest: 14 tests passed
 export: html/index.html regenerated
 validate: ok, 171 checks, 0 failures
 ```

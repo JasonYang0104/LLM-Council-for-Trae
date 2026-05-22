@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from io import StringIO
 from pathlib import Path
 
 from coco_llm_council.council import (
@@ -11,6 +12,11 @@ from coco_llm_council.council import (
     parse_ranking_from_text,
 )
 from coco_llm_council.html_export import export_html
+from coco_llm_council.model_selection import (
+    recommend_model_choice,
+    resolve_model_tokens,
+    select_model_choice_interactively,
+)
 from coco_llm_council.provider import parse_stream_json
 from coco_llm_council.store import ArtifactStore
 from coco_llm_council.validation import validate_run
@@ -152,6 +158,33 @@ FINAL RANKING:
         self.assertIn("默认面向中文读者", stage3_prompt)
         self.assertIn("最终答案", stage3_prompt)
         self.assertIn(question, stage3_prompt)
+
+    def test_model_recommendation_uses_current_available_models(self):
+        models = [
+            {"name": "openrouter-2o", "context_window": 168000},
+            {"name": "GLM-5.1", "context_window": 184000},
+            {"name": "GPT-5.4", "context_window": 240000},
+            {"name": "DeepSeek-V4-Pro", "context_window": 184000},
+        ]
+        choice = recommend_model_choice(models)
+        self.assertEqual(choice.members, ["GPT-5.4", "GLM-5.1", "DeepSeek-V4-Pro"])
+        self.assertEqual(choice.chairman, "GPT-5.4")
+
+    def test_interactive_model_selection_accepts_recommendation(self):
+        models = [{"name": "GPT-5.4"}, {"name": "GLM-5.1"}, {"name": "DeepSeek-V4-Pro"}]
+        stderr = StringIO()
+        choice = select_model_choice_interactively(models, stdin=StringIO("\n"), stderr=stderr)
+        self.assertEqual(choice.members, ["GPT-5.4", "GLM-5.1", "DeepSeek-V4-Pro"])
+        self.assertEqual(choice.chairman, "GPT-5.4")
+        self.assertIn("CLC 检测到当前 COCO 可用模型", stderr.getvalue())
+        self.assertIn("推荐 council 模型套", stderr.getvalue())
+
+    def test_interactive_model_selection_accepts_custom_numbered_models(self):
+        models = [{"name": "GPT-5.4"}, {"name": "GLM-5.1"}, {"name": "DeepSeek-V4-Pro"}]
+        choice = select_model_choice_interactively(models, stdin=StringIO("c\n1,3\n3\n"), stderr=StringIO())
+        self.assertEqual(choice.members, ["GPT-5.4", "DeepSeek-V4-Pro"])
+        self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
+        self.assertEqual(resolve_model_tokens("2, GPT-5.4", ["GPT-5.4", "GLM-5.1"]), ["GLM-5.1", "GPT-5.4"])
 
     def test_parse_stream_json_extracts_actual_model_and_result(self):
         stream = "\n".join(

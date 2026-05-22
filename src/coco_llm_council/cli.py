@@ -11,6 +11,7 @@ from typing import Any
 from . import __version__
 from .council import DEFAULT_CHAIRMAN, DEFAULT_MEMBERS, CouncilConfig, load_profile, run_full_council
 from .html_export import export_html
+from .model_selection import ModelChoice, recommend_model_choice, select_model_choice_interactively
 from .models import doctor as runtime_doctor
 from .models import get_models
 from .store import ArtifactStore, resolve_store_base
@@ -36,6 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_p.set_defaults(func=cmd_doctor)
 
     models_p = sub.add_parser("models", help="List models reported by traecli.")
+    models_p.add_argument("--recommend", action="store_true", help="Also include CLC's recommended council roster.")
     models_p.add_argument("--json", dest="json_output", action="store_true", default=argparse.SUPPRESS)
     models_p.set_defaults(func=cmd_models)
 
@@ -45,9 +47,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_p = sub.add_parser("run", help="Run Stage 1, Stage 2, Stage 3, and HTML export.")
     run_p.add_argument("--input", required=True, help="Input markdown/text file.")
-    run_p.add_argument("--members", default=",".join(DEFAULT_MEMBERS), help="Comma-separated model roster.")
-    run_p.add_argument("--chairman", default=DEFAULT_CHAIRMAN, help="Chairman model.")
+    run_p.add_argument("--members", help="Comma-separated model roster. If omitted, CLC asks you to choose from current COCO models.")
+    run_p.add_argument("--chairman", help="Chairman model. If omitted with --members, default chairman is used.")
     run_p.add_argument("--profile", help="Optional JSON profile overriding members/chairman/provider.")
+    run_p.add_argument("--default-models", action="store_true", help="Skip model selection and use CLC's default model suite.")
     run_p.add_argument("--run-id", help="Explicit run id. Default generated from UTC timestamp.")
     run_p.add_argument("--timeout", type=int, default=180, help="Per-model query timeout seconds.")
     run_p.add_argument("--skip-html", action="store_true", help="Skip automatic HTML export after Stage 3.")
@@ -107,7 +110,20 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 def cmd_models(args: argparse.Namespace) -> int:
     models = get_models(args.runtime_command)
     payload = {"count": len(models), "models": models}
-    return emit(payload, args.json_output, text=f"{len(models)} models")
+    if args.recommend:
+        choice = recommend_model_choice(models)
+        payload["recommendation"] = {
+            "members": choice.members,
+            "chairman": choice.chairman,
+            "source": choice.source,
+        }
+    if args.json_output:
+        return emit(payload, True)
+    text = f"{len(models)} models"
+    if args.recommend:
+        choice = payload["recommendation"]
+        text += f"\nrecommended members={', '.join(choice['members'])}; chairman={choice['chairman']}"
+    return emit(payload, False, text=text)
 
 
 def cmd_subagents(args: argparse.Namespace) -> int:
@@ -120,6 +136,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     user_query = read_text(input_path)
     store_base = resolve_store_base(args.store)
     run_id = args.run_id or f"run-{utc_now().replace(':', '').replace('-', '').replace('Z', '')}"
+    args.selected_model_choice = resolve_run_model_choice(args)
     config = build_config(args)
     store = ArtifactStore.create(store_base, run_id)
     manifest = asyncio.run(run_full_council(user_query, config, store))
@@ -205,8 +222,9 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
         chairman, chairman_agent = parse_subagent_chairman(profile.get("chairman") or {})
         runtime_cwd = str(Path(args.runtime_cwd).expanduser().resolve()) if args.runtime_cwd else str(PROJECT_ROOT)
     else:
-        members = profile.get("members") or split_csv(args.members)
-        chairman = profile.get("chairman") or args.chairman
+        selected: ModelChoice | None = getattr(args, "selected_model_choice", None)
+        members = profile.get("members") or (selected.members if selected else None) or split_csv(args.members or ",".join(DEFAULT_MEMBERS))
+        chairman = profile.get("chairman") or (selected.chairman if selected else None) or args.chairman or DEFAULT_CHAIRMAN
         if any(isinstance(item, dict) for item in members):
             raise ValueError("direct provider members must be model-name strings")
         runtime_cwd = str(Path(args.runtime_cwd).expanduser().resolve()) if args.runtime_cwd else None
@@ -221,6 +239,22 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
         member_agents=member_agents,
         chairman_agent=chairman_agent,
     )
+
+
+def resolve_run_model_choice(args: argparse.Namespace) -> ModelChoice | None:
+    if getattr(args, "profile", None):
+        return None
+    if getattr(args, "default_models", False):
+        return ModelChoice(list(DEFAULT_MEMBERS), DEFAULT_CHAIRMAN, "static-default")
+    if getattr(args, "members", None) or getattr(args, "chairman", None):
+        return None
+    if not sys.stdin.isatty():
+        raise ValueError(
+            "未指定模型，且当前不是可交互终端。请传 --default-models 使用默认模型套，"
+            "或显式传 --members/--chairman，或使用 --profile。"
+        )
+    models = get_models(args.runtime_command)
+    return select_model_choice_interactively(models, stdin=sys.stdin, stderr=sys.stderr)
 
 
 def split_csv(value: str) -> list[str]:

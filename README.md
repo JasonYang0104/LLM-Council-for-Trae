@@ -10,6 +10,7 @@
 
 - **三阶段 council run**：Stage 1 独立回答，Stage 2 匿名互评排序，Stage 3 主席综合。
 - **COCO-first runtime**：默认通过 `traecli` 调用模型，不维护第二套模型清单。
+- **主动模型选择**：只传问题文件时，CLI 会读取当前 `traecli models --json`，展示模型列表和推荐 council 套装，再询问是否采用。
 - **可审计 artifact**：每次运行保存 input、config、manifest、每阶段 prompt / response / metadata、COCO stream JSON 和 HTML export。
 - **模型防 fallback**：记录 expected model 和 actual model，模型不匹配、空响应、无效模型、Stage 2 parse failure 都会失败。
 - **固定 subagent 成员**：支持通过 `profiles/subagents.json` 使用项目级 `.trae/agents/` council 成员。
@@ -68,21 +69,43 @@ coco-llm-council models --json
 ```bash
 coco-llm-council run \
   --input examples/question.md \
-  --members GPT-5.4,GLM-5.1 \
-  --chairman GPT-5.4 \
   --run-id demo-direct \
   --timeout 180 \
   --json
 ```
 
-`--members` 和 `--chairman` 都是可选参数。只提供 `--input` 时，CLI 会使用默认成员：
+如果没有传 `--members`、`--chairman`、`--profile` 或 `--default-models`，CLC 会先列出当前 COCO 可用模型，并给出推荐套装：
+
+```text
+CLC 检测到当前 COCO 可用模型：
+  1. ...
+  2. ...
+
+推荐 council 模型套：
+  members: GPT-5.4, GLM-5.1, DeepSeek-V4-Pro
+  chairman: GPT-5.4
+
+选择 [回车=使用推荐 / d=默认模型套 / c=自定义 / q=取消]:
+```
+
+`--members` 和 `--chairman` 都是可选参数。只提供 `--input` 时，CLI 会主动询问模型选择。明确想跳过询问时，传：
+
+```bash
+coco-llm-council run \
+  --input examples/question.md \
+  --default-models \
+  --run-id demo-default \
+  --json
+```
+
+默认模型套是：
 
 ```text
 members: GPT-5.4, GLM-5.1
 chairman: GPT-5.4
 ```
 
-CLC 是非交互式 CLI：它不会在运行中弹出模型选择问题，也不依赖 Agent 的 AskUserQuestion **（注释：Agent 用来向用户发起澄清问题的工具能力）**。要换模型，直接传 `--members` / `--chairman`，或使用 `--profile`。
+CLC 的模型询问是 CLI 自己的终端输入，不依赖 Agent 的 AskUserQuestion **（注释：Agent 用来向用户发起澄清问题的工具能力）**。如果外层 Agent 不能交互式输入，使用 `--default-models`、`--members/--chairman` 或 `--profile`。
 
 成功后会生成：
 
@@ -122,9 +145,9 @@ HTML export 是独立步骤。主席模型只负责 Stage 3 综合，HTML 只负
 | 命令 | 用途 | 是否调用模型 |
 |---|---|---|
 | `coco-llm-council doctor --json` | 检查 COCO / `traecli` 和本 CLI 状态 | 否 |
-| `coco-llm-council models --json` | 列出 `traecli` 当前可用模型 | 否 |
+| `coco-llm-council models --recommend --json` | 列出 `traecli` 当前可用模型和推荐 council 套装 | 否 |
 | `coco-llm-council subagents --json` | 检查项目级 fixed council subagent 模板 | 否 |
-| `coco-llm-council run --input <file> --json` | 执行 Stage 1 / 2 / 3，并默认导出 HTML | 是 |
+| `coco-llm-council run --input <file> --json` | 先询问模型选择，再执行 Stage 1 / 2 / 3，并默认导出 HTML | 是 |
 | `coco-llm-council show <run_id> --json` | 读取 run manifest | 否 |
 | `coco-llm-council validate <run_id> --json` | 校验 artifact 完整性、模型一致性和 schema contract | 否 |
 | `coco-llm-council replay <run_id> --stage stage3` | 打印已保存 prompt，方便复查 | 否 |
@@ -267,7 +290,7 @@ make test
 当前验证基线：
 
 ```text
-unittest: 11 tests passed
+unittest: 14 tests passed
 live-smoke-20260522161928: validate ok, 171 checks, 0 failures
 subagent-hard-20260522165545: validate ok, 236 checks, 0 failures
 ```
@@ -277,7 +300,7 @@ subagent-hard-20260522165545: validate ok, 236 checks, 0 failures
 ```bash
 PYTHONPATH=src python3 -m coco_llm_council.cli --help
 PYTHONPATH=src python3 -m coco_llm_council.cli doctor --json
-PYTHONPATH=src python3 -m coco_llm_council.cli run --input examples/question.md --members GPT-5.4,GLM-5.1 --chairman GPT-5.4 --json
+PYTHONPATH=src python3 -m coco_llm_council.cli run --input examples/question.md --default-models --json
 ```
 
 ## Project Docs
