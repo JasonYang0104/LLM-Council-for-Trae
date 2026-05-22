@@ -1,0 +1,434 @@
+from __future__ import annotations
+
+import asyncio
+import re
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from .models import doctor as runtime_doctor
+from .models import get_models, require_models_available
+from .provider import ModelCallResult, TraeCliProvider
+from .store import ArtifactStore
+from .utils import utc_now, write_json
+
+
+DEFAULT_MEMBERS = ["GPT-5.4", "GLM-5.1"]
+DEFAULT_CHAIRMAN = "GPT-5.4"
+DEFAULT_READER_LANGUAGE_INSTRUCTION = "默认面向中文读者，使用简体中文回答。若用户原始问题明确指定另一种输出语言，则遵循用户指定语言。"
+
+
+@dataclass
+class CouncilConfig:
+    members: list[str]
+    chairman: str
+    provider_mode: str = "direct"
+    runtime_command: str = "traecli"
+    runtime_cwd: str | None = None
+    query_timeout: int = 180
+    export_html: bool = True
+    member_agents: list[str | None] | None = None
+    chairman_agent: str | None = None
+
+    def agent_for_member(self, index: int) -> str | None:
+        if not self.member_agents or index >= len(self.member_agents):
+            return None
+        return self.member_agents[index]
+
+
+async def stage1_collect_responses(
+    user_query: str,
+    config: CouncilConfig,
+    provider: TraeCliProvider,
+    store: ArtifactStore,
+) -> list[dict[str, Any]]:
+    prompt = build_stage1_prompt(user_query)
+    store.write_text("stage1/member.prompt.md", prompt + "\n")
+    output_dir = store.path("stage1")
+    tasks = []
+    for index, model in enumerate(config.members):
+        label = chr(65 + index)
+        tasks.append(
+            provider.query_model(
+                model=model,
+                prompt=prompt,
+                run_id=store.root.name,
+                stage="stage1",
+                label=label,
+                output_dir=output_dir,
+                agent=config.agent_for_member(index),
+            )
+        )
+    call_results = await asyncio.gather(*tasks)
+
+    stage1_results: list[dict[str, Any]] = []
+    for index, (model, call) in enumerate(zip(config.members, call_results)):
+        label = chr(65 + index)
+        store.write_text(f"stage1/{label}.response.md", call.response + "\n")
+        stage1_results.append(
+            {
+                "label": f"Response {label}",
+                "file_label": label,
+                "model": model,
+                "expected_model": call.expected_model,
+                "actual_model": call.actual_model,
+                "agent": call.agent,
+                "subagent_invocation": call.subagent_invocation,
+                "response": call.response,
+                "status": call.status,
+                "meta_path": f"stage1/{label}.meta.json",
+                "response_path": f"stage1/{label}.response.md",
+                "error": call.error,
+            }
+        )
+    return stage1_results
+
+
+async def stage2_collect_rankings(
+    user_query: str,
+    stage1_results: list[dict[str, Any]],
+    config: CouncilConfig,
+    provider: TraeCliProvider,
+    store: ArtifactStore,
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    label_to_model = {result["label"]: result["model"] for result in stage1_results}
+    store.write_json("stage2/label_to_model.json", label_to_model)
+
+    ranking_prompt = build_stage2_prompt(user_query, stage1_results)
+    store.write_text("stage2/review.prompt.md", ranking_prompt + "\n")
+
+    output_dir = store.path("stage2")
+    tasks = []
+    for index, model in enumerate(config.members):
+        label = chr(65 + index)
+        tasks.append(
+            provider.query_model(
+                model=model,
+                prompt=ranking_prompt,
+                run_id=store.root.name,
+                stage="stage2",
+                label=label,
+                output_dir=output_dir,
+                agent=config.agent_for_member(index),
+            )
+        )
+    call_results = await asyncio.gather(*tasks)
+
+    stage2_results: list[dict[str, Any]] = []
+    valid_labels = set(label_to_model)
+    for index, (model, call) in enumerate(zip(config.members, call_results)):
+        label = chr(65 + index)
+        parsed = parse_ranking_from_text(call.response)
+        parse_status = "ok" if ranking_is_complete(parsed, valid_labels) else "incomplete"
+        review = {
+            "reviewer_label": label,
+            "model": model,
+            "expected_model": call.expected_model,
+            "actual_model": call.actual_model,
+            "agent": call.agent,
+            "subagent_invocation": call.subagent_invocation,
+            "ranking": call.response,
+            "parsed_ranking": parsed,
+            "parse_status": parse_status,
+            "status": call.status if call.status != "ok" else parse_status,
+            "error": call.error,
+            "review_path": f"stage2/{label}.review.md",
+            "json_path": f"stage2/{label}.review.json",
+        }
+        store.write_text(f"stage2/{label}.review.md", call.response + "\n")
+        store.write_json(f"stage2/{label}.review.json", review)
+        stage2_results.append(review)
+
+    aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+    store.write_json("stage2/aggregate.json", aggregate_rankings)
+    return stage2_results, label_to_model
+
+
+async def stage3_synthesize_final(
+    user_query: str,
+    stage1_results: list[dict[str, Any]],
+    stage2_results: list[dict[str, Any]],
+    config: CouncilConfig,
+    provider: TraeCliProvider,
+    store: ArtifactStore,
+) -> dict[str, Any]:
+    chairman_prompt = build_stage3_prompt(user_query, stage1_results, stage2_results)
+    store.write_text("stage3/chairman.prompt.md", chairman_prompt + "\n")
+
+    call = await provider.query_model(
+        model=config.chairman,
+        prompt=chairman_prompt,
+        run_id=store.root.name,
+        stage="stage3",
+        label="final",
+        output_dir=store.path("stage3"),
+        agent=config.chairman_agent,
+    )
+    final = {
+        "model": config.chairman,
+        "expected_model": call.expected_model,
+        "actual_model": call.actual_model,
+        "agent": call.agent,
+        "subagent_invocation": call.subagent_invocation,
+        "response": call.response,
+        "status": call.status,
+        "error": call.error,
+        "prompt_path": "stage3/chairman.prompt.md",
+        "response_path": "stage3/final.md",
+        "json_path": "stage3/final.json",
+    }
+    store.write_text("stage3/final.md", call.response + "\n")
+    store.write_json("stage3/final.json", final)
+    return final
+
+
+def build_stage1_prompt(user_query: str) -> str:
+    return f"""{DEFAULT_READER_LANGUAGE_INSTRUCTION}
+
+用户原始问题：
+{user_query.strip()}"""
+
+
+def build_stage2_prompt(user_query: str, stage1_results: list[dict[str, Any]]) -> str:
+    responses_text = "\n\n".join(
+        f"{result['label']}:\n{result['response']}" for result in stage1_results
+    )
+    return f"""你正在评估多个模型对同一个用户问题的回答。
+
+{DEFAULT_READER_LANGUAGE_INSTRUCTION}
+
+用户原始问题：
+{user_query}
+
+以下是不同模型的匿名回答：
+
+{responses_text}
+
+你的任务：
+1. 先逐一评价每个回答，说明它做得好的地方和不足。
+2. 在回复的最后给出最终排序。
+
+重要：最终排序区块必须严格保持以下格式，便于机器解析：
+- 必须以英文大写行 "FINAL RANKING:" 开始。
+- 然后按从好到差列出编号列表。
+- 每一行只能包含编号、英文句点、空格和回答标签，例如 "1. Response A"。
+- 排序区块里不要添加其他解释。
+
+正确格式示例：
+
+Response A 对 X 有清晰说明，但遗漏了 Y...
+Response B 准确但深度不足...
+Response C 覆盖最完整...
+
+FINAL RANKING:
+1. Response C
+2. Response A
+3. Response B
+
+现在请给出你的评价和排序："""
+
+
+def build_stage3_prompt(
+    user_query: str,
+    stage1_results: list[dict[str, Any]],
+    stage2_results: list[dict[str, Any]],
+) -> str:
+    stage1_text = "\n\n".join(
+        f"Model: {result['model']}\nResponse: {result['response']}" for result in stage1_results
+    )
+    stage2_text = "\n\n".join(
+        f"Model: {result['model']}\nRanking: {result['ranking']}" for result in stage2_results
+    )
+    return f"""你是 LLM Council 的主席。多个 AI 模型已经回答了用户问题，并对彼此的回答进行了排序。
+
+{DEFAULT_READER_LANGUAGE_INSTRUCTION}
+
+原始问题：
+{user_query}
+
+阶段 1 - 各模型独立回答：
+{stage1_text}
+
+阶段 2 - 同侪排序与评价：
+{stage2_text}
+
+你的任务是综合以上信息，给出一个清晰、准确、有判断力的最终答案。请考虑：
+- 各个回答提供的有效洞察。
+- 同侪排序反映出的回答质量差异。
+- 模型之间的一致意见和分歧。
+
+请输出代表 council 集体判断的最终答案："""
+
+
+def parse_ranking_from_text(ranking_text: str) -> list[str]:
+    if "FINAL RANKING:" in ranking_text:
+        parts = ranking_text.split("FINAL RANKING:")
+        if len(parts) >= 2:
+            ranking_section = parts[1]
+            numbered_matches = re.findall(r"\d+\.\s*Response [A-Z]", ranking_section)
+            if numbered_matches:
+                return [re.search(r"Response [A-Z]", m).group() for m in numbered_matches if re.search(r"Response [A-Z]", m)]
+            return re.findall(r"Response [A-Z]", ranking_section)
+    return re.findall(r"Response [A-Z]", ranking_text)
+
+
+def ranking_is_complete(parsed: list[str], valid_labels: set[str]) -> bool:
+    return set(parsed) == valid_labels and len(parsed) == len(valid_labels)
+
+
+def calculate_aggregate_rankings(
+    stage2_results: list[dict[str, Any]],
+    label_to_model: dict[str, str],
+) -> list[dict[str, Any]]:
+    model_positions: dict[str, list[int]] = {}
+    for ranking in stage2_results:
+        parsed_ranking = ranking.get("parsed_ranking") or parse_ranking_from_text(ranking.get("ranking", ""))
+        seen: set[str] = set()
+        for position, label in enumerate(parsed_ranking, start=1):
+            if label in label_to_model and label not in seen:
+                seen.add(label)
+                model_name = label_to_model[label]
+                model_positions.setdefault(model_name, []).append(position)
+
+    aggregate: list[dict[str, Any]] = []
+    for model, positions in model_positions.items():
+        if positions:
+            avg_rank = sum(positions) / len(positions)
+            aggregate.append(
+                {
+                    "model": model,
+                    "average_rank": round(avg_rank, 2),
+                    "rankings_count": len(positions),
+                    "positions": positions,
+                }
+            )
+    aggregate.sort(key=lambda x: (x["average_rank"], x["model"]))
+    return aggregate
+
+
+async def run_full_council(
+    user_query: str,
+    config: CouncilConfig,
+    store: ArtifactStore,
+) -> dict[str, Any]:
+    manifest = initial_manifest(store.root.name, user_query, config)
+    store.write_manifest(manifest)
+    store.write_text("input.md", user_query.rstrip() + "\n")
+    store.write_json("config.json", config_to_json(config))
+
+    store.event("runtime_check_start")
+    health = runtime_doctor(config.runtime_command)
+    store.write_json("runtime/doctor.json", {
+        "ok": health.ok,
+        "command": health.command,
+        "version": health.version,
+        "doctor_exit_code": health.doctor_exit_code,
+        "doctor": health.doctor,
+        "errors": health.errors,
+        "warnings": health.warnings,
+    })
+    store.write_json("runtime/coco.models.json", health.models)
+    if not health.ok:
+        manifest["status"] = "failed"
+        manifest["failures"].extend(health.errors)
+        store.write_manifest(manifest)
+        return manifest
+
+    expected_models = list(dict.fromkeys(config.members + [config.chairman]))
+    try:
+        require_models_available(expected_models, health.models)
+    except ValueError as exc:
+        manifest["status"] = "failed"
+        manifest["failures"].append(str(exc))
+        store.write_manifest(manifest)
+        return manifest
+
+    provider = TraeCliProvider(
+        config.runtime_command,
+        config.query_timeout,
+        runtime_cwd=Path(config.runtime_cwd) if config.runtime_cwd else None,
+    )
+
+    store.event("stage1_start", {"members": config.members})
+    stage1_results = await stage1_collect_responses(user_query, config, provider, store)
+    manifest["stages"]["stage1"] = stage1_results
+    update_manifest_status(manifest, stage1_results)
+    store.write_manifest(manifest)
+    if manifest["status"] == "failed":
+        return manifest
+
+    store.event("stage2_start")
+    stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results, config, provider, store)
+    aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+    manifest["metadata"]["label_to_model"] = label_to_model
+    manifest["metadata"]["aggregate_rankings"] = aggregate_rankings
+    manifest["stages"]["stage2"] = stage2_results
+    update_manifest_status(manifest, stage2_results)
+    store.write_manifest(manifest)
+    if manifest["status"] == "failed":
+        return manifest
+
+    store.event("stage3_start", {"chairman": config.chairman})
+    stage3_result = await stage3_synthesize_final(user_query, stage1_results, stage2_results, config, provider, store)
+    manifest["stages"]["stage3"] = stage3_result
+    update_manifest_status(manifest, [stage3_result])
+    store.write_manifest(manifest)
+    return manifest
+
+
+def initial_manifest(run_id: str, user_query: str, config: CouncilConfig) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "run_id": run_id,
+        "created_at": utc_now(),
+        "updated_at": utc_now(),
+        "status": "ok",
+        "input_chars": len(user_query),
+        "config": config_to_json(config),
+        "artifacts": {
+            "input": "input.md",
+            "config": "config.json",
+            "events": "events.jsonl",
+            "runtime_doctor": "runtime/doctor.json",
+            "runtime_models": "runtime/coco.models.json",
+            "html": "html/index.html",
+        },
+        "stages": {"stage1": [], "stage2": [], "stage3": None},
+        "metadata": {"label_to_model": {}, "aggregate_rankings": []},
+        "warnings": [],
+        "failures": [],
+    }
+
+
+def config_to_json(config: CouncilConfig) -> dict[str, Any]:
+    return {
+        "members": config.members,
+        "chairman": config.chairman,
+        "provider_mode": config.provider_mode,
+        "runtime_command": config.runtime_command,
+        "runtime_cwd": config.runtime_cwd,
+        "query_timeout": config.query_timeout,
+        "export_html": config.export_html,
+        "member_agents": config.member_agents,
+        "chairman_agent": config.chairman_agent,
+    }
+
+
+def update_manifest_status(manifest: dict[str, Any], records: list[dict[str, Any]]) -> None:
+    for record in records:
+        if record.get("status") not in ("ok",):
+            failure = {
+                "stage_record": record.get("label") or record.get("reviewer_label") or record.get("model"),
+                "status": record.get("status"),
+                "error": record.get("error") or f"non-ok status: {record.get('status')}",
+                "expected_model": record.get("expected_model"),
+                "actual_model": record.get("actual_model"),
+            }
+            manifest["failures"].append(failure)
+            manifest["status"] = "failed"
+
+
+def load_profile(path: Path) -> dict[str, Any]:
+    import json
+
+    return json.loads(path.read_text(encoding="utf-8"))

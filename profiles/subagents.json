@@ -1,0 +1,17 @@
+{
+  "provider_mode": "subagent",
+  "members": [
+    {
+      "agent": "council-gpt54",
+      "model": "GPT-5.4"
+    },
+    {
+      "agent": "council-glm51",
+      "model": "GLM-5.1"
+    }
+  ],
+  "chairman": {
+    "agent": "council-chairman-gpt54",
+    "model": "GPT-5.4"
+  }
+}

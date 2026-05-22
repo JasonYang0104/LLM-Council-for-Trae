@@ -1,0 +1,665 @@
+from __future__ import annotations
+
+import html
+import json
+import re
+from pathlib import Path
+from typing import Any
+
+from .store import ArtifactStore
+from .utils import read_text, utc_now
+
+
+ARTIFACT_PROMPT = """COCO-llm-council HTML artifact rendering contract.
+
+Do not call any model. Do not change the chairman synthesis. Render the existing artifacts only.
+Default reader surface: stage3/final.md as Markdown HTML, with Stage 1, Stage 2, provider trace, and manifest metadata as collapsible evidence.
+Default UI language: Simplified Chinese for Chinese readers. Do not translate artifact content in this export step.
+Required controls: copy markdown, copy JSON, copy final prompt.
+"""
+
+
+def export_html(store: ArtifactStore) -> dict[str, Any]:
+    manifest = store.read_manifest()
+    store.write_text("html/artifact.prompt.md", ARTIFACT_PROMPT)
+    html_text = render_html(store.root, manifest)
+    store.write_text("html/index.html", html_text)
+    export_record = {
+        "run_id": manifest["run_id"],
+        "generated_at": utc_now(),
+        "format": "html",
+        "path": "html/index.html",
+        "source_manifest": "manifest.json",
+    }
+    store.write_json("html/export.json", export_record)
+    manifest.setdefault("artifacts", {})["html"] = "html/index.html"
+    manifest["artifacts"]["html_export"] = "html/export.json"
+    store.write_manifest(manifest)
+    return export_record
+
+
+def render_html(root: Path, manifest: dict[str, Any]) -> str:
+    input_text = safe_read(root / "input.md")
+    final_text = safe_read(root / "stage3" / "final.md")
+    chairman_prompt = safe_read(root / "stage3" / "chairman.prompt.md")
+    markdown_export = build_markdown_export(manifest, input_text, final_text)
+    json_export = json.dumps(manifest, ensure_ascii=False, indent=2)
+    copy_payloads = {
+        "json": json_export,
+        "markdown": markdown_export,
+        "prompt": chairman_prompt,
+    }
+    stages = manifest.get("stages") if isinstance(manifest.get("stages"), dict) else {}
+    metadata = manifest.get("metadata") if isinstance(manifest.get("metadata"), dict) else {}
+    stage1 = stages.get("stage1") if isinstance(stages.get("stage1"), list) else []
+    stage2 = stages.get("stage2") if isinstance(stages.get("stage2"), list) else []
+    stage3 = stages.get("stage3") if isinstance(stages.get("stage3"), dict) else {}
+    aggregate = metadata.get("aggregate_rankings") if isinstance(metadata.get("aggregate_rankings"), list) else []
+    failures = manifest.get("failures") if isinstance(manifest.get("failures"), list) else []
+    warnings = manifest.get("warnings") if isinstance(manifest.get("warnings"), list) else []
+    generated_at = utc_now()
+
+    stage1_tabs = render_tabs(
+        "stage1",
+        [
+            (
+                item.get("file_label", "?"),
+                f"<h3>{esc(item.get('label'))} · {esc(item.get('model'))}</h3>"
+                f"<p class='meta'>期望模型：{esc(item.get('expected_model'))} · 实际模型：{esc(item.get('actual_model'))} · 状态：{esc(item.get('status'))}</p>"
+                f"<div class='evidence-text'>{render_markdown(str(item.get('response') or ''))}</div>",
+            )
+            for item in stage1
+            if isinstance(item, dict)
+        ],
+    )
+    stage2_tabs = render_tabs(
+        "stage2",
+        [
+            (
+                item.get("reviewer_label", "?"),
+                f"<h3>评审者 {esc(item.get('reviewer_label'))} · {esc(item.get('model'))}</h3>"
+                f"<p class='meta'>期望模型：{esc(item.get('expected_model'))} · 实际模型：{esc(item.get('actual_model'))} · 解析：{esc(item.get('parse_status'))}</p>"
+                f"<p><strong>解析排序：</strong> {esc(', '.join(item.get('parsed_ranking') or []))}</p>"
+                f"<pre><code>{esc(item.get('ranking'))}</code></pre>",
+            )
+            for item in stage2
+            if isinstance(item, dict)
+        ],
+    )
+
+    final_html = render_markdown(final_text)
+    metadata_html = render_metadata(manifest, warnings, failures)
+    trace_html = render_trace(stage1, stage2, stage3)
+    ranking_html = render_ranking_matrix(aggregate)
+    manifest_html = f"<pre><code>{esc(json.dumps(manifest, ensure_ascii=False, indent=2))}</code></pre>"
+
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>COCO LLM Council · {esc(manifest.get('run_id'))}</title>
+<style>
+:root {{
+  --bg:#e9e0cf;
+  --paper:#fbf6ea;
+  --paper-deep:#f3ead9;
+  --ink:#221b14;
+  --body:#33291f;
+  --muted:#766b5a;
+  --line:#b9a98f;
+  --line-soft:#d6c7ad;
+  --accent:#7b2d26;
+  --accent-soft:#efe1d7;
+  --bad:#9f1d16;
+  --warn:#8c4a12;
+  --code:#241d17;
+  --code-ink:#fbf6ea;
+  --shadow:0 24px 70px rgba(55,42,22,.16);
+  --serif:Georgia,"Times New Roman",serif;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}}
+* {{ box-sizing:border-box; }}
+html {{ scroll-behavior:smooth; }}
+body {{
+  margin:0;
+  font:17px/1.72 var(--serif);
+  color:var(--ink);
+  background:var(--bg);
+}}
+a {{ color:var(--accent); text-decoration-thickness:1px; text-underline-offset:3px; }}
+button, summary {{ font:inherit; }}
+button {{
+  border:1px solid var(--line);
+  background:transparent;
+  color:var(--ink);
+  border-radius:2px;
+  padding:8px 11px;
+  cursor:pointer;
+  font:13px/1.2 var(--sans);
+  text-transform:none;
+  letter-spacing:0;
+}}
+button:hover, button:focus-visible {{ border-color:var(--accent); color:var(--accent); outline:2px solid transparent; }}
+button:focus-visible, a:focus-visible, summary:focus-visible {{ outline:3px solid rgba(123,45,38,.25); outline-offset:2px; }}
+.archive-shell {{
+  padding:32px 18px 70px;
+}}
+.sheet {{
+  max-width:980px;
+  margin:0 auto;
+  background:var(--paper);
+  border:1px solid rgba(90,72,45,.28);
+  box-shadow:var(--shadow);
+  padding:52px 64px 58px;
+}}
+.folio {{
+  display:flex;
+  justify-content:space-between;
+  gap:16px;
+  border-bottom:1px solid var(--line);
+  padding-bottom:12px;
+  color:var(--muted);
+  font:12px/1.4 var(--mono);
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}}
+.archive-hero {{
+  display:block;
+  padding:42px 0 28px;
+  border-bottom:1px solid var(--line);
+}}
+h1 {{ margin:0; font-size:58px; line-height:1; font-weight:400; letter-spacing:0; }}
+.run-meta {{ margin:14px 0 0; color:var(--muted); font:13px/1.55 var(--mono); }}
+.toolbar {{ display:flex; flex-wrap:wrap; justify-content:flex-start; gap:8px; max-width:420px; margin-top:24px; }}
+.copy-status {{ width:100%; color:var(--muted); font:12px/1.5 var(--mono); text-align:left; min-height:20px; }}
+.copy-fallback {{
+  width:100%;
+  min-height:92px;
+  margin-top:8px;
+  border:1px solid var(--line);
+  border-radius:2px;
+  padding:8px;
+  font:12px/1.45 var(--mono);
+  color:var(--ink);
+  background:var(--paper-deep);
+}}
+.reader {{ min-width:0; }}
+.answer {{
+  position:relative;
+  padding:34px 0 18px;
+}}
+.reader-label {{ margin:0 0 14px; color:var(--accent); font:12px/1.4 var(--mono); text-transform:uppercase; letter-spacing:.06em; }}
+.stamp {{
+  float:right;
+  margin:0 0 18px 30px;
+  border:1px solid var(--accent);
+  color:var(--accent);
+  padding:10px 12px;
+  font:12px/1.3 var(--mono);
+  text-transform:uppercase;
+  letter-spacing:.06em;
+  transform:rotate(1deg);
+}}
+.markdown-body {{ max-width:72ch; color:var(--body); }}
+.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {{
+  letter-spacing:0;
+  line-height:1.2;
+  margin:1.45em 0 .55em;
+  color:var(--ink);
+  font-weight:400;
+}}
+.markdown-body h1:first-child, .markdown-body h2:first-child, .markdown-body h3:first-child {{ margin-top:0; }}
+.markdown-body h1 {{ font-size:34px; }}
+.markdown-body h2 {{ font-size:27px; }}
+.markdown-body h3 {{ font-size:20px; }}
+.markdown-body p {{ margin:.8em 0; }}
+.markdown-body ul, .markdown-body ol {{ padding-left:1.35rem; }}
+.markdown-body li + li {{ margin-top:.25em; }}
+.markdown-body blockquote {{ margin:1.1em 0; padding:2px 0 2px 16px; border-left:3px solid var(--accent); color:#4b3f32; }}
+pre {{
+  white-space:pre-wrap;
+  overflow:auto;
+  background:var(--code);
+  color:var(--code-ink);
+  border-radius:2px;
+  padding:14px;
+}}
+code {{ font-family:var(--mono); font-size:.92em; }}
+:not(pre) > code {{ background:var(--paper-deep); color:var(--ink); padding:1px 4px; border-radius:2px; }}
+table {{ width:100%; border-collapse:collapse; margin:1em 0; font-size:14px; }}
+th, td {{ border:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top; }}
+th {{ background:var(--paper-deep); }}
+.status-ok {{ color:var(--accent); }}
+.status-failed {{ color:var(--bad); }}
+.summary-strip {{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  border-top:1px solid var(--line);
+  border-bottom:1px solid var(--line);
+  margin:32px 0 36px;
+}}
+.summary-card {{ padding:14px; border-right:1px solid var(--line); min-width:0; }}
+.summary-card:last-child {{ border-right:0; }}
+.summary-card h3 {{ margin:0 0 6px; color:var(--muted); font:11px/1.4 var(--mono); text-transform:uppercase; letter-spacing:.06em; }}
+.summary-card p {{ margin:0; color:var(--ink); font-size:15px; overflow-wrap:anywhere; }}
+.appendix {{ margin-top:26px; }}
+.appendix-title {{
+  margin:0 0 10px;
+  color:var(--muted);
+  font:12px/1.4 var(--mono);
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}}
+.appendix details {{
+  border-top:1px solid var(--line);
+  padding:0;
+}}
+.appendix details:last-child {{ border-bottom:1px solid var(--line); }}
+.appendix summary {{
+  cursor:pointer;
+  padding:16px 0;
+  font-weight:600;
+  color:var(--ink);
+}}
+.details-body {{ border-top:1px solid var(--line-soft); padding:16px 0 18px; overflow:auto; }}
+.meta {{ color:var(--muted); font:13px/1.55 var(--sans); }}
+.matrix {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; }}
+.cell {{ border:1px solid var(--line); background:rgba(255,255,255,.28); padding:12px; }}
+.cell h3 {{ margin:0 0 8px; font-size:16px; }}
+.cell p {{ margin:5px 0; }}
+.tabs {{ border:1px solid var(--line); background:rgba(255,255,255,.28); overflow:hidden; }}
+.tab-buttons {{ display:flex; flex-wrap:wrap; gap:4px; padding:8px; border-bottom:1px solid var(--line); background:var(--paper-deep); }}
+.tab-panel {{ display:none; padding:16px; }}
+.tab-panel.active {{ display:block; }}
+.warning {{ color:var(--warn); }}
+.failure-banner {{ border:1px solid var(--bad); background:#fff1eb; padding:12px 14px; margin:16px 0; }}
+.warning-banner {{ border:1px solid #c48233; background:#fff6df; padding:12px 14px; margin:16px 0; }}
+svg {{ width:100%; max-width:760px; height:auto; display:block; }}
+@media (max-width: 860px) {{
+  .archive-shell {{ padding:0; }}
+  .sheet {{ max-width:none; min-height:100vh; border-left:0; border-right:0; box-shadow:none; padding:34px 24px 44px; }}
+  .archive-hero {{ padding:34px 0 24px; }}
+  .toolbar {{ justify-content:flex-start; }}
+  .copy-status {{ text-align:left; }}
+  h1 {{ font-size:46px; }}
+  .summary-strip {{ grid-template-columns:repeat(2,minmax(0,1fr)); }}
+  .summary-card:nth-child(2n) {{ border-right:0; }}
+  .summary-card:nth-child(-n+2) {{ border-bottom:1px solid var(--line); }}
+}}
+@media (max-width: 520px) {{
+  body {{ font-size:16px; }}
+  .sheet {{ padding:28px 18px 38px; }}
+  .folio {{ display:block; }}
+  .folio span {{ display:block; margin-bottom:6px; overflow-wrap:anywhere; }}
+  h1 {{ font-size:40px; }}
+  .stamp {{ float:none; display:inline-block; margin:0 0 18px; }}
+  .summary-strip {{ grid-template-columns:1fr; }}
+  .summary-card, .summary-card:nth-child(2n) {{ border-right:0; border-bottom:1px solid var(--line); }}
+  .summary-card:last-child {{ border-bottom:0; }}
+  button {{ padding:7px 9px; }}
+}}
+</style>
+</head>
+<body>
+<main class="archive-shell">
+  <div class="sheet">
+    <header class="folio">
+      <span>COCO LLM Council / 归档副本</span>
+      <span>{esc(manifest.get('run_id'))}</span>
+    </header>
+    <section class="archive-hero" aria-label="运行标题">
+      <div>
+      <h1>最终答案</h1>
+      <p class="run-meta">运行 {esc(manifest.get('run_id'))} · 状态 <strong class="status-{esc(manifest.get('status'))}">{esc(manifest.get('status'))}</strong> · 导出 {esc(generated_at)}</p>
+    </div>
+    <div class="toolbar" aria-label="导出操作">
+      <button type="button" onclick="copyPayload('markdown')">复制 Markdown</button>
+      <button type="button" onclick="copyPayload('json')">复制 JSON</button>
+      <button type="button" onclick="copyPayload('prompt')">复制主席提示词</button>
+      <div id="copy-status" class="copy-status" role="status" aria-live="polite"></div>
+      <textarea id="copy-fallback" class="copy-fallback" hidden aria-label="复制备用文本"></textarea>
+    </div>
+    </section>
+    {render_alerts(warnings, failures)}
+    <article id="final-answer" class="reader answer">
+      <div class="stamp">已验证<br>阶段 3</div>
+      <p class="reader-label">阶段 3 · 主席综合</p>
+      <div class="markdown-body">
+        {final_html or "<p class='meta'>未找到最终答案内容。</p>"}
+      </div>
+    </article>
+    <section id="decision-summary" class="summary-strip" aria-label="决策摘要">
+      {render_summary_cards(manifest, aggregate)}
+    </section>
+    <section id="evidence" class="appendix" aria-label="证据层">
+      <h2 class="appendix-title">证据附录</h2>
+      <details id="stage1"><summary>附录 A · 阶段 1 候选回答</summary><div class="details-body">{stage1_tabs}</div></details>
+      <details id="stage2"><summary>附录 B · 阶段 2 匿名互评</summary><div class="details-body">{ranking_html}{stage2_tabs}</div></details>
+      <details id="trace"><summary>附录 C · Provider trace</summary><div class="details-body">{trace_html}</div></details>
+      <details id="metadata"><summary>附录 D · Manifest metadata</summary><div class="details-body">{metadata_html}{manifest_html}</div></details>
+      <details id="flow"><summary>附录 E · Council flow</summary><div class="details-body">{render_flow_svg()}</div></details>
+    </section>
+  </div>
+</main>
+<script type="application/json" id="copy-payloads">{json_for_script(copy_payloads)}</script>
+<script>
+function activateTab(group, index) {{
+  document.querySelectorAll('[data-tab-group="'+group+'"]').forEach(function(el) {{ el.classList.remove('active'); }});
+  var target = document.querySelector('[data-tab-group="'+group+'"][data-tab-index="'+index+'"]');
+  if (target) target.classList.add('active');
+}}
+async function copyPayload(key) {{
+  var status = document.getElementById('copy-status');
+  var el = document.getElementById('copy-payloads');
+  var payloads = el ? JSON.parse(el.textContent) : {{}};
+  var text = payloads[key] || '';
+  var copied = false;
+  var canUseClipboard = false;
+  if (navigator.clipboard && window.isSecureContext && navigator.permissions && navigator.permissions.query) {{
+    try {{
+      var permission = await navigator.permissions.query({{ name: 'clipboard-write' }});
+      canUseClipboard = permission.state === 'granted';
+    }} catch (err) {{
+      canUseClipboard = false;
+    }}
+  }}
+  if (canUseClipboard) {{
+    try {{
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    }} catch (err) {{
+      copied = false;
+    }}
+  }}
+  if (!copied) {{
+    var ta = document.getElementById('copy-fallback');
+    if (!ta) {{
+      ta = document.createElement('textarea');
+      ta.id = 'copy-fallback';
+      ta.className = 'copy-fallback';
+      ta.setAttribute('aria-label', '复制备用文本');
+      document.body.appendChild(ta);
+    }}
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.hidden = false;
+    ta.select();
+    copied = document.execCommand('copy');
+  }}
+  if (copied) {{
+    if (status) status.textContent = '已复制 ' + key + '。';
+  }} else {{
+    if (status) status.textContent = '已准备 ' + key + '，可手动复制。';
+  }}
+}}
+</script>
+</body>
+</html>
+"""
+
+
+def render_markdown(markdown_text: str) -> str:
+    lines = markdown_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    blocks: list[str] = []
+    paragraph: list[str] = []
+    i = 0
+
+    def flush_paragraph() -> None:
+        if paragraph:
+            blocks.append(f"<p>{render_inline(' '.join(paragraph).strip())}</p>")
+            paragraph.clear()
+
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        if not stripped:
+            flush_paragraph()
+            i += 1
+            continue
+
+        fence = re.match(r"^```([A-Za-z0-9_-]+)?\s*$", stripped)
+        if fence:
+            flush_paragraph()
+            language = fence.group(1) or ""
+            code_lines: list[str] = []
+            i += 1
+            while i < len(lines) and not lines[i].strip().startswith("```"):
+                code_lines.append(lines[i])
+                i += 1
+            if i < len(lines):
+                i += 1
+            class_name = f" class='language-{esc(language)}'" if language else ""
+            blocks.append(f"<pre><code{class_name}>{esc(chr(10).join(code_lines))}</code></pre>")
+            continue
+
+        if is_table_start(lines, i):
+            flush_paragraph()
+            table_lines = [lines[i], lines[i + 1]]
+            i += 2
+            while i < len(lines) and "|" in lines[i] and lines[i].strip():
+                table_lines.append(lines[i])
+                i += 1
+            blocks.append(render_table(table_lines))
+            continue
+
+        heading = re.match(r"^(#{1,6})\s+(.+)$", stripped)
+        if heading:
+            flush_paragraph()
+            level = len(heading.group(1))
+            blocks.append(f"<h{level}>{render_inline(heading.group(2).strip())}</h{level}>")
+            i += 1
+            continue
+
+        if stripped in {"---", "***", "___"}:
+            flush_paragraph()
+            blocks.append("<hr>")
+            i += 1
+            continue
+
+        if stripped.startswith(">"):
+            flush_paragraph()
+            quote_lines: list[str] = []
+            while i < len(lines) and lines[i].strip().startswith(">"):
+                quote_lines.append(lines[i].strip()[1:].strip())
+                i += 1
+            blocks.append(f"<blockquote>{render_markdown(chr(10).join(quote_lines))}</blockquote>")
+            continue
+
+        if re.match(r"^[-*+]\s+", stripped):
+            flush_paragraph()
+            items: list[str] = []
+            while i < len(lines):
+                match = re.match(r"^[-*+]\s+(.+)$", lines[i].strip())
+                if not match:
+                    break
+                items.append(f"<li>{render_inline(match.group(1).strip())}</li>")
+                i += 1
+            blocks.append("<ul>" + "".join(items) + "</ul>")
+            continue
+
+        if re.match(r"^\d+\.\s+", stripped):
+            flush_paragraph()
+            items = []
+            while i < len(lines):
+                match = re.match(r"^\d+\.\s+(.+)$", lines[i].strip())
+                if not match:
+                    break
+                items.append(f"<li>{render_inline(match.group(1).strip())}</li>")
+                i += 1
+            blocks.append("<ol>" + "".join(items) + "</ol>")
+            continue
+
+        paragraph.append(stripped)
+        i += 1
+
+    flush_paragraph()
+    return "\n".join(blocks)
+
+
+def render_inline(text: str) -> str:
+    parts = re.split(r"(`[^`]*`)", text)
+    rendered: list[str] = []
+    for part in parts:
+        if part.startswith("`") and part.endswith("`") and len(part) >= 2:
+            rendered.append(f"<code>{esc(part[1:-1])}</code>")
+            continue
+        escaped = esc(part)
+        escaped = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"<a href='\2'>\1</a>", escaped)
+        escaped = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", escaped)
+        escaped = re.sub(r"__([^_]+)__", r"<strong>\1</strong>", escaped)
+        escaped = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", escaped)
+        rendered.append(escaped)
+    return "".join(rendered)
+
+
+def is_table_start(lines: list[str], index: int) -> bool:
+    if index + 1 >= len(lines):
+        return False
+    header = lines[index].strip()
+    divider = lines[index + 1].strip()
+    return "|" in header and re.match(r"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$", divider) is not None
+
+
+def render_table(table_lines: list[str]) -> str:
+    rows = [split_table_row(line) for line in table_lines]
+    if len(rows) < 2:
+        return ""
+    header = rows[0]
+    body = rows[2:]
+    head_html = "".join(f"<th>{render_inline(cell)}</th>" for cell in header)
+    body_html = "".join("<tr>" + "".join(f"<td>{render_inline(cell)}</td>" for cell in row) + "</tr>" for row in body)
+    return f"<table><thead><tr>{head_html}</tr></thead><tbody>{body_html}</tbody></table>"
+
+
+def split_table_row(line: str) -> list[str]:
+    stripped = line.strip()
+    if stripped.startswith("|"):
+        stripped = stripped[1:]
+    if stripped.endswith("|"):
+        stripped = stripped[:-1]
+    return [cell.strip() for cell in stripped.split("|")]
+
+
+def render_tabs(group: str, entries: list[tuple[str, str]]) -> str:
+    if not entries:
+        return "<p class='meta'>暂无条目。</p>"
+    buttons = "".join(
+        f"<button type='button' onclick=\"activateTab('{group}', '{i}')\">{esc(label)}</button>" for i, (label, _) in enumerate(entries)
+    )
+    panels = "".join(
+        f"<div class='tab-panel {'active' if i == 0 else ''}' data-tab-group='{group}' data-tab-index='{i}'>{content}</div>"
+        for i, (_, content) in enumerate(entries)
+    )
+    return f"<div class='tabs'><div class='tab-buttons'>{buttons}</div>{panels}</div>"
+
+
+def render_ranking_matrix(aggregate: list[dict[str, Any]]) -> str:
+    cells = "".join(
+        f"<div class='cell'><h3>#{i + 1} {esc(item.get('model'))}</h3><p>平均名次：{esc(item.get('average_rank'))}</p><p class='meta'>投票数：{esc(item.get('rankings_count'))} · 位置：{esc(item.get('positions'))}</p></div>"
+        for i, item in enumerate(aggregate)
+        if isinstance(item, dict)
+    )
+    empty = '<p class="meta">暂无聚合排序。</p>'
+    return f"<div class='matrix'>{cells or empty}</div>"
+
+
+def render_summary_cards(manifest: dict[str, Any], aggregate: list[dict[str, Any]]) -> str:
+    config = manifest.get("config") if isinstance(manifest.get("config"), dict) else {}
+    top_model = aggregate[0].get("model") if aggregate and isinstance(aggregate[0], dict) else "暂无聚合排序"
+    return (
+        f"<div class='summary-card'><h3>最高排序成员</h3><p>{esc(top_model)}</p></div>"
+        f"<div class='summary-card'><h3>成员模型</h3><p>{esc(', '.join(config.get('members') or []))}</p></div>"
+        f"<div class='summary-card'><h3>主席模型</h3><p>{esc(config.get('chairman'))}</p></div>"
+        f"<div class='summary-card'><h3>Provider</h3><p>{esc(config.get('provider_mode'))}</p></div>"
+    )
+
+
+def render_metadata(manifest: dict[str, Any], warnings: list[Any], failures: list[Any]) -> str:
+    config = manifest.get("config") if isinstance(manifest.get("config"), dict) else {}
+    failure_html = "<p class='status-ok'>无失败项。</p>" if not failures else f"<pre><code>{esc(json.dumps(failures, ensure_ascii=False, indent=2))}</code></pre>"
+    warning_html = "" if not warnings else f"<pre class='warning'><code>{esc(json.dumps(warnings, ensure_ascii=False, indent=2))}</code></pre>"
+    return (
+        "<div class='matrix'>"
+        f"<div class='cell'><h3>模型阵容</h3><p>成员：{esc(', '.join(config.get('members') or []))}</p><p>主席：{esc(config.get('chairman'))}</p></div>"
+        f"<div class='cell'><h3>运行时</h3><p>Provider：{esc(config.get('provider_mode'))}</p><p>命令：{esc(config.get('runtime_command'))}</p></div>"
+        f"<div class='cell'><h3>警告 / 失败</h3>{warning_html}{failure_html}</div>"
+        "</div>"
+    )
+
+
+def render_alerts(warnings: list[Any], failures: list[Any]) -> str:
+    failure_html = "" if not failures else f"<div class='failure-banner'><strong>存在失败项。</strong><pre><code>{esc(json.dumps(failures, ensure_ascii=False, indent=2))}</code></pre></div>"
+    warning_html = "" if not warnings else f"<div class='warning-banner'><strong>存在警告。</strong><pre><code>{esc(json.dumps(warnings, ensure_ascii=False, indent=2))}</code></pre></div>"
+    return failure_html + warning_html
+
+
+def render_trace(stage1: list[Any], stage2: list[Any], stage3: dict[str, Any] | None) -> str:
+    rows: list[str] = []
+    for stage_name, items in (("stage1", stage1), ("stage2", stage2)):
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            rows.append(
+                f"<div class='cell'><h3>{esc(stage_name)} · {esc(item.get('file_label') or item.get('reviewer_label'))}</h3>"
+                f"<p>{esc(item.get('expected_model'))} -> {esc(item.get('actual_model'))}</p><p class='meta'>{esc(item.get('status'))}</p></div>"
+            )
+    if stage3:
+        rows.append(
+            f"<div class='cell'><h3>stage3 · 主席</h3><p>{esc(stage3.get('expected_model'))} -> {esc(stage3.get('actual_model'))}</p><p class='meta'>{esc(stage3.get('status'))}</p></div>"
+        )
+    return "<div class='matrix'>" + "".join(rows) + "</div>"
+
+
+def render_flow_svg() -> str:
+    return """<svg viewBox="0 0 760 170" role="img" aria-label="Council flow">
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#7b2d26"/></marker></defs>
+<rect x="20" y="55" width="130" height="60" rx="4" fill="#fbf6ea" stroke="#b9a98f"/><text x="85" y="90" text-anchor="middle">输入</text>
+<line x1="150" y1="85" x2="230" y2="85" stroke="#7b2d26" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="230" y="30" width="140" height="110" rx="4" fill="#fbf6ea" stroke="#b9a98f"/><text x="300" y="72" text-anchor="middle">阶段 1</text><text x="300" y="98" text-anchor="middle">成员回答</text>
+<line x1="370" y1="85" x2="450" y2="85" stroke="#7b2d26" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="450" y="30" width="140" height="110" rx="4" fill="#fbf6ea" stroke="#b9a98f"/><text x="520" y="72" text-anchor="middle">阶段 2</text><text x="520" y="98" text-anchor="middle">互评</text>
+<line x1="590" y1="85" x2="660" y2="85" stroke="#7b2d26" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="660" y="55" width="80" height="60" rx="4" fill="#fbf6ea" stroke="#b9a98f"/><text x="700" y="90" text-anchor="middle">最终</text>
+</svg>"""
+
+
+def build_markdown_export(manifest: dict[str, Any], input_text: str, final_text: str) -> str:
+    aggregate = manifest.get("metadata", {}).get("aggregate_rankings") or []
+    ranking = "\n".join(f"- {item.get('model')}: average rank {item.get('average_rank')}" for item in aggregate)
+    return f"""# COCO LLM Council 运行 {manifest.get('run_id')}
+
+状态：{manifest.get('status')}
+
+## 输入
+
+{input_text}
+
+## 聚合排序
+
+{ranking or '暂无聚合排序。'}
+
+## 最终答案
+
+{final_text}
+"""
+
+
+def safe_read(path: Path) -> str:
+    return read_text(path) if path.exists() else ""
+
+
+def esc(value: Any) -> str:
+    return html.escape("" if value is None else str(value))
+
+
+def json_for_script(value: Any) -> str:
+    payload = json.dumps(value, ensure_ascii=False)
+    return (
+        payload.replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )

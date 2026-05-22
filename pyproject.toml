@@ -1,0 +1,19 @@
+[project]
+name = "coco-llm-council"
+version = "0.1.0"
+description = "A COCO/traecli-backed LLM council CLI."
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+coco-llm-council = "coco_llm_council.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
