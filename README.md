@@ -29,6 +29,8 @@
 
 本项目要求本机已经安装并登录 COCO，且 `traecli models --json` 能返回模型列表。
 
+如果当前 COCO 临时不可用，可以先验证 CLI 自身、模型推荐逻辑、schema contract 和 HTML export fixture；不要把 fake runtime 或 fixture 结果说成 live COCO 验证。
+
 ```bash
 traecli --version
 traecli doctor --json
@@ -54,7 +56,7 @@ command -v coco-llm-council
 
 ```bash
 coco-llm-council doctor --json
-coco-llm-council models --json
+coco-llm-council models --recommend --json
 ```
 
 `doctor` 会检查：
@@ -307,6 +309,7 @@ PYTHONPATH=src python3 -m coco_llm_council.cli run --input examples/question.md 
 
 | 文档 | 读者 | 内容 |
 |---|---|---|
+| `AGENTS.md` | 接手 Agent | 项目边界、读文档顺序、模型选择交互、验证命令 |
 | `docs/design.md` | 接手开发者 / Agent | 初始设计、协议边界、provider 设计、artifact store 设计 |
 | `docs/COCO_INSTALLATION_AND_PATHS.md` | 本机排障者 | COCO 安装、登录、路径、插件、模型事实 |
 | `docs/coco-subagents.md` | subagent 维护者 | 固定 council 成员、profile 和验证方式 |
@@ -327,6 +330,8 @@ PYTHONPATH=src python3 -m coco_llm_council.cli run --input examples/question.md 
 
 ## Current Status
 
-`COCO-llm-council` 已达到第一版可用状态：可以从任意目录调用 CLI，完成 direct council run 和 subagent profile run，并生成可审计 artifacts 与 HTML 报告。
+`COCO-llm-council` 已达到第一版可用状态：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、subagent evidence validation、主动模型选择和中文默认输出都已落地，并已纳入 git 管理。
+
+真实 direct / subagent council run 取决于当前 COCO / `traecli` 是否可用。2026-05-22 阶段收尾时，COCO 被用户确认暂不可用，因此只复验了不依赖 live COCO 的部分：单元测试、推荐模型 JSON、非交互错误路径、fake runtime 三阶段 E2E、HTML 和 validate。
 
 下一阶段更值得做的是 profile 管理、结构化 Stage 2 ranking 输出、更多模型 roster 配置，以及更完整的跨文件 schema 校验。

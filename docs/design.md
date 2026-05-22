@@ -126,8 +126,9 @@ coco-llm-council
 ```bash
 coco-llm-council --help
 coco-llm-council doctor --json
-coco-llm-council models --json
+coco-llm-council models --recommend --json
 coco-llm-council run --input examples/question.md --json
+coco-llm-council run --input examples/question.md --default-models --json
 coco-llm-council show <run_id> --json
 coco-llm-council export <run_id> --format html
 coco-llm-council replay <run_id> --stage stage3
@@ -137,8 +138,9 @@ coco-llm-council validate <run_id> --json
 命令原则：
 
 - `doctor` 先确认 `traecli` 是否存在、COCO 是否登录、模型是否可用、插件是否加载。
-- `models` 读取 COCO 当前可用模型，不维护第二套过期模型清单。
-- `run` 执行完整 Stage 1 -> Stage 2 -> Stage 3 -> HTML。
+- `models --recommend` 读取 COCO 当前可用模型，并基于当前列表推荐 council 成员和主席，不维护第二套过期模型清单。
+- `run` 在未传 `--members`、`--chairman`、`--profile` 或 `--default-models` 时，先在 CLI 终端中主动询问模型选择，再执行完整 Stage 1 -> Stage 2 -> Stage 3 -> HTML。
+- `run --default-models` 跳过询问，使用静态默认模型套。
 - `show` 只读 manifest，不调用模型。
 - `export` 只读 artifacts，默认输出 HTML。
 - `replay` 只展示某阶段 prompt，不调用模型。
@@ -331,7 +333,7 @@ Codex、Trae-CN、COCO 都只是输入来源，不是 runtime 边界。
 要做：
 
 - 使用 `cli-creator` 设计并创建 `coco-llm-council` CLI。
-- 实现 `--help`、`doctor --json`、`models --json`。
+- 实现 `--help`、`doctor --json`、`models --recommend --json`。
 - 确认从任意目录能调用命令。
 
 测试：
@@ -340,7 +342,7 @@ Codex、Trae-CN、COCO 都只是输入来源，不是 runtime 边界。
 command -v coco-llm-council
 coco-llm-council --help
 coco-llm-council doctor --json
-coco-llm-council models --json
+coco-llm-council models --recommend --json
 ```
 
 ### Phase 2：llm-council parity core
@@ -355,7 +357,8 @@ coco-llm-council models --json
 测试：
 
 ```bash
-coco-llm-council run --input examples/question.md --members GPT-5.4,GLM-5.1 --chairman GPT-5.4 --json
+coco-llm-council run --input examples/question.md --json
+coco-llm-council run --input examples/question.md --default-models --json
 coco-llm-council show <run_id> --json
 coco-llm-council validate <run_id> --json
 ```
@@ -434,20 +437,20 @@ coco-llm-council validate <run_id> --json
 /goal 在当前 workspace 中推进 COCO-llm-council。目标是创建一个独立 council CLI，命令名为 coco-llm-council，内部调用 traecli，一比一复刻 references/llm-council 的核心 council protocol，但排除原 Web UI 和 OpenRouter API。必须优先复用 llm-council 中不冲突的已有资产和函数边界；必须使用 Codex 的 cli-creator 方法论创建 CLI；COCO 是默认 runtime；后续支持 COCO 自定义 subagent 作为固定 council 成员。先阅读 README.md、docs/design.md、docs/COCO_INSTALLATION_AND_PATHS.md 和 references/llm-council/README.md，再给出实现计划。交付必须完整包含：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、验证命令和结果。开发可以分阶段推进，但每阶段必须有明确测试。不要依赖旧 TR，不要引入 Web app，不要把 HTML 生成和主席综合混成一步。
 ```
 
-## 追加方案：Reader-first HTML 与 Trae-CN 模型选择
+## 追加记录：Reader-first HTML 与 CLI 模型选择
 
 日期：2026-05-22
 
-本节是下一轮迭代方案，只描述设计和验收，不代表已经实现。
+本节最初是下一轮迭代方案。阶段收尾时的实际状态是：HTML export 已按 Archival Paper 调性实现；CLI 基础模型选择已实现；input frontmatter 和 task-mode 推荐策略尚未实现。
 
 ### 结论
 
-下一轮最值得做两件事：
+本轮聚焦过两件事：
 
 1. HTML export 从“流程审计面板”改成“用户默认阅读的最终答案 artifact”。默认读者先看 `stage3/final.md` 渲染出的精致正文，Stage 1 / Stage 2 / provider trace 退到可折叠证据层。
-2. 模型选择补一个薄的输入/推荐层。CLC core 仍只认 `input.md` + config/profile + CLI 参数；Trae-CN 可以在调用前用 `AskUserQuestion` 帮用户选择模型，但这个能力不进入 CLC core。
+2. 模型选择补一个薄的输入/推荐层。CLC core 仍只认 `input.md` + config/profile + CLI 参数；当用户只传问题文件时，CLC CLI 自己读取当前模型列表、推荐模型套并询问用户。Trae-CN 可以在调用前用 AskUserQuestion 做更好的外层体验，但 CLC 不依赖它。
 
-一句话：CLC 负责稳定运行、落盘和复盘；Trae-CN 负责把人的意图整理成结构化输入和参数。
+一句话：CLC 负责稳定运行、模型预检、落盘和复盘；外层 Agent 只负责把人的意图整理成 `input.md` 和必要参数。
 
 ### HTML 设计参考怎么落地
 
@@ -476,9 +479,9 @@ coco-llm-council validate <run_id> --json
 
 ### Reader-first HTML 信息架构
 
-当前 `html_export.py` 的主要问题不是功能缺失，而是主次倒置：`stage3/final.md` 被放进 `<pre>`，Markdown 结构不可读；Stage 1 / Stage 2 / trace 更像调试面板。
+原始 `html_export.py` 的主要问题不是功能缺失，而是主次倒置：`stage3/final.md` 被放进 `<pre>`，Markdown 结构不可读；Stage 1 / Stage 2 / trace 更像调试面板。当前实现已经转成归档文档形态：最终答案先出现，证据层作为 appendix 折叠在后面。
 
-下一版默认页面顺序：
+当前目标页面顺序：
 
 ```text
 Header
@@ -511,7 +514,7 @@ Evidence
 - warnings / failures 必须在顶部可见；失败 run 不允许藏在 metadata 里。
 - 页面使用原生语义结构：`header`、`nav`、`main`、`section`、`details`、`button`。
 
-最小实现方案：
+当前实现方案：
 
 - 继续改现有 `src/coco_llm_council/html_export.py`。
 - 增加一个小型 Markdown renderer，不引入前端构建链。
@@ -581,8 +584,9 @@ CLI 行为：
 
 - `--members` / `--chairman` 仍保留，适合命令行直接调用。
 - `--profile` 仍保留，适合 subagent provider。
-- 新增输入 frontmatter 只作为便捷入口，解析后仍进入 `CouncilConfig`。
-- 优先级建议：显式 CLI 参数 > `--profile` > input frontmatter > 默认值。
+- 输入 frontmatter 可作为未来便捷入口，解析后仍进入 `CouncilConfig`。
+- 当前已实现优先级：`--profile` > `--default-models` > 显式 `--members/--chairman` > 交互推荐选择 > 静态默认值兜底。
+- 未来若加入 input frontmatter，应插入到显式 CLI 参数之后、交互推荐之前。
 - run 前仍调用 `traecli models --json`，并用 `require_models_available` 阻断无效模型。
 
 验收：
@@ -612,7 +616,7 @@ coco-llm-council validate <run_id> --json
 当前事实源仍然是：
 
 ```bash
-coco-llm-council models --json
+coco-llm-council models --recommend --json
 ```
 
 2026-05-22 本机实测当前返回 23 个模型，包括：
@@ -645,66 +649,47 @@ Qwen3.5-Plus
 
 注意：这个列表是当前机器当前时间的事实，不能写死进推荐逻辑。`openrouter-*` 当前输出带 quota / L4 repo 限制说明，默认不应进入推荐组合。
 
-推荐逻辑建议放在 CLC CLI 内，而不是写在 Trae-CN prompt 里。新增命令可以是：
-
-```bash
-coco-llm-council recommend-models --task-mode general --json
-```
+推荐逻辑已经放在 CLC CLI 内，而不是写在 Trae-CN prompt 里。当前命令是 `models --recommend --json`；`run --input <file>` 在 TTY 中也会复用同一套推荐逻辑。
 
 最小规则：
 
 - 只从 `models --json` 的当前返回中选。
 - 默认推荐 3 个 member models + 1 个 chairman。
-- 推荐结果必须带 `generated_at`、完整模型快照 hash 或 path、推荐理由。
+- 当前推荐结果带 members、chairman 和 source；后续如加入 task-mode，可再补 `generated_at`、完整模型快照 hash 或 path、推荐理由。
 - 如果某个首选模型不可用，按同族或同能力降级，但要把替换原因写进 JSON。
 
-默认推荐策略：
+当前默认推荐策略：
 
 ```text
-general / reasoning:
-  members: GPT-5.4, GLM-5.1, Gemini-3.1-Pro-Preview
-  chairman: GPT-5.4
-
-high-reasoning / expensive-ok:
-  members: GPT-5.5, GPT-5.4, Gemini-3.1-Pro-Preview
-  chairman: GPT-5.5 或 GPT-5.4，取决于 queue heat 和可用性
-
-fast / cheap:
-  members: GPT-5.4, DeepSeek-V4-Flash, Gemini-3-Flash-Preview
-  chairman: GPT-5.4
-
-code:
-  members: GPT-5.4, Doubao-Seed-2.0-Code, DeepSeek-V4-Pro
+general:
+  members: GPT-5.4, GLM-5.1, DeepSeek-V4-Pro
   chairman: GPT-5.4
 ```
 
 这里的推荐不是“模型真理”，只是启动默认值。真正可信边界仍是 run 里的 expected/actual model 校验和 artifact evidence。
 
-### Trae-CN 调用 CLC 时怎么用 AskUserQuestion
+### 外层 Agent 调用 CLC 时怎么处理用户确认
 
-`AskUserQuestion` 可以放在 Trae-CN wrapper flow 中使用，但不要进入 CLC core。
+AskUserQuestion 可以放在 Trae-CN wrapper flow 中使用，但不是 CLC 的依赖。CLC 已经有自己的 CLI 询问；不支持 AskUserQuestion 的 Agent 只要能提供普通终端输入，也能完成模型选择。
 
 推荐流程：
 
 ```text
-Trae-CN
+外层 Agent
   1. 整理用户问题为 input.md
-  2. 调用 coco-llm-council models --json
-  3. 调用 coco-llm-council recommend-models --task-mode <mode> --json
-  4. 如果用户没有显式指定模型，用 AskUserQuestion 展示：
-     - 推荐组合
-     - 快速组合
-     - 高推理组合
-  5. 用户选择后，Trae-CN 调用：
-     coco-llm-council run --input input.md --members ... --chairman ... --json
-  6. 返回 html/index.html 路径
+  2. 如果支持交互式终端，直接调用：
+     coco-llm-council run --input input.md --json
+  3. 如果不支持交互式终端，传：
+     coco-llm-council run --input input.md --default-models --json
+     或显式传 --members / --chairman / --profile
+  4. 返回 html/index.html 路径
 ```
 
 边界：
 
-- CLC core 不主动问用户。
+- CLC core 可以在 TTY 里主动问用户。
 - CLC core 不依赖 Trae-CN DOM、selector、UI 工具或 AskUserQuestion。
-- Trae-CN 的问题卡片只是更好的前置体验；没有它，CLI 也必须能 headless 跑。
+- Trae-CN 的问题卡片只是更好的前置体验；没有它，CLI 也必须能用 `--default-models` 或显式参数 headless 跑。
 - 如果未来 COCO / traecli 提供稳定、可脚本化、非 UI 依赖的 ask-user primitive，并且能写进 artifact store，可以考虑作为 optional preflight；现在不做。
 
 ### 下一轮实现节奏
@@ -718,15 +703,16 @@ Trae-CN
    - 补 HTML export 测试和浏览器验证。
 
 2. 模型选择输入层
-   - 支持 input frontmatter。
-   - 新增 `recommend-models --json`。
-   - 写 Trae-CN wrapper prompt / usage guide。
-   - 验证无效模型、fallback、expected/actual model。
+   - 已实现 `models --recommend --json`。
+   - 已实现 `run --input <file>` 的 TTY 主动模型选择。
+   - 已实现非交互环境的快速失败和 `--default-models` 绕过。
+   - 尚未实现 input frontmatter。
+   - 后续可补更多 task-mode 推荐策略。
 
-第一轮优先级更高，因为它直接影响用户阅读体验；第二轮影响启动体验和可配置性。
+HTML reader-first 和基础模型选择已经完成；后续优先级应转向 input frontmatter、task-mode 推荐策略、profile 管理和结构化 Stage 2 ranking。
 
 ### 给执行会话的提示词
 
 ```text
-/goal 在当前 workspace 推进 COCO-llm-council 的下一轮迭代。先阅读 README.md、docs/design.md，重点看“追加方案：Reader-first HTML 与 Trae-CN 模型选择”。本轮只实现第一部分：把 HTML export 改成 reader-first artifact。要求：HTML 默认以 stage3/final.md 渲染出的最终答案为主阅读区，不再把 final.md 整块放进 pre；Stage 1、Stage 2、provider trace、manifest metadata 作为可折叠证据层；保留 copy as markdown / JSON / final prompt；单文件自包含；不引入 React/Vite/Web app；不重新调用模型生成 HTML；不改变 Stage 3 final answer。设计资产只使用 open-design 中明确适配的文件：craft/typography.md、craft/typography-hierarchy-editorial.md、craft/anti-ai-slop.md、craft/color.md、craft/accessibility-baseline.md、design-templates/docs-page/SKILL.md、design-templates/blog-post/SKILL.md、design-templates/eng-runbook/SKILL.md、design-templates/github-dashboard/SKILL.md；不要直接引用 huashu-design 或 guizang-ppt-skill 原始 repo。完成后必须运行单元测试、导出既有可信 run 的 HTML、验证 375px/768px/1440px 可读、console 无错误，并汇报 artifact 路径。
+/goal 在当前 workspace 推进 COCO-llm-council 的下一轮迭代。先阅读 README.md、docs/design.md 和 docs/director-brief-20260522.md。当前 HTML reader-first / Archival Paper 与基础 CLI 模型选择已经完成；本轮不要重复实现。建议优先做 input frontmatter、task-mode 推荐策略、profile 管理或结构化 Stage 2 ranking 中的一项。必须保持：不引入 React/Vite/Web app；不接 OpenRouter；不依赖旧 TR；不重新调用模型生成 HTML；不改变 Stage 3 final answer；完成后必须运行单元测试和对应 CLI 验证，并明确说明 live COCO 是否可用。
 ```

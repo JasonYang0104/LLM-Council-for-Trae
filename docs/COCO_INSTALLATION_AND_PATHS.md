@@ -4,11 +4,13 @@
 
 ## 当前结论
 
-- COCO 已安装成功，当前版本为 `0.120.32`。
+- 本文件记录 2026-05-22 安装与首次 smoke test 事实；不要把这里的历史成功直接当成当前可用性结论。
+- 2026-05-22 阶段收尾时，用户确认 COCO 当前暂不可用；CLC 本轮只复验了不依赖 live COCO 的测试。
+- COCO 安装曾成功，版本为 `0.120.32`。
 - `coco`、`traecli`、`trae-agent`、`ta` 是同一套内部二进制的不同入口。
-- 本机已通过字节 SSO 完成鉴权，插件已下载成功，模型列表可用。
+- 本机曾通过字节 SSO 完成鉴权，插件曾下载成功，模型列表曾可用。
 - 当前用户级配置文件是 `/Users/bytedance/.trae/traecli.yaml`。
-- 当前有效模型为 `GPT-5.4`，已通过最小问答验证。
+- 安装 smoke test 时的有效模型为 `GPT-5.4`，并通过最小问答验证。
 
 验证命令：
 
@@ -19,11 +21,13 @@ coco models --json
 coco -p "只回复 OK" --query-timeout 60s
 ```
 
-本次最终 smoke test 返回：
+2026-05-22 安装 smoke test 返回：
 
 ```text
 OK
 ```
+
+如果这些命令当前失败，先按本文“本次踩坑记录”排查鉴权、插件和模型列表；在 COCO 恢复前，不要声称 `coco-llm-council` 完成了新的 live model run。
 
 ## 安装参考
 

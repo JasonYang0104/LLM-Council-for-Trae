@@ -28,6 +28,8 @@
 
 ## 已验证 run
 
+当前 parity 目标已经落到 CLI：`run` 可以在未显式传 `--members` / `--chairman` 时先用当前 COCO 模型列表推荐 council 套装，再执行同一套 Stage 1 / 2 / 3 protocol。模型选择是 COCO 适配层能力，不改变 `llm-council` 的核心 protocol。
+
 ```text
 run_id: live-smoke-20260522161928
 members: GPT-5.4, GLM-5.1
