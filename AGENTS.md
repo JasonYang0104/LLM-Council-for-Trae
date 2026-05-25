@@ -54,6 +54,17 @@ coco-llm-council run --input examples/question.md --json
 coco-llm-council validate <run_id> --json
 ```
 
+## E2E 汇报格式
+
+做 E2E 测试时，最终汇报只保留可复验事实：
+
+- 执行过的命令。
+- 每条命令的结果：pass / fail / skipped。
+- live COCO 是否可用。
+- 如果产生 run：`run_id`、`validate` 状态、HTML 路径。
+- 如果没有 live run：明确是 non-live / fake-runtime / skipped，并说明阻断点。
+- 需要下一阶段处理的问题。
+
 ## Git 边界
 
 项目现在是 git repo。`.coco-llm-council/` 是本地 run artifacts，已被 ignore。不要改写或删除用户产物，除非用户明确要求。
