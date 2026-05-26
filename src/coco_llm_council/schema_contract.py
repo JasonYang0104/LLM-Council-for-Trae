@@ -93,6 +93,11 @@ STAGE_META_SCHEMA: dict[str, JsonTypeCheck] = {
     "raw_model_markers": is_list_of_str,
     "error": is_str_or_none,
     "captured_at": is_str,
+    "permission_mode": is_str_or_none,
+    "tool_budget_status": is_str_or_none,
+    "assistant_content_chars_total": is_int,
+    "last_assistant_content_chars": is_int,
+    "raw_partial_recoverable": is_bool,
 }
 
 
@@ -148,12 +153,14 @@ SUBAGENT_INVOCATION_SCHEMA: dict[str, JsonTypeCheck] = {
 }
 
 
-def validate_schema(name: str, data: Any, schema: dict[str, JsonTypeCheck]) -> list[dict[str, Any]]:
+def validate_schema(name: str, data: Any, schema: dict[str, JsonTypeCheck], optional: set[str] | None = None) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
     if not isinstance(data, dict):
         return [{"name": f"schema:{name}", "ok": False, "message": f"expected object, got {type(data).__name__}"}]
     for field, type_check in schema.items():
         if field not in data:
+            if optional and field in optional:
+                continue
             checks.append({"name": f"schema:{name}.{field}", "ok": False, "message": "missing required field"})
             continue
         value = data[field]
@@ -167,14 +174,14 @@ def validate_schema(name: str, data: Any, schema: dict[str, JsonTypeCheck]) -> l
     return checks
 
 
-def validate_json_file(name: str, path: Path, schema: dict[str, JsonTypeCheck]) -> tuple[Any | None, list[dict[str, Any]]]:
+def validate_json_file(name: str, path: Path, schema: dict[str, JsonTypeCheck], optional: set[str] | None = None) -> tuple[Any | None, list[dict[str, Any]]]:
     if not path.exists():
         return None, [{"name": f"schema:{name}", "ok": False, "message": f"missing file: {path.name}"}]
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:
         return None, [{"name": f"schema:{name}", "ok": False, "message": f"invalid JSON: {exc}"}]
-    return data, validate_schema(name, data, schema)
+    return data, validate_schema(name, data, schema, optional=optional)
 
 
 def subagent_schema_checks(name: str, data: dict[str, Any]) -> list[dict[str, Any]]:

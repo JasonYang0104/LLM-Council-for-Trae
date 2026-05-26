@@ -53,6 +53,11 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--default-models", action="store_true", help="Skip model selection and use CLC's default model suite.")
     run_p.add_argument("--run-id", help="Explicit run id. Default generated from UTC timestamp.")
     run_p.add_argument("--timeout", type=int, default=180, help="Per-model query timeout seconds.")
+    run_p.add_argument("--no-yolo", action="store_true", help="Do not pass --yolo to traecli.")
+    run_p.add_argument("--min-valid-members", type=int, default=4, help="Minimum valid members for quorum.")
+    run_p.add_argument("--target-valid-members", type=int, default=5, help="Target valid members for quorum.")
+    run_p.add_argument("--chairman-fallback", help="Comma-separated fallback chairman models.")
+    run_p.add_argument("--member-mode", choices=["normal", "deep_research"], default="normal", help="Member execution mode.")
     run_p.add_argument("--skip-html", action="store_true", help="Skip automatic HTML export after Stage 3.")
     run_p.add_argument("--json", dest="json_output", action="store_true", default=argparse.SUPPRESS)
     run_p.set_defaults(func=cmd_run)
@@ -231,6 +236,9 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
         if any(isinstance(item, dict) for item in members):
             raise ValueError("direct provider members must be model-name strings")
         runtime_cwd = str(Path(args.runtime_cwd).expanduser().resolve()) if args.runtime_cwd else None
+    chairman_fallback = None
+    if getattr(args, "chairman_fallback", None):
+        chairman_fallback = [m.strip() for m in args.chairman_fallback.split(",")]
     return CouncilConfig(
         members=members,
         chairman=chairman,
@@ -241,6 +249,11 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
         export_html=not args.skip_html,
         member_agents=member_agents,
         chairman_agent=chairman_agent,
+        use_yolo=not getattr(args, "no_yolo", False),
+        min_valid_members=getattr(args, "min_valid_members", 4),
+        target_valid_members=getattr(args, "target_valid_members", 5),
+        chairman_fallback=chairman_fallback,
+        member_mode=getattr(args, "member_mode", "normal"),
     )
 
 

@@ -27,6 +27,11 @@ class ModelCallResult:
     copied_session_files: dict[str, str] = field(default_factory=dict)
     raw_model_markers: list[str] = field(default_factory=list)
     error: str | None = None
+    permission_mode: str | None = None
+    tool_budget_status: str = "ok"
+    assistant_content_chars_total: int = 0
+    last_assistant_content_chars: int = 0
+    raw_partial_recoverable: bool = False
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -45,6 +50,11 @@ class ModelCallResult:
             "copied_session_files": self.copied_session_files,
             "raw_model_markers": self.raw_model_markers,
             "error": self.error,
+            "permission_mode": self.permission_mode,
+            "tool_budget_status": self.tool_budget_status,
+            "assistant_content_chars_total": self.assistant_content_chars_total,
+            "last_assistant_content_chars": self.last_assistant_content_chars,
+            "raw_partial_recoverable": self.raw_partial_recoverable,
         }
 
 
@@ -54,10 +64,42 @@ class TraeCliProvider:
         runtime_command: str = DEFAULT_TRAECLI,
         query_timeout: int = 180,
         runtime_cwd: Path | None = None,
+        use_yolo: bool = True,
     ):
         self.runtime_command = os.environ.get("COCO_LLM_COUNCIL_TRAECLI", runtime_command)
         self.query_timeout = query_timeout
         self.runtime_cwd = runtime_cwd
+        self.use_yolo = use_yolo
+        self.explore_tool_limit: int = 30
+        self.explore_turn_limit: int = 10
+        self.deliver_tool_limit: int = 60
+        self.deliver_turn_limit: int = 24
+
+    def _build_command(
+        self,
+        model: str,
+        prompt: str,
+        run_id: str,
+        stage: str,
+        label: str,
+        session_id: str,
+    ) -> list[str]:
+        cmd = [
+            self.runtime_command,
+            "-p",
+            prompt,
+            "-c",
+            f"model.name={model}",
+            "--output-format",
+            "stream-json",
+            "--query-timeout",
+            f"{self.query_timeout}s",
+            "--session-id",
+            session_id,
+        ]
+        if self.use_yolo:
+            cmd.append("--yolo")
+        return cmd
 
     async def query_model(
         self,
@@ -75,19 +117,8 @@ class TraeCliProvider:
         stream_path = output_dir / f"{label}.coco.stream.jsonl"
         stderr_path = output_dir / f"{label}.coco.stderr.log"
         runtime_prompt = f"@{agent} {prompt}" if agent else prompt
-        cmd = [
-            self.runtime_command,
-            "-p",
-            runtime_prompt,
-            "-c",
-            f"model.name={model}",
-            "--output-format",
-            "stream-json",
-            "--query-timeout",
-            f"{self.query_timeout}s",
-            "--session-id",
-            session_id,
-        ]
+        cmd = self._build_command(model, runtime_prompt, run_id, stage, label, session_id)
+        permission_mode = "bypass_permissions" if self.use_yolo else "default"
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -118,6 +149,7 @@ class TraeCliProvider:
                 agent=agent,
                 subagent_invocation=missing_subagent_invocation(agent),
                 error="timeout",
+                permission_mode=permission_mode,
             )
 
         stdout = stdout_b.decode("utf-8", errors="replace")
@@ -130,6 +162,8 @@ class TraeCliProvider:
         response = parsed["response"]
         raw_model_markers = parsed["raw_model_markers"]
         subagent_invocation = parsed["subagent_invocation"]
+        tool_calls_count = parsed.get("tool_calls_count", 0)
+        turns_count = parsed.get("turns_count", 0)
         status = "ok"
         error = None
         if proc.returncode != 0:
@@ -146,6 +180,11 @@ class TraeCliProvider:
             error = f"expected subagent {agent} invocation evidence, got {subagent_invocation}"
 
         copied = copy_coco_session_files(session_id, output_dir, label)
+        tool_budget_status = "ok"
+        if tool_calls_count > self.deliver_tool_limit or turns_count > self.deliver_turn_limit:
+            tool_budget_status = "dropped_tool_budget"
+        elif tool_calls_count > self.explore_tool_limit or turns_count > self.explore_turn_limit:
+            tool_budget_status = "near_limit"
         result = ModelCallResult(
             expected_model=model,
             actual_model=actual_model,
@@ -162,6 +201,11 @@ class TraeCliProvider:
             copied_session_files=copied,
             raw_model_markers=raw_model_markers,
             error=error,
+            permission_mode=permission_mode,
+            tool_budget_status=tool_budget_status,
+            assistant_content_chars_total=parsed.get("assistant_content_chars_total", 0),
+            last_assistant_content_chars=parsed.get("last_assistant_content_chars", 0),
+            raw_partial_recoverable=parsed.get("raw_partial_recoverable", False),
         )
         write_json(output_dir / f"{label}.meta.json", result.to_json() | {"captured_at": utc_now()})
         return result
@@ -187,6 +231,8 @@ def parse_stream_json(stdout: str, expected_agent: str | None = None) -> dict[st
     subagent_message_tool_ids: list[str] = []
     markers: list[str] = []
     error: str | None = None
+    tool_calls_count: int = 0
+    turns_count: int = 0
 
     for line in stdout.splitlines():
         if not line.strip():
@@ -207,11 +253,13 @@ def parse_stream_json(stdout: str, expected_agent: str | None = None) -> dict[st
                 markers.append(model_name)
                 actual_model = actual_model or model_name
         if event.get("type") == "assistant":
+            turns_count += 1
             message = event.get("message")
             if isinstance(message, dict) and isinstance(message.get("content"), str):
                 assistant_messages.append(message["content"])
             if isinstance(message, dict):
                 for tool_call in message.get("tool_calls") or []:
+                    tool_calls_count += 1
                     function = tool_call.get("function") if isinstance(tool_call, dict) else None
                     if not isinstance(function, dict) or function.get("name") != "Agent":
                         continue
@@ -254,6 +302,9 @@ def parse_stream_json(stdout: str, expected_agent: str | None = None) -> dict[st
         else (top_level_model or (assistant_source_models[-1] if assistant_source_models else None))
     )
     response = result_text or (assistant_messages[-1] if assistant_messages else "")
+    assistant_content_chars_total = sum(len(msg) for msg in assistant_messages)
+    last_assistant_content_chars = len(assistant_messages[-1]) if assistant_messages else 0
+    raw_partial_recoverable = assistant_content_chars_total > 0 and (not response.strip() or error is not None)
     subagent_invocation = {
         "required": bool(expected_agent),
         "expected_agent": expected_agent,
@@ -281,6 +332,11 @@ def parse_stream_json(stdout: str, expected_agent: str | None = None) -> dict[st
         "raw_model_markers": sorted(set(markers)),
         "subagent_invocation": subagent_invocation,
         "error": error,
+        "tool_calls_count": tool_calls_count,
+        "turns_count": turns_count,
+        "assistant_content_chars_total": assistant_content_chars_total,
+        "last_assistant_content_chars": last_assistant_content_chars,
+        "raw_partial_recoverable": raw_partial_recoverable,
     }
 
 

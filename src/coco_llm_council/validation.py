@@ -72,7 +72,7 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
                     file_check(store.root, f"stage1/{label}.coco.stream.jsonl"),
                 ]
             )
-            _, meta_checks = validate_json_file(f"stage1.{label}.meta", store.root / f"stage1/{label}.meta.json", STAGE_META_SCHEMA)
+            _, meta_checks = validate_json_file(f"stage1.{label}.meta", store.root / f"stage1/{label}.meta.json", STAGE_META_SCHEMA, optional={"permission_mode", "tool_budget_status", "assistant_content_chars_total", "last_assistant_content_chars", "raw_partial_recoverable"})
             checks.extend(meta_checks)
         checks.append(model_match_check("stage1", item))
         if subagent_mode:
@@ -91,7 +91,7 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
                     file_check(store.root, f"stage2/{label}.coco.stream.jsonl"),
                 ]
             )
-            _, meta_checks = validate_json_file(f"stage2.{label}.meta", store.root / f"stage2/{label}.meta.json", STAGE_META_SCHEMA)
+            _, meta_checks = validate_json_file(f"stage2.{label}.meta", store.root / f"stage2/{label}.meta.json", STAGE_META_SCHEMA, optional={"permission_mode", "tool_budget_status", "assistant_content_chars_total", "last_assistant_content_chars", "raw_partial_recoverable"})
             checks.extend(meta_checks)
             _, review_checks = validate_json_file(f"stage2.{label}.review", store.root / f"stage2/{label}.review.json", REVIEW_JSON_SCHEMA)
             checks.extend(review_checks)
@@ -120,7 +120,7 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
             file_check(store.root, "stage3/final.coco.stream.jsonl"),
         ]
     )
-    _, final_meta_checks = validate_json_file("stage3.final.meta", store.root / "stage3/final.meta.json", STAGE_META_SCHEMA)
+    _, final_meta_checks = validate_json_file("stage3.final.meta", store.root / "stage3/final.meta.json", STAGE_META_SCHEMA, optional={"permission_mode", "tool_budget_status", "assistant_content_chars_total", "last_assistant_content_chars", "raw_partial_recoverable"})
     checks.extend(final_meta_checks)
     _, final_json_checks = validate_json_file("stage3.final", store.root / "stage3/final.json", FINAL_JSON_SCHEMA)
     checks.extend(final_json_checks)
@@ -135,10 +135,15 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
         checks.append({"name": "html_export", "ok": False, "message": "html/index.html missing"})
 
     failures = [check for check in checks if not check["ok"]]
+    manifest_status = manifest.get("status")
+    if not failures and manifest_status in ("ok", "degraded_ok"):
+        final_status = manifest_status
+    else:
+        final_status = "failed"
     return {
         "run_id": manifest.get("run_id"),
-        "status": "ok" if not failures and manifest.get("status") == "ok" else "failed",
-        "manifest_status": manifest.get("status"),
+        "status": final_status,
+        "manifest_status": manifest_status,
         "checks": checks,
         "failures": failures,
     }

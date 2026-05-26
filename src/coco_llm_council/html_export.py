@@ -64,9 +64,7 @@ def render_html(root: Path, manifest: dict[str, Any]) -> str:
         [
             (
                 item.get("file_label", "?"),
-                f"<h3>{esc(item.get('label'))} · {esc(item.get('model'))}</h3>"
-                f"<p class='meta'>期望模型：{esc(item.get('expected_model'))} · 实际模型：{esc(item.get('actual_model'))} · 状态：{esc(item.get('status'))}</p>"
-                f"<div class='evidence-text'>{render_markdown(str(item.get('response') or ''))}</div>",
+                _render_stage1_tab_content(item),
             )
             for item in stage1
             if isinstance(item, dict)
@@ -233,6 +231,7 @@ th, td {{ border:1px solid var(--line); padding:8px 10px; text-align:left; verti
 th {{ background:var(--paper-deep); }}
 .status-ok {{ color:var(--accent); }}
 .status-failed {{ color:var(--bad); }}
+.status-degraded_ok {{ color:var(--warn); }}
 .summary-strip {{
   display:grid;
   grid-template-columns:repeat(4,minmax(0,1fr));
@@ -322,7 +321,7 @@ svg {{ width:100%; max-width:760px; height:auto; display:block; }}
       <textarea id="copy-fallback" class="copy-fallback" hidden aria-label="复制备用文本"></textarea>
     </div>
     </section>
-    {render_alerts(warnings, failures)}
+    {render_alerts(warnings, failures, manifest.get('status', 'ok'))}
     <article id="final-answer" class="reader answer">
       <div class="stamp">已验证<br>阶段 3</div>
       <p class="reader-label">阶段 3 · 主席综合</p>
@@ -542,6 +541,17 @@ def split_table_row(line: str) -> list[str]:
     return [cell.strip() for cell in stripped.split("|")]
 
 
+def _render_stage1_tab_content(item: dict[str, Any]) -> str:
+    badge = ""
+    if item.get("status") == "failed" and item.get("raw_partial_recoverable"):
+        badge = " <span class='warning' style='border:1px solid #c48233;padding:2px 6px;border-radius:2px;'>部分输出可恢复</span>"
+    return (
+        f"<h3>{esc(item.get('label'))} · {esc(item.get('model'))}</h3>"
+        f"<p class='meta'>期望模型：{esc(item.get('expected_model'))} · 实际模型：{esc(item.get('actual_model'))} · 状态：{esc(item.get('status'))}{badge}</p>"
+        f"<div class='evidence-text'>{render_markdown(str(item.get('response') or ''))}</div>"
+    )
+
+
 def render_tabs(group: str, entries: list[tuple[str, str]]) -> str:
     if not entries:
         return "<p class='meta'>暂无条目。</p>"
@@ -567,12 +577,20 @@ def render_ranking_matrix(aggregate: list[dict[str, Any]]) -> str:
 
 def render_summary_cards(manifest: dict[str, Any], aggregate: list[dict[str, Any]]) -> str:
     config = manifest.get("config") if isinstance(manifest.get("config"), dict) else {}
+    metadata = manifest.get("metadata") if isinstance(manifest.get("metadata"), dict) else {}
     top_model = aggregate[0].get("model") if aggregate and isinstance(aggregate[0], dict) else "暂无聚合排序"
+    manifest_status = manifest.get("status", "ok")
+    quorum_label = "Quorum 正常" if manifest_status == "ok" else ("Quorum 降级" if manifest_status == "degraded_ok" else "Quorum 失败")
+    chairman_meta = metadata.get("chairman") if isinstance(metadata.get("chairman"), dict) else None
+    fallback_trace = ""
+    if chairman_meta and chairman_meta.get("fallback_from") is not None:
+        fallback_trace = f"<div class='summary-card'><h3>主席降级</h3><p>{esc(chairman_meta['fallback_from'])} → {esc(chairman_meta['used'])}</p></div>"
     return (
         f"<div class='summary-card'><h3>最高排序成员</h3><p>{esc(top_model)}</p></div>"
         f"<div class='summary-card'><h3>成员模型</h3><p>{esc(', '.join(config.get('members') or []))}</p></div>"
         f"<div class='summary-card'><h3>主席模型</h3><p>{esc(config.get('chairman'))}</p></div>"
-        f"<div class='summary-card'><h3>Provider</h3><p>{esc(config.get('provider_mode'))}</p></div>"
+        f"<div class='summary-card'><h3>Quorum 状态</h3><p>{esc(quorum_label)}</p></div>"
+        f"{fallback_trace}"
     )
 
 
@@ -589,10 +607,13 @@ def render_metadata(manifest: dict[str, Any], warnings: list[Any], failures: lis
     )
 
 
-def render_alerts(warnings: list[Any], failures: list[Any]) -> str:
+def render_alerts(warnings: list[Any], failures: list[Any], manifest_status: str = "ok") -> str:
     failure_html = "" if not failures else f"<div class='failure-banner'><strong>存在失败项。</strong><pre><code>{esc(json.dumps(failures, ensure_ascii=False, indent=2))}</code></pre></div>"
     warning_html = "" if not warnings else f"<div class='warning-banner'><strong>存在警告。</strong><pre><code>{esc(json.dumps(warnings, ensure_ascii=False, indent=2))}</code></pre></div>"
-    return failure_html + warning_html
+    degraded_html = ""
+    if manifest_status == "degraded_ok" and not failures:
+        degraded_html = "<div class='warning-banner'><strong>Quorum 降级运行。</strong>部分成员未成功响应，但已达到最低有效成员数，council 继续运行。</div>"
+    return failure_html + warning_html + degraded_html
 
 
 def render_trace(stage1: list[Any], stage2: list[Any], stage3: dict[str, Any] | None) -> str:
@@ -601,13 +622,21 @@ def render_trace(stage1: list[Any], stage2: list[Any], stage3: dict[str, Any] | 
         for item in items:
             if not isinstance(item, dict):
                 continue
+            budget_html = ""
+            tool_budget_status = item.get("tool_budget_status")
+            if tool_budget_status and tool_budget_status not in ("ok", None):
+                budget_html = f" · <span class='warning'>工具预算：{esc(tool_budget_status)}</span>"
             rows.append(
                 f"<div class='cell'><h3>{esc(stage_name)} · {esc(item.get('file_label') or item.get('reviewer_label'))}</h3>"
-                f"<p>{esc(item.get('expected_model'))} -> {esc(item.get('actual_model'))}</p><p class='meta'>{esc(item.get('status'))}</p></div>"
+                f"<p>{esc(item.get('expected_model'))} -> {esc(item.get('actual_model'))}</p><p class='meta'>{esc(item.get('status'))}{budget_html}</p></div>"
             )
     if stage3:
+        budget_html = ""
+        tool_budget_status = stage3.get("tool_budget_status")
+        if tool_budget_status and tool_budget_status not in ("ok", None):
+            budget_html = f" · <span class='warning'>工具预算：{esc(tool_budget_status)}</span>"
         rows.append(
-            f"<div class='cell'><h3>stage3 · 主席</h3><p>{esc(stage3.get('expected_model'))} -> {esc(stage3.get('actual_model'))}</p><p class='meta'>{esc(stage3.get('status'))}</p></div>"
+            f"<div class='cell'><h3>stage3 · 主席</h3><p>{esc(stage3.get('expected_model'))} -> {esc(stage3.get('actual_model'))}</p><p class='meta'>{esc(stage3.get('status'))}{budget_html}</p></div>"
         )
     return "<div class='matrix'>" + "".join(rows) + "</div>"
 

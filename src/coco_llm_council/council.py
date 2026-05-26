@@ -29,6 +29,15 @@ class CouncilConfig:
     export_html: bool = True
     member_agents: list[str | None] | None = None
     chairman_agent: str | None = None
+    use_yolo: bool = True
+    min_valid_members: int = 4
+    target_valid_members: int = 5
+    chairman_fallback: list[str] | None = None
+    member_soft_checkpoint: int = 300
+    member_quorum_checkpoint: int = 480
+    member_hard_timeout: int = 660
+    chairman_timeout: int = 720
+    member_mode: str = "normal"
 
     def agent_for_member(self, index: int) -> str | None:
         if not self.member_agents or index >= len(self.member_agents):
@@ -151,9 +160,14 @@ async def stage3_synthesize_final(
     config: CouncilConfig,
     provider: TraeCliProvider,
     store: ArtifactStore,
-) -> dict[str, Any]:
+    fallback_chain: list[str] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     chairman_prompt = build_stage3_prompt(user_query, stage1_results, stage2_results)
     store.write_text("stage3/chairman.prompt.md", chairman_prompt + "\n")
+
+    attempted = [config.chairman]
+    used = config.chairman
+    fallback_from = None
 
     call = await provider.query_model(
         model=config.chairman,
@@ -164,8 +178,32 @@ async def stage3_synthesize_final(
         output_dir=store.path("stage3"),
         agent=config.chairman_agent,
     )
+
+    if call.status != "ok" and fallback_chain:
+        for fb_model in fallback_chain:
+            attempted.append(fb_model)
+            fb_call = await provider.query_model(
+                model=fb_model,
+                prompt=chairman_prompt,
+                run_id=store.root.name,
+                stage="stage3",
+                label=f"final-fb-{fb_model}",
+                output_dir=store.path("stage3"),
+            )
+            if fb_call.status == "ok":
+                call = fb_call
+                used = fb_model
+                fallback_from = config.chairman
+                break
+
+    chairman_meta = {
+        "attempted": attempted,
+        "used": used,
+        "fallback_from": fallback_from,
+    }
+
     final = {
-        "model": config.chairman,
+        "model": used,
         "expected_model": call.expected_model,
         "actual_model": call.actual_model,
         "agent": call.agent,
@@ -179,7 +217,7 @@ async def stage3_synthesize_final(
     }
     store.write_text("stage3/final.md", call.response + "\n")
     store.write_json("stage3/final.json", final)
-    return final
+    return final, chairman_meta
 
 
 def build_stage1_prompt(user_query: str) -> str:
@@ -350,18 +388,23 @@ async def run_full_council(
         config.runtime_command,
         config.query_timeout,
         runtime_cwd=Path(config.runtime_cwd) if config.runtime_cwd else None,
+        use_yolo=config.use_yolo,
     )
 
     store.event("stage1_start", {"members": config.members})
     stage1_results = await stage1_collect_responses(user_query, config, provider, store)
     manifest["stages"]["stage1"] = stage1_results
+    stage1_status = classify_stage1_status(stage1_results, config.min_valid_members)
+    update_manifest_with_stage1_status(manifest, stage1_status)
     update_manifest_status(manifest, stage1_results)
     store.write_manifest(manifest)
-    if manifest["status"] == "failed":
+    if stage1_status == "failed":
         return manifest
 
+    valid_stage1 = [r for r in stage1_results if r.get("status") == "ok"]
+
     store.event("stage2_start")
-    stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results, config, provider, store)
+    stage2_results, label_to_model = await stage2_collect_rankings(user_query, valid_stage1, config, provider, store)
     aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
     manifest["metadata"]["label_to_model"] = label_to_model
     manifest["metadata"]["aggregate_rankings"] = aggregate_rankings
@@ -371,9 +414,18 @@ async def run_full_council(
     if manifest["status"] == "failed":
         return manifest
 
+    fallback_chain = config.chairman_fallback
+    if not fallback_chain:
+        from .roster import CHAIRMAN_FALLBACK_CHAIN
+        fallback_chain = CHAIRMAN_FALLBACK_CHAIN
+
     store.event("stage3_start", {"chairman": config.chairman})
-    stage3_result = await stage3_synthesize_final(user_query, stage1_results, stage2_results, config, provider, store)
+    stage3_result, chairman_meta = await stage3_synthesize_final(
+        user_query, valid_stage1, stage2_results, config, provider, store,
+        fallback_chain=fallback_chain,
+    )
     manifest["stages"]["stage3"] = stage3_result
+    manifest["metadata"]["chairman"] = chairman_meta
     update_manifest_status(manifest, [stage3_result])
     store.write_manifest(manifest)
     return manifest
@@ -414,7 +466,32 @@ def config_to_json(config: CouncilConfig) -> dict[str, Any]:
         "export_html": config.export_html,
         "member_agents": config.member_agents,
         "chairman_agent": config.chairman_agent,
+        "use_yolo": config.use_yolo,
+        "min_valid_members": config.min_valid_members,
+        "target_valid_members": config.target_valid_members,
+        "chairman_fallback": config.chairman_fallback,
+        "member_soft_checkpoint": config.member_soft_checkpoint,
+        "member_quorum_checkpoint": config.member_quorum_checkpoint,
+        "member_hard_timeout": config.member_hard_timeout,
+        "chairman_timeout": config.chairman_timeout,
+        "member_mode": config.member_mode,
     }
+
+
+def classify_stage1_status(results: list[dict[str, Any]], min_valid_members: int = 4) -> str:
+    ok_count = sum(1 for r in results if r.get("status") == "ok")
+    if ok_count == len(results):
+        return "ok"
+    if ok_count >= min_valid_members:
+        return "degraded_ok"
+    return "failed"
+
+
+def update_manifest_with_stage1_status(manifest: dict[str, Any], stage1_status: str) -> None:
+    if stage1_status == "failed":
+        manifest["status"] = "failed"
+    elif stage1_status == "degraded_ok":
+        manifest["status"] = "degraded_ok"
 
 
 def update_manifest_status(manifest: dict[str, Any], records: list[dict[str, Any]]) -> None:

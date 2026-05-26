@@ -12,6 +12,7 @@ from coco_llm_council.council import (
     build_stage2_prompt,
     build_stage3_prompt,
     calculate_aggregate_rankings,
+    classify_stage1_status,
     parse_ranking_from_text,
 )
 from coco_llm_council.html_export import export_html
@@ -551,6 +552,105 @@ FINAL RANKING:
                     self.assertEqual(validation["status"], "failed")
                     self.assertTrue(any(check["name"] == expected_failure for check in validation["failures"]), validation["failures"])
 
+    def test_provider_includes_yolo_by_default(self):
+        from coco_llm_council.provider import TraeCliProvider
+        provider = TraeCliProvider(use_yolo=True)
+        self.assertIn("--yolo", provider._build_command("GPT-5.4", "test prompt", "run-1", "stage1", "A", "sess-1"))
+
+    def test_provider_omits_yolo_when_disabled(self):
+        from coco_llm_council.provider import TraeCliProvider
+        provider = TraeCliProvider(use_yolo=False)
+        cmd = provider._build_command("GPT-5.4", "test prompt", "run-1", "stage1", "A", "sess-1")
+        self.assertNotIn("--yolo", cmd)
+        self.assertNotIn("-y", cmd)
+
+    def test_model_call_result_includes_permission_mode(self):
+        from coco_llm_council.provider import ModelCallResult
+        result = ModelCallResult(
+            expected_model="GPT-5.4",
+            actual_model="GPT-5.4",
+            response="ok",
+            status="ok",
+            session_id="s1",
+            command=["traecli"],
+            exit_code=0,
+            stdout_path="out.jsonl",
+            stderr_path="err.log",
+            permission_mode="bypass_permissions",
+        )
+        self.assertEqual(result.to_json()["permission_mode"], "bypass_permissions")
+
+    def test_stage_meta_schema_validates_permission_mode(self):
+        from coco_llm_council.schema_contract import validate_schema, STAGE_META_SCHEMA
+        meta = stage_meta()
+        meta["permission_mode"] = "bypass_permissions"
+        checks = validate_schema("meta", meta, STAGE_META_SCHEMA)
+        perm_check = [c for c in checks if c["name"] == "schema:meta.permission_mode"]
+        self.assertTrue(perm_check)
+        self.assertTrue(perm_check[0]["ok"])
+
+    def test_classify_stage1_status_ok_when_all_succeed(self):
+        results = [{"status": "ok"} for _ in range(5)]
+        self.assertEqual(classify_stage1_status(results, min_valid_members=4), "ok")
+
+    def test_classify_stage1_status_degraded_ok_when_quorum_met(self):
+        results = [{"status": "ok"}] * 5 + [{"status": "failed"}] * 3
+        self.assertEqual(classify_stage1_status(results, min_valid_members=4), "degraded_ok")
+
+    def test_classify_stage1_status_failed_when_quorum_not_met(self):
+        results = [{"status": "ok"}] * 3 + [{"status": "failed"}] * 5
+        self.assertEqual(classify_stage1_status(results, min_valid_members=4), "failed")
+
+    def test_chairman_metadata_records_fallback(self):
+        from coco_llm_council.council import stage3_synthesize_final
+        metadata = {
+            "attempted": ["GLM-5.1", "Qwen3.6-Plus"],
+            "used": "Qwen3.6-Plus",
+            "fallback_from": "GLM-5.1",
+        }
+        self.assertIsNotNone(metadata["fallback_from"])
+        self.assertEqual(metadata["used"], "Qwen3.6-Plus")
+
+    def test_validate_accepts_degraded_ok_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-degraded")
+            manifest = {
+                "schema_version": 1,
+                "run_id": "run-degraded",
+                "created_at": "2026-05-22T00:00:00Z",
+                "updated_at": "2026-05-22T00:00:00Z",
+                "status": "degraded_ok",
+                "input_chars": 4,
+                "config": {"members": ["GPT-5.4", "GLM-5.1"], "chairman": "GPT-5.4", "provider_mode": "direct", "runtime_command": "fake", "query_timeout": 180, "export_html": True, "min_valid_members": 4, "target_valid_members": 5},
+                "artifacts": {"html": "html/index.html"},
+                "metadata": {"label_to_model": {"Response A": "GPT-5.4"}, "aggregate_rankings": []},
+                "stages": {
+                    "stage1": [{"label": "Response A", "file_label": "A", "model": "GPT-5.4", "expected_model": "GPT-5.4", "actual_model": "GPT-5.4", "response": "A", "status": "ok"}],
+                    "stage2": [review_json() | {"ranking": "FINAL RANKING:\n1. Response A", "parsed_ranking": ["Response A"]}],
+                    "stage3": final_json(),
+                },
+                "warnings": [],
+                "failures": [],
+            }
+            store.write_manifest(manifest)
+            for relative in [
+                "input.md", "config.json", "runtime/doctor.json", "runtime/coco.models.json",
+                "stage1/member.prompt.md", "stage1/A.response.md", "stage1/A.coco.stream.jsonl",
+                "stage2/review.prompt.md", "stage2/label_to_model.json", "stage2/aggregate.json",
+                "stage2/A.review.md", "stage2/A.coco.stream.jsonl",
+                "stage3/chairman.prompt.md", "stage3/final.md", "stage3/final.coco.stream.jsonl",
+                "html/index.html",
+            ]:
+                store.write_text(relative, "{}\n")
+            write_json_text(store, "stage1/A.meta.json", stage_meta("GPT-5.4"))
+            write_json_text(store, "stage2/A.meta.json", stage_meta("GPT-5.4"))
+            write_json_text(store, "stage2/A.review.json", manifest["stages"]["stage2"][0])
+            write_json_text(store, "stage3/final.meta.json", stage_meta("GPT-5.4"))
+            write_json_text(store, "stage3/final.json", final_json())
+            write_json_text(store, "html/export.json", {"run_id": "run-degraded", "generated_at": "2026-05-22T00:00:00Z", "format": "html", "path": "html/index.html", "source_manifest": "manifest.json"})
+            validation = validate_run(store)
+            self.assertEqual(validation["status"], "degraded_ok")
+
     def test_validate_reports_stage_collection_type_errors_without_crashing(self):
         cases = [
             ("stage1", {"bad": "shape"}, "schema:manifest.stages.stage1"),
@@ -569,6 +669,67 @@ FINAL RANKING:
                     validation = validate_run(store)
                     self.assertEqual(validation["status"], "failed")
                     self.assertTrue(any(check["name"] == expected_failure for check in validation["failures"]), validation["failures"])
+
+
+    def test_parse_stream_json_counts_tool_calls(self):
+        stream = "\n".join([
+            json.dumps({"type": "system", "subtype": "init", "session_id": "s1", "model": "GPT-5.4"}),
+            json.dumps({"type": "assistant", "message": {"role": "assistant", "content": "Let me search", "tool_calls": [{"id": "tc1", "type": "function", "function": {"name": "WebSearch", "arguments": "{}"}}]}}),
+            json.dumps({"type": "assistant", "message": {"role": "assistant", "content": "Found it"}}),
+            json.dumps({"type": "result", "result": "Done", "is_error": False}),
+        ])
+        parsed = parse_stream_json(stream)
+        self.assertEqual(parsed["tool_calls_count"], 1)
+        self.assertEqual(parsed["turns_count"], 2)
+
+    def test_parse_stream_json_extracts_partial_output_metrics(self):
+        stream = "\n".join([
+            json.dumps({"type": "system", "subtype": "init", "session_id": "s1", "model": "GPT-5.4"}),
+            json.dumps({"type": "assistant", "message": {"role": "assistant", "content": "A" * 100}}),
+            json.dumps({"type": "assistant", "message": {"role": "assistant", "content": "B" * 50}}),
+            json.dumps({"type": "result", "result": "", "is_error": True}),
+        ])
+        parsed = parse_stream_json(stream)
+        self.assertEqual(parsed["assistant_content_chars_total"], 150)
+        self.assertEqual(parsed["last_assistant_content_chars"], 50)
+        self.assertTrue(parsed["raw_partial_recoverable"])
+
+    def test_model_call_result_includes_tool_budget_status(self):
+        from coco_llm_council.provider import ModelCallResult
+        result = ModelCallResult(
+            expected_model="GPT-5.4",
+            actual_model="GPT-5.4",
+            response="ok",
+            status="ok",
+            session_id="s1",
+            command=["traecli"],
+            exit_code=0,
+            stdout_path="out.jsonl",
+            stderr_path="err.log",
+            tool_budget_status="ok",
+        )
+        self.assertEqual(result.to_json()["tool_budget_status"], "ok")
+
+    def test_model_call_result_includes_partial_output_fields(self):
+        from coco_llm_council.provider import ModelCallResult
+        result = ModelCallResult(
+            expected_model="GPT-5.4",
+            actual_model="GPT-5.4",
+            response="ok",
+            status="ok",
+            session_id="s1",
+            command=["traecli"],
+            exit_code=0,
+            stdout_path="out.jsonl",
+            stderr_path="err.log",
+            assistant_content_chars_total=500,
+            last_assistant_content_chars=200,
+            raw_partial_recoverable=False,
+        )
+        j = result.to_json()
+        self.assertEqual(j["assistant_content_chars_total"], 500)
+        self.assertEqual(j["last_assistant_content_chars"], 200)
+        self.assertFalse(j["raw_partial_recoverable"])
 
 
 if __name__ == "__main__":
