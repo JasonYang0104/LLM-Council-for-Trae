@@ -1,0 +1,29 @@
+examples/e2e-local-ai-20260525.md
+  797de580c49f488b 1-21
+src/coco_llm_council/model_benchmark.py
+  797de580c49f488b 1-407
+docs/roster-runtime-followups.md
+  797de580c49f488b 1-491
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "25ff4ee492832c50ab50bd65f29723462a99a60f",
+  "prompts": {
+    "797de580c49f488b": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a14ff41edc979bd305a2805",
+        "model": "gpt-5.4__dev"
+      },
+      "human_author": "AI Bot <bot@example.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 912,
+      "overriden_lines": 0
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
