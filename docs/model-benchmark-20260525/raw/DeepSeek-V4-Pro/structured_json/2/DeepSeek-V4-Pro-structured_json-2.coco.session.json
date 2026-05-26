@@ -1,0 +1,1 @@
+{"id":"model-benchmark-model-benchmark-20260525-stage1-DeepSeek-V4-Pro-structured_json-2","created_at":"2026-05-25T15:24:42.323927+08:00","updated_at":"2026-05-25T15:24:42.50648+08:00","metadata":{"cwd":"/Users/bytedance/Documents/AI Coder/COCO-llm-council","model_name":"DeepSeek-V4-Pro","permission_mode":"default","title":"只输出 JSON，不要 Markdown。字段必须是..."}}

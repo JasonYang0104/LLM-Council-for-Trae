@@ -1,0 +1,30 @@
+{
+  "created_at": "2026-05-25T11:42:38.214562+00:00",
+  "purpose": "rerun previous failed real use cases with explicit traecli -y permission mode",
+  "runtime_command": "traecli -y",
+  "query_timeout_seconds": 660,
+  "outer_timeout_seconds": 735,
+  "concurrency": 2,
+  "cases": [
+    {
+      "usecase": "usecase_2",
+      "model": "GPT-5.4",
+      "prompt_chars": 811
+    },
+    {
+      "usecase": "usecase_3",
+      "model": "GPT-5.4",
+      "prompt_chars": 589
+    },
+    {
+      "usecase": "usecase_2",
+      "model": "MiniMax-M2.7",
+      "prompt_chars": 811
+    },
+    {
+      "usecase": "usecase_3",
+      "model": "MiniMax-M2.7",
+      "prompt_chars": 589
+    }
+  ]
+}

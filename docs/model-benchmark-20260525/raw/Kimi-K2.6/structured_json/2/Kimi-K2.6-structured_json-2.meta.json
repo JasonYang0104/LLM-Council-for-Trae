@@ -1,0 +1,49 @@
+{
+  "expected_model": "Kimi-K2.6",
+  "actual_model": "Kimi-K2.6",
+  "response_chars": 398,
+  "status": "ok",
+  "session_id": "model-benchmark-model-benchmark-20260525-stage1-Kimi-K2.6-structured_json-2",
+  "command": [
+    "traecli",
+    "-p",
+    "<prompt 104 chars>",
+    "-c",
+    "model.name=Kimi-K2.6",
+    "--output-format",
+    "stream-json",
+    "--query-timeout",
+    "120s",
+    "--session-id",
+    "model-benchmark-model-benchmark-20260525-stage1-Kimi-K2.6-structured_json-2"
+  ],
+  "exit_code": 0,
+  "stdout_path": "Kimi-K2.6-structured_json-2.coco.stream.jsonl",
+  "stderr_path": "Kimi-K2.6-structured_json-2.coco.stderr.log",
+  "runtime_cwd": null,
+  "agent": null,
+  "subagent_invocation": {
+    "required": false,
+    "expected_agent": null,
+    "tool_call_seen": false,
+    "tool_call_ids": [],
+    "tool_call_subagent_types": [],
+    "tool_result_seen": false,
+    "tool_result_ids": [],
+    "subagent_message_seen": false,
+    "subagent_message_tool_ids": [],
+    "subagent_source_models": [],
+    "ok": true
+  },
+  "copied_session_files": {
+    "session.json": "Kimi-K2.6-structured_json-2.coco.session.json",
+    "session.log": "Kimi-K2.6-structured_json-2.coco.session.log",
+    "events.jsonl": "Kimi-K2.6-structured_json-2.coco.events.jsonl",
+    "traces.jsonl": "Kimi-K2.6-structured_json-2.coco.traces.jsonl"
+  },
+  "raw_model_markers": [
+    "Kimi-K2.6"
+  ],
+  "error": null,
+  "captured_at": "2026-05-25T07:26:59Z"
+}

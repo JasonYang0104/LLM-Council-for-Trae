@@ -1,0 +1,9 @@
+model,samples,success_rate,failed_count,mismatch_count,empty_count,p50_latency_seconds,max_latency_seconds,avg_response_chars,sources_section_count,uncertainty_count
+openrouter-2o,3,1.00,0,0,0,330.71,458.14,8615,2,3
+GPT-5.4,3,0.33,2,0,1,605.63,605.88,6797,1,2
+GLM-5.1,3,1.00,0,0,0,199.37,372.26,7912,3,3
+DeepSeek-V4-Pro,3,1.00,0,0,0,126.38,343.46,6825,2,3
+Kimi-K2.6,3,1.00,0,0,0,404.94,408.86,6261,2,3
+Qwen3.6-Plus,3,1.00,0,0,0,109.82,290.77,6054,2,3
+MiniMax-M2.7,3,0.33,2,0,1,605.35,605.72,6875,2,2
+Gemini-3.1-Pro-Preview,3,1.00,0,0,0,91.80,117.98,4325,2,3

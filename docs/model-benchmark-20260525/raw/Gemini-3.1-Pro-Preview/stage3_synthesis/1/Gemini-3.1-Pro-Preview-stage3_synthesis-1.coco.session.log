@@ -1,0 +1,11 @@
+{"time":"2026-05-25T15:21:30.861295+08:00","level":"ERROR","msg":"ext session get failed","error":"CopilotACPRequest: NotFound.TaskShare resource TaskShare is not found (request id = d89vgushmjlljouk8hs0-02177969369028000000000000000000000ffff0afe374a96e333)"}
+{"time":"2026-05-25T15:21:31.480979+08:00","level":"INFO","msg":"LSP manager initialized","servers":0}
+{"time":"2026-05-25T15:21:31.519035+08:00","level":"WARN","msg":"ripgrep reported non-fatal errors during traversal","stderr":"rg: /Users/bytedance/.agents/skills/superpowers: No such file or directory (os error 2)\n"}
+{"time":"2026-05-25T15:21:31.602008+08:00","level":"ERROR","msg":"ext session get failed","error":"CopilotACPRequest: NotFound.TaskShare resource TaskShare is not found (request id = d89vgushmjlsctsnk7v0-02177969369028000000000000000000000ffff0afe374a96e333)"}
+{"time":"2026-05-25T15:21:32.560935+08:00","level":"INFO","msg":"filetrack: status updated","path":"/Users/bytedance/Documents/AI Coder/COCO-llm-council/AGENTS.md","agent_id":"eb3803c8-4d5e-427c-9748-3ca2bdaf6e17"}
+{"time":"2026-05-25T15:21:59.057064+08:00","level":"INFO","msg":"recovering pending WAL event files","count":2}
+{"time":"2026-05-25T15:27:33.567546+08:00","level":"INFO","msg":"LSP manager initialized","servers":0}
+{"time":"2026-05-25T15:27:33.615913+08:00","level":"WARN","msg":"ripgrep reported non-fatal errors during traversal","stderr":"rg: /Users/bytedance/.agents/skills/superpowers: No such file or directory (os error 2)\n"}
+{"time":"2026-05-25T15:28:09.918127+08:00","level":"INFO","msg":"filetrack: status updated","path":"/Users/bytedance/Documents/AI Coder/COCO-llm-council/stage3/final.md","agent_id":"72a775be-4769-44cc-84fc-05d4148091bc"}
+{"time":"2026-05-25T15:28:25.376509+08:00","level":"INFO","msg":"filetrack: status updated","path":"/Users/bytedance/Documents/AI Coder/COCO-llm-council/stage3/final.md","agent_id":"72a775be-4769-44cc-84fc-05d4148091bc"}
+{"time":"2026-05-25T15:28:25.944731+08:00","level":"WARN","msg":"failed to get git remote for edited file","error":"exit status 2","file":"/Users/bytedance/Documents/AI Coder/COCO-llm-council/stage3/final.md"}

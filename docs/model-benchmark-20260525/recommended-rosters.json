@@ -1,0 +1,23 @@
+{
+  "fast_default_members": [
+    "MiniMax-M2.7",
+    "openrouter-2o"
+  ],
+  "analysis_default_members": [
+    "MiniMax-M2.7",
+    "openrouter-2o",
+    "GPT-5.4"
+  ],
+  "research_stress_members": [
+    "MiniMax-M2.7",
+    "openrouter-2o",
+    "GPT-5.4",
+    "Kimi-K2.6"
+  ],
+  "chairman": "GLM-5.1",
+  "chairman_candidates": [
+    "GLM-5.1",
+    "MiniMax-M2.7",
+    "DeepSeek-V4-Pro"
+  ]
+}

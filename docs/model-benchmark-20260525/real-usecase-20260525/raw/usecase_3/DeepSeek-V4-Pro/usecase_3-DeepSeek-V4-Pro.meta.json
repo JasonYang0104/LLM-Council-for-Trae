@@ -1,0 +1,49 @@
+{
+  "expected_model": "DeepSeek-V4-Pro",
+  "actual_model": "DeepSeek-V4-Pro",
+  "response_chars": 8691,
+  "status": "ok",
+  "session_id": "real-usecase-20260525-usecase_3-usecase_3-DeepSeek-V4-Pro",
+  "command": [
+    "traecli",
+    "-p",
+    "<prompt 589 chars>",
+    "-c",
+    "model.name=DeepSeek-V4-Pro",
+    "--output-format",
+    "stream-json",
+    "--query-timeout",
+    "600s",
+    "--session-id",
+    "real-usecase-20260525-usecase_3-usecase_3-DeepSeek-V4-Pro"
+  ],
+  "exit_code": 0,
+  "stdout_path": "usecase_3-DeepSeek-V4-Pro.coco.stream.jsonl",
+  "stderr_path": "usecase_3-DeepSeek-V4-Pro.coco.stderr.log",
+  "runtime_cwd": null,
+  "agent": null,
+  "subagent_invocation": {
+    "required": false,
+    "expected_agent": null,
+    "tool_call_seen": false,
+    "tool_call_ids": [],
+    "tool_call_subagent_types": [],
+    "tool_result_seen": false,
+    "tool_result_ids": [],
+    "subagent_message_seen": false,
+    "subagent_message_tool_ids": [],
+    "subagent_source_models": [],
+    "ok": true
+  },
+  "copied_session_files": {
+    "session.json": "usecase_3-DeepSeek-V4-Pro.coco.session.json",
+    "session.log": "usecase_3-DeepSeek-V4-Pro.coco.session.log",
+    "events.jsonl": "usecase_3-DeepSeek-V4-Pro.coco.events.jsonl",
+    "traces.jsonl": "usecase_3-DeepSeek-V4-Pro.coco.traces.jsonl"
+  },
+  "raw_model_markers": [
+    "DeepSeek-V4-Pro"
+  ],
+  "error": null,
+  "captured_at": "2026-05-25T10:26:00Z"
+}

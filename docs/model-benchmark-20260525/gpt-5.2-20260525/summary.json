@@ -1,0 +1,151 @@
+{
+  "created_at": "2026-05-25T12:08:32Z",
+  "model": "GPT-5.2",
+  "used_traecli_y": true,
+  "total_cases": 11,
+  "success": 11,
+  "failed": 0,
+  "canonical_cases": 8,
+  "canonical_success": 8,
+  "canonical_parse_ok": 8,
+  "real_cases": 3,
+  "real_success": 3,
+  "latency_seconds": {
+    "p50": 28.23,
+    "max": 257.54
+  },
+  "cases": [
+    {
+      "suite": "canonical_benchmark",
+      "case_id": "short_judgment-1",
+      "status": "ok",
+      "latency_seconds": 20.54,
+      "response_chars": 180,
+      "parse_ok": true,
+      "tool_calls": 1,
+      "tool_result_errors": 0,
+      "error": null,
+      "actual_model": "GPT-5.2"
+    },
+    {
+      "suite": "canonical_benchmark",
+      "case_id": "short_judgment-2",
+      "status": "ok",
+      "latency_seconds": 22.17,
+      "response_chars": 200,
+      "parse_ok": true,
+      "tool_calls": 1,
+      "tool_result_errors": 0,
+      "error": null,
+      "actual_model": "GPT-5.2"
+    },
+    {
+      "suite": "canonical_benchmark",
+      "case_id": "structured_json-1",
+      "status": "ok",
+      "latency_seconds": 26.26,
+      "response_chars": 513,
+      "parse_ok": true,
+      "tool_calls": 1,
+      "tool_result_errors": 0,
+      "error": null,
+      "actual_model": "GPT-5.2"
+    },
+    {
+      "suite": "canonical_benchmark",
+      "case_id": "structured_json-2",
+      "status": "ok",
+      "latency_seconds": 28.47,
+      "response_chars": 703,
+      "parse_ok": true,
+      "tool_calls": 1,
+      "tool_result_errors": 0,
+      "error": null,
+      "actual_model": "GPT-5.2"
+    },
+    {
+      "suite": "canonical_benchmark",
+      "case_id": "stage2_ranking-1",
+      "status": "ok",
+      "latency_seconds": 20.33,
+      "response_chars": 284,
+      "parse_ok": true,
+      "tool_calls": 1,
+      "tool_result_errors": 0,
+      "error": null,
+      "actual_model": "GPT-5.2"
+    },
+    {
+      "suite": "canonical_benchmark",
+      "case_id": "stage2_ranking-2",
+      "status": "ok",
+      "latency_seconds": 20.4,
+      "response_chars": 282,
+      "parse_ok": true,
+      "tool_calls": 1,
+      "tool_result_errors": 0,
+      "error": null,
+      "actual_model": "GPT-5.2"
+    },
+    {
+      "suite": "canonical_benchmark",
+      "case_id": "stage3_synthesis-1",
+      "status": "ok",
+      "latency_seconds": 28.61,
+      "response_chars": 795,
+      "parse_ok": true,
+      "tool_calls": 1,
+      "tool_result_errors": 0,
+      "error": null,
+      "actual_model": "GPT-5.2"
+    },
+    {
+      "suite": "canonical_benchmark",
+      "case_id": "stage3_synthesis-2",
+      "status": "ok",
+      "latency_seconds": 28.23,
+      "response_chars": 700,
+      "parse_ok": true,
+      "tool_calls": 1,
+      "tool_result_errors": 0,
+      "error": null,
+      "actual_model": "GPT-5.2"
+    },
+    {
+      "suite": "real_usecase",
+      "case_id": "usecase_1",
+      "status": "ok",
+      "latency_seconds": 64.81,
+      "response_chars": 3085,
+      "parse_ok": true,
+      "tool_calls": 1,
+      "tool_result_errors": 0,
+      "error": null,
+      "actual_model": "GPT-5.2"
+    },
+    {
+      "suite": "real_usecase",
+      "case_id": "usecase_2",
+      "status": "ok",
+      "latency_seconds": 257.54,
+      "response_chars": 7264,
+      "parse_ok": true,
+      "tool_calls": 11,
+      "tool_result_errors": 0,
+      "error": null,
+      "actual_model": "GPT-5.2"
+    },
+    {
+      "suite": "real_usecase",
+      "case_id": "usecase_3",
+      "status": "ok",
+      "latency_seconds": 111.66,
+      "response_chars": 6231,
+      "parse_ok": true,
+      "tool_calls": 1,
+      "tool_result_errors": 0,
+      "error": null,
+      "actual_model": "GPT-5.2"
+    }
+  ]
+}

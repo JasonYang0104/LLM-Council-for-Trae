@@ -1,0 +1,2 @@
+model,samples,success_rate,parse_ok_rate,member_ok_parse_rate,reviewer_ok_parse_rate,chairman_ok_parse_rate,p50_latency_seconds,p95_latency_seconds,max_latency_seconds,timeout_count,empty_count,model_mismatch_count,failed_count
+GPT-5.2,8,1.00,1.00,1.00,1.00,1.00,24.22,28.61,28.61,0,0,0,0

@@ -1,0 +1,49 @@
+{
+  "expected_model": "openrouter-2o",
+  "actual_model": "openrouter-2o",
+  "response_chars": 244,
+  "status": "ok",
+  "session_id": "model-benchmark-model-benchmark-20260525-stage2-openrouter-2o-stage2_ranking-2",
+  "command": [
+    "traecli",
+    "-p",
+    "<prompt 234 chars>",
+    "-c",
+    "model.name=openrouter-2o",
+    "--output-format",
+    "stream-json",
+    "--query-timeout",
+    "120s",
+    "--session-id",
+    "model-benchmark-model-benchmark-20260525-stage2-openrouter-2o-stage2_ranking-2"
+  ],
+  "exit_code": 0,
+  "stdout_path": "openrouter-2o-stage2_ranking-2.coco.stream.jsonl",
+  "stderr_path": "openrouter-2o-stage2_ranking-2.coco.stderr.log",
+  "runtime_cwd": null,
+  "agent": null,
+  "subagent_invocation": {
+    "required": false,
+    "expected_agent": null,
+    "tool_call_seen": false,
+    "tool_call_ids": [],
+    "tool_call_subagent_types": [],
+    "tool_result_seen": false,
+    "tool_result_ids": [],
+    "subagent_message_seen": false,
+    "subagent_message_tool_ids": [],
+    "subagent_source_models": [],
+    "ok": true
+  },
+  "copied_session_files": {
+    "session.json": "openrouter-2o-stage2_ranking-2.coco.session.json",
+    "session.log": "openrouter-2o-stage2_ranking-2.coco.session.log",
+    "events.jsonl": "openrouter-2o-stage2_ranking-2.coco.events.jsonl",
+    "traces.jsonl": "openrouter-2o-stage2_ranking-2.coco.traces.jsonl"
+  },
+  "raw_model_markers": [
+    "openrouter-2o"
+  ],
+  "error": null,
+  "captured_at": "2026-05-25T07:23:09Z"
+}

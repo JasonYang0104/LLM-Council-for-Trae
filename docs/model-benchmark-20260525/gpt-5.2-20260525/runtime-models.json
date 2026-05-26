@@ -1,0 +1,191 @@
+[
+  {
+    "name": "Seed-Dogfooding-2.0",
+    "real_name": "Seed-Dogfooding-2.0",
+    "description": "Context window: 184k",
+    "context_window": 184000,
+    "supported_mime_types": [
+      "image/*"
+    ]
+  },
+  {
+    "name": "Doubao-Seed-2.0-Code",
+    "real_name": "Doubao-Seed-2.0-Code",
+    "description": "Context window: 184k",
+    "context_window": 184000,
+    "supported_mime_types": [
+      "image/*"
+    ]
+  },
+  {
+    "name": "Doubao-Seed-1.8",
+    "real_name": "Doubao-Seed-1.8",
+    "description": "Context window: 168k",
+    "context_window": 168000,
+    "supported_mime_types": [
+      "image/*"
+    ]
+  },
+  {
+    "name": "Doubao-Seed-Code",
+    "real_name": "Doubao-Seed-Code",
+    "description": "Context window: 184k",
+    "context_window": 184000,
+    "supported_mime_types": [
+      "image/*"
+    ]
+  },
+  {
+    "name": "openrouter-2o",
+    "real_name": "openrouter-2o",
+    "description": "Context window: 168k, Quota: 10% used, resets weekly, Unavailable for L4 repos",
+    "context_window": 168000,
+    "supported_mime_types": [
+      "image/*"
+    ]
+  },
+  {
+    "name": "openrouter-1o",
+    "real_name": "openrouter-1o",
+    "description": "Context window: 168k, Quota: 10% used, resets weekly, Unavailable for L4 repos",
+    "context_window": 168000,
+    "supported_mime_types": [
+      "image/*"
+    ]
+  },
+  {
+    "name": "openrouter-1",
+    "real_name": "openrouter-1",
+    "description": "Context window: 168k, Quota: 10% used, resets weekly, Unavailable for L4 repos",
+    "context_window": 168000,
+    "supported_mime_types": [
+      "image/*"
+    ]
+  },
+  {
+    "name": "MiniMax-M2.7",
+    "real_name": "MiniMax-M2.7",
+    "description": "Context window: 184k",
+    "context_window": 184000
+  },
+  {
+    "name": "MiniMax-M2.5",
+    "real_name": "MiniMax-M2.5",
+    "description": "Context window: 184k",
+    "context_window": 184000
+  },
+  {
+    "name": "GLM-5.1",
+    "real_name": "GLM-5.1",
+    "description": "Context window: 184k",
+    "context_window": 184000
+  },
+  {
+    "name": "GLM-5V-Turbo",
+    "real_name": "GLM-5V-Turbo",
+    "description": "Context window: 184k",
+    "context_window": 184000,
+    "supported_mime_types": [
+      "image/*"
+    ]
+  },
+  {
+    "name": "GLM-5",
+    "real_name": "GLM-5",
+    "description": "Context window: 184k",
+    "context_window": 184000
+  },
+  {
+    "name": "Gemini-3.1-Pro-Preview",
+    "real_name": "Gemini-3.1-Pro-Preview",
+    "description": "Context window: 168k",
+    "context_window": 168000,
+    "supported_mime_types": [
+      "image/*"
+    ]
+  },
+  {
+    "name": "Gemini-3-Flash-Preview",
+    "real_name": "Gemini-3-Flash-Preview",
+    "description": "Context window: 168k",
+    "context_window": 168000,
+    "supported_mime_types": [
+      "image/*"
+    ]
+  },
+  {
+    "name": "DeepSeek-V4-Pro",
+    "real_name": "DeepSeek-V4-Pro",
+    "description": "Context window: 184k",
+    "context_window": 184000
+  },
+  {
+    "name": "DeepSeek-V4-Flash",
+    "real_name": "DeepSeek-V4-Flash",
+    "description": "Context window: 184k",
+    "context_window": 184000
+  },
+  {
+    "name": "Kimi-K2.6",
+    "real_name": "Kimi-K2.6",
+    "description": "Context window: 184k",
+    "context_window": 184000,
+    "supported_mime_types": [
+      "image/*"
+    ]
+  },
+  {
+    "name": "Kimi-K2.5",
+    "real_name": "Kimi-K2.5",
+    "description": "Context window: 184k",
+    "context_window": 184000,
+    "supported_mime_types": [
+      "image/*"
+    ]
+  },
+  {
+    "name": "GPT-5.5",
+    "real_name": "GPT-5.5",
+    "description": "Context window: 240k, Queue heat: 167%",
+    "context_window": 240000,
+    "supported_mime_types": [
+      "image/*"
+    ]
+  },
+  {
+    "name": "GPT-5.4",
+    "real_name": "GPT-5.4",
+    "description": "Context window: 240k, Queue heat: 93%",
+    "context_window": 240000,
+    "supported_mime_types": [
+      "image/*"
+    ]
+  },
+  {
+    "name": "GPT-5.2",
+    "real_name": "GPT-5.2",
+    "description": "Context window: 240k",
+    "context_window": 240000,
+    "supported_mime_types": [
+      "image/*"
+    ]
+  },
+  {
+    "name": "Qwen3.6-Plus",
+    "real_name": "Qwen3.6-Plus",
+    "description": "Context window: 184k",
+    "context_window": 184000,
+    "supported_mime_types": [
+      "image/*"
+    ]
+  },
+  {
+    "name": "Qwen3.5-Plus",
+    "real_name": "Qwen3.5-Plus",
+    "description": "Context window: 184k",
+    "context_window": 184000,
+    "supported_mime_types": [
+      "image/*"
+    ]
+  }
+]

@@ -1,0 +1,49 @@
+{
+  "expected_model": "Qwen3.6-Plus",
+  "actual_model": "Qwen3.6-Plus",
+  "response_chars": 5393,
+  "status": "ok",
+  "session_id": "real-usecase-20260525-usecase_3-usecase_3-Qwen3.6-Plus",
+  "command": [
+    "traecli",
+    "-p",
+    "<prompt 589 chars>",
+    "-c",
+    "model.name=Qwen3.6-Plus",
+    "--output-format",
+    "stream-json",
+    "--query-timeout",
+    "600s",
+    "--session-id",
+    "real-usecase-20260525-usecase_3-usecase_3-Qwen3.6-Plus"
+  ],
+  "exit_code": 0,
+  "stdout_path": "usecase_3-Qwen3.6-Plus.coco.stream.jsonl",
+  "stderr_path": "usecase_3-Qwen3.6-Plus.coco.stderr.log",
+  "runtime_cwd": null,
+  "agent": null,
+  "subagent_invocation": {
+    "required": false,
+    "expected_agent": null,
+    "tool_call_seen": false,
+    "tool_call_ids": [],
+    "tool_call_subagent_types": [],
+    "tool_result_seen": false,
+    "tool_result_ids": [],
+    "subagent_message_seen": false,
+    "subagent_message_tool_ids": [],
+    "subagent_source_models": [],
+    "ok": true
+  },
+  "copied_session_files": {
+    "session.json": "usecase_3-Qwen3.6-Plus.coco.session.json",
+    "session.log": "usecase_3-Qwen3.6-Plus.coco.session.log",
+    "events.jsonl": "usecase_3-Qwen3.6-Plus.coco.events.jsonl",
+    "traces.jsonl": "usecase_3-Qwen3.6-Plus.coco.traces.jsonl"
+  },
+  "raw_model_markers": [
+    "Qwen3.6-Plus"
+  ],
+  "error": null,
+  "captured_at": "2026-05-25T10:27:50Z"
+}

@@ -1,0 +1,5 @@
+{"time":"2026-05-25T15:27:26.064017+08:00","level":"ERROR","msg":"ext session get failed","error":"CopilotACPRequest: NotFound.TaskShare resource TaskShare is not found (request id = d89vjnkhmjlugfa04jeg-02177969404542100000000000000000000ffff0afe374a1144df)"}
+{"time":"2026-05-25T15:27:26.614504+08:00","level":"INFO","msg":"LSP manager initialized","servers":0}
+{"time":"2026-05-25T15:27:26.653713+08:00","level":"WARN","msg":"ripgrep reported non-fatal errors during traversal","stderr":"rg: /Users/bytedance/.agents/skills/superpowers: No such file or directory (os error 2)\n"}
+{"time":"2026-05-25T15:27:26.71819+08:00","level":"ERROR","msg":"ext session get failed","error":"CopilotACPRequest: NotFound.TaskShare resource TaskShare is not found (request id = d89vjnkhmjls9mki4fl0-02177969404542100000000000000000000ffff0afe374a1144df)"}
+{"time":"2026-05-25T15:27:27.51443+08:00","level":"INFO","msg":"filetrack: status updated","path":"/Users/bytedance/Documents/AI Coder/COCO-llm-council/AGENTS.md","agent_id":"9aa78ed3-8b97-4023-9f57-e03559aad00c"}

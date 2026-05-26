@@ -1,0 +1,113 @@
+{
+  "expected_model": "GPT-5.4",
+  "actual_model": "GPT-5.4",
+  "response_chars": 11477,
+  "status": "failed",
+  "session_id": "real-usecase-20260525-usecase_2-usecase_2-GPT-5.4",
+  "command": [
+    "traecli",
+    "-p",
+    "<prompt 811 chars>",
+    "-c",
+    "model.name=GPT-5.4",
+    "--output-format",
+    "stream-json",
+    "--query-timeout",
+    "600s",
+    "--session-id",
+    "real-usecase-20260525-usecase_2-usecase_2-GPT-5.4"
+  ],
+  "exit_code": 1,
+  "stdout_path": "usecase_2-GPT-5.4.coco.stream.jsonl",
+  "stderr_path": "usecase_2-GPT-5.4.coco.stderr.log",
+  "runtime_cwd": null,
+  "agent": null,
+  "subagent_invocation": {
+    "required": false,
+    "expected_agent": null,
+    "tool_call_seen": true,
+    "tool_call_ids": [
+      "call_fGb3hYHNvyHvzKgaxC54IeTy",
+      "call_CvVyLFWck2PJM6zTEjDYOEOy",
+      "call_z1juhHx9UzilObvg0wvncWvq"
+    ],
+    "tool_call_subagent_types": [
+      "general-purpose"
+    ],
+    "tool_result_seen": true,
+    "tool_result_ids": [
+      "call_z1juhHx9UzilObvg0wvncWvq",
+      "call_CvVyLFWck2PJM6zTEjDYOEOy",
+      "call_fGb3hYHNvyHvzKgaxC54IeTy"
+    ],
+    "subagent_message_seen": true,
+    "subagent_message_tool_ids": [
+      "call_fGb3hYHNvyHvzKgaxC54IeTy",
+      "call_CvVyLFWck2PJM6zTEjDYOEOy",
+      "call_fGb3hYHNvyHvzKgaxC54IeTy",
+      "call_fGb3hYHNvyHvzKgaxC54IeTy",
+      "call_CvVyLFWck2PJM6zTEjDYOEOy",
+      "call_CvVyLFWck2PJM6zTEjDYOEOy",
+      "call_fGb3hYHNvyHvzKgaxC54IeTy",
+      "call_CvVyLFWck2PJM6zTEjDYOEOy",
+      "call_CvVyLFWck2PJM6zTEjDYOEOy",
+      "call_fGb3hYHNvyHvzKgaxC54IeTy",
+      "call_fGb3hYHNvyHvzKgaxC54IeTy",
+      "call_fGb3hYHNvyHvzKgaxC54IeTy",
+      "call_CvVyLFWck2PJM6zTEjDYOEOy",
+      "call_CvVyLFWck2PJM6zTEjDYOEOy",
+      "call_CvVyLFWck2PJM6zTEjDYOEOy",
+      "call_fGb3hYHNvyHvzKgaxC54IeTy",
+      "call_CvVyLFWck2PJM6zTEjDYOEOy",
+      "call_z1juhHx9UzilObvg0wvncWvq",
+      "call_CvVyLFWck2PJM6zTEjDYOEOy",
+      "call_CvVyLFWck2PJM6zTEjDYOEOy",
+      "call_fGb3hYHNvyHvzKgaxC54IeTy",
+      "call_CvVyLFWck2PJM6zTEjDYOEOy",
+      "call_fGb3hYHNvyHvzKgaxC54IeTy",
+      "call_fGb3hYHNvyHvzKgaxC54IeTy",
+      "call_CvVyLFWck2PJM6zTEjDYOEOy",
+      "call_fGb3hYHNvyHvzKgaxC54IeTy"
+    ],
+    "subagent_source_models": [
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4",
+      "GPT-5.4"
+    ],
+    "ok": true
+  },
+  "copied_session_files": {
+    "session.json": "usecase_2-GPT-5.4.coco.session.json",
+    "session.log": "usecase_2-GPT-5.4.coco.session.log",
+    "events.jsonl": "usecase_2-GPT-5.4.coco.events.jsonl",
+    "traces.jsonl": "usecase_2-GPT-5.4.coco.traces.jsonl"
+  },
+  "raw_model_markers": [
+    "GPT-5.4"
+  ],
+  "error": "traecli result error",
+  "captured_at": "2026-05-25T10:12:39Z"
+}

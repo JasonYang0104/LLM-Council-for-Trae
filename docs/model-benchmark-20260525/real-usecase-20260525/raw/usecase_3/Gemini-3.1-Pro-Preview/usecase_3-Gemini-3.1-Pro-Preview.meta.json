@@ -1,0 +1,49 @@
+{
+  "expected_model": "Gemini-3.1-Pro-Preview",
+  "actual_model": "Gemini-3.1-Pro-Preview",
+  "response_chars": 4728,
+  "status": "ok",
+  "session_id": "real-usecase-20260525-usecase_3-usecase_3-Gemini-3.1-Pro-Preview",
+  "command": [
+    "traecli",
+    "-p",
+    "<prompt 589 chars>",
+    "-c",
+    "model.name=Gemini-3.1-Pro-Preview",
+    "--output-format",
+    "stream-json",
+    "--query-timeout",
+    "600s",
+    "--session-id",
+    "real-usecase-20260525-usecase_3-usecase_3-Gemini-3.1-Pro-Preview"
+  ],
+  "exit_code": 0,
+  "stdout_path": "usecase_3-Gemini-3.1-Pro-Preview.coco.stream.jsonl",
+  "stderr_path": "usecase_3-Gemini-3.1-Pro-Preview.coco.stderr.log",
+  "runtime_cwd": null,
+  "agent": null,
+  "subagent_invocation": {
+    "required": false,
+    "expected_agent": null,
+    "tool_call_seen": false,
+    "tool_call_ids": [],
+    "tool_call_subagent_types": [],
+    "tool_result_seen": false,
+    "tool_result_ids": [],
+    "subagent_message_seen": false,
+    "subagent_message_tool_ids": [],
+    "subagent_source_models": [],
+    "ok": true
+  },
+  "copied_session_files": {
+    "session.json": "usecase_3-Gemini-3.1-Pro-Preview.coco.session.json",
+    "session.log": "usecase_3-Gemini-3.1-Pro-Preview.coco.session.log",
+    "events.jsonl": "usecase_3-Gemini-3.1-Pro-Preview.coco.events.jsonl",
+    "traces.jsonl": "usecase_3-Gemini-3.1-Pro-Preview.coco.traces.jsonl"
+  },
+  "raw_model_markers": [
+    "Gemini-3.1-Pro-Preview"
+  ],
+  "error": null,
+  "captured_at": "2026-05-25T10:30:03Z"
+}

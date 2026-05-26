@@ -1,0 +1,132 @@
+{
+  "created_at": "2026-05-25T12:02:36.037671+00:00",
+  "model": "GPT-5.2",
+  "runtime_command": "traecli -y",
+  "canonical_timeout_seconds": 180,
+  "real_timeout_seconds": 660,
+  "outer_margin_seconds": 75,
+  "concurrency": 2,
+  "cases": [
+    {
+      "suite": "canonical_benchmark",
+      "case_id": "short_judgment-1",
+      "task_name": "short_judgment",
+      "stage": "stage1",
+      "role": "member",
+      "repeat_index": 1,
+      "parse_kind": "non_empty",
+      "timeout": 180,
+      "prompt_chars": 78
+    },
+    {
+      "suite": "canonical_benchmark",
+      "case_id": "short_judgment-2",
+      "task_name": "short_judgment",
+      "stage": "stage1",
+      "role": "member",
+      "repeat_index": 2,
+      "parse_kind": "non_empty",
+      "timeout": 180,
+      "prompt_chars": 78
+    },
+    {
+      "suite": "canonical_benchmark",
+      "case_id": "structured_json-1",
+      "task_name": "structured_json",
+      "stage": "stage1",
+      "role": "member",
+      "repeat_index": 1,
+      "parse_kind": "json_object",
+      "timeout": 180,
+      "prompt_chars": 104
+    },
+    {
+      "suite": "canonical_benchmark",
+      "case_id": "structured_json-2",
+      "task_name": "structured_json",
+      "stage": "stage1",
+      "role": "member",
+      "repeat_index": 2,
+      "parse_kind": "json_object",
+      "timeout": 180,
+      "prompt_chars": 104
+    },
+    {
+      "suite": "canonical_benchmark",
+      "case_id": "stage2_ranking-1",
+      "task_name": "stage2_ranking",
+      "stage": "stage2",
+      "role": "reviewer",
+      "repeat_index": 1,
+      "parse_kind": "ranking",
+      "timeout": 180,
+      "prompt_chars": 234
+    },
+    {
+      "suite": "canonical_benchmark",
+      "case_id": "stage2_ranking-2",
+      "task_name": "stage2_ranking",
+      "stage": "stage2",
+      "role": "reviewer",
+      "repeat_index": 2,
+      "parse_kind": "ranking",
+      "timeout": 180,
+      "prompt_chars": 234
+    },
+    {
+      "suite": "canonical_benchmark",
+      "case_id": "stage3_synthesis-1",
+      "task_name": "stage3_synthesis",
+      "stage": "stage3",
+      "role": "chairman",
+      "repeat_index": 1,
+      "parse_kind": "chairman_markers",
+      "timeout": 180,
+      "prompt_chars": 224
+    },
+    {
+      "suite": "canonical_benchmark",
+      "case_id": "stage3_synthesis-2",
+      "task_name": "stage3_synthesis",
+      "stage": "stage3",
+      "role": "chairman",
+      "repeat_index": 2,
+      "parse_kind": "chairman_markers",
+      "timeout": 180,
+      "prompt_chars": 224
+    },
+    {
+      "suite": "real_usecase",
+      "case_id": "usecase_1",
+      "task_name": "usecase_1",
+      "stage": "real_usecase",
+      "role": "member",
+      "repeat_index": 1,
+      "parse_kind": "non_empty",
+      "timeout": 660,
+      "prompt_chars": 234
+    },
+    {
+      "suite": "real_usecase",
+      "case_id": "usecase_2",
+      "task_name": "usecase_2",
+      "stage": "real_usecase",
+      "role": "member",
+      "repeat_index": 1,
+      "parse_kind": "non_empty",
+      "timeout": 660,
+      "prompt_chars": 811
+    },
+    {
+      "suite": "real_usecase",
+      "case_id": "usecase_3",
+      "task_name": "usecase_3",
+      "stage": "real_usecase",
+      "role": "member",
+      "repeat_index": 1,
+      "parse_kind": "non_empty",
+      "timeout": 660,
+      "prompt_chars": 589
+    }
+  ]
+}

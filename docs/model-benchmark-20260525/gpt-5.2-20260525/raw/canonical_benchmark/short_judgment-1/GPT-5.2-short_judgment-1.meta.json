@@ -1,0 +1,71 @@
+{
+  "captured_at": "2026-05-25T12:02:56Z",
+  "model": "GPT-5.2",
+  "expected_model": "GPT-5.2",
+  "actual_model": "GPT-5.2",
+  "model_mismatch": false,
+  "suite": "canonical_benchmark",
+  "case_id": "short_judgment-1",
+  "task": "short_judgment",
+  "stage": "stage1",
+  "role": "member",
+  "repeat_index": 1,
+  "status": "ok",
+  "error": null,
+  "exit_code": 0,
+  "latency_seconds": 20.54,
+  "query_timeout_seconds": 180,
+  "used_traecli_y": true,
+  "permission_mode_observed": "bypass_permissions",
+  "response_chars": 180,
+  "empty": false,
+  "has_partial_output": false,
+  "parse_kind": "non_empty",
+  "parse_ok": true,
+  "tool_calls": 1,
+  "tool_results": 1,
+  "tool_result_errors": 0,
+  "tool_names": {
+    "Read": 1
+  },
+  "session_id": "model-benchmark-20260525-gpt-5.2-y-canonical_benchmark-GPT-5.2-short_judgment-1",
+  "stdout_path": "raw/canonical_benchmark/short_judgment-1/GPT-5.2-short_judgment-1.coco.stream.jsonl",
+  "stderr_path": "raw/canonical_benchmark/short_judgment-1/GPT-5.2-short_judgment-1.coco.stderr.log",
+  "copied_session_files": {
+    "session.json": "GPT-5.2-short_judgment-1.coco.session.json",
+    "session.log": "GPT-5.2-short_judgment-1.coco.session.log",
+    "events.jsonl": "GPT-5.2-short_judgment-1.coco.events.jsonl",
+    "traces.jsonl": "GPT-5.2-short_judgment-1.coco.traces.jsonl"
+  },
+  "session_log_scan": {
+    "marker_counts": {
+      "permission": 0,
+      "authorize": 0,
+      "approval": 0,
+      "confirm": 0,
+      "denied": 0,
+      "queue": 0,
+      "queued": 0,
+      "排队": 0,
+      "failed to convert": 0,
+      "buildnotification failed": 0,
+      "deadline exceeded": 0,
+      "sse": 0
+    },
+    "snippets": []
+  },
+  "command": [
+    "traecli",
+    "-y",
+    "-p",
+    "<prompt 78 chars>",
+    "-c",
+    "model.name=GPT-5.2",
+    "--output-format",
+    "stream-json",
+    "--query-timeout",
+    "180s",
+    "--session-id",
+    "model-benchmark-20260525-gpt-5.2-y-canonical_benchmark-GPT-5.2-short_judgment-1"
+  ]
+}

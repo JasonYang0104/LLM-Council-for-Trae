@@ -1,0 +1,49 @@
+{
+  "expected_model": "MiniMax-M2.7",
+  "actual_model": "MiniMax-M2.7",
+  "response_chars": 4012,
+  "status": "ok",
+  "session_id": "real-usecase-20260525-usecase_1-usecase_1-MiniMax-M2.7",
+  "command": [
+    "traecli",
+    "-p",
+    "<prompt 234 chars>",
+    "-c",
+    "model.name=MiniMax-M2.7",
+    "--output-format",
+    "stream-json",
+    "--query-timeout",
+    "600s",
+    "--session-id",
+    "real-usecase-20260525-usecase_1-usecase_1-MiniMax-M2.7"
+  ],
+  "exit_code": 0,
+  "stdout_path": "usecase_1-MiniMax-M2.7.coco.stream.jsonl",
+  "stderr_path": "usecase_1-MiniMax-M2.7.coco.stderr.log",
+  "runtime_cwd": null,
+  "agent": null,
+  "subagent_invocation": {
+    "required": false,
+    "expected_agent": null,
+    "tool_call_seen": false,
+    "tool_call_ids": [],
+    "tool_call_subagent_types": [],
+    "tool_result_seen": false,
+    "tool_result_ids": [],
+    "subagent_message_seen": false,
+    "subagent_message_tool_ids": [],
+    "subagent_source_models": [],
+    "ok": true
+  },
+  "copied_session_files": {
+    "session.json": "usecase_1-MiniMax-M2.7.coco.session.json",
+    "session.log": "usecase_1-MiniMax-M2.7.coco.session.log",
+    "events.jsonl": "usecase_1-MiniMax-M2.7.coco.events.jsonl",
+    "traces.jsonl": "usecase_1-MiniMax-M2.7.coco.traces.jsonl"
+  },
+  "raw_model_markers": [
+    "MiniMax-M2.7"
+  ],
+  "error": null,
+  "captured_at": "2026-05-25T10:02:45Z"
+}

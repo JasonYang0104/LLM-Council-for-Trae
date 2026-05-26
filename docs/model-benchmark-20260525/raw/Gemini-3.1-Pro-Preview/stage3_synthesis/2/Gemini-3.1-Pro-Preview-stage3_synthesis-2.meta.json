@@ -1,0 +1,60 @@
+{
+  "expected_model": "Gemini-3.1-Pro-Preview",
+  "actual_model": "GPT-5.4",
+  "response_chars": 898,
+  "status": "failed",
+  "session_id": "model-benchmark-model-benchmark-20260525-stage3-Gemini-3.1-Pro-Preview-stage3_synthesis-2",
+  "command": [
+    "traecli",
+    "-p",
+    "<prompt 224 chars>",
+    "-c",
+    "model.name=Gemini-3.1-Pro-Preview",
+    "--output-format",
+    "stream-json",
+    "--query-timeout",
+    "120s",
+    "--session-id",
+    "model-benchmark-model-benchmark-20260525-stage3-Gemini-3.1-Pro-Preview-stage3_synthesis-2"
+  ],
+  "exit_code": 0,
+  "stdout_path": "Gemini-3.1-Pro-Preview-stage3_synthesis-2.coco.stream.jsonl",
+  "stderr_path": "Gemini-3.1-Pro-Preview-stage3_synthesis-2.coco.stderr.log",
+  "runtime_cwd": null,
+  "agent": null,
+  "subagent_invocation": {
+    "required": false,
+    "expected_agent": null,
+    "tool_call_seen": true,
+    "tool_call_ids": [
+      "call_1779694067062448776"
+    ],
+    "tool_call_subagent_types": [
+      "council-chairman-gpt54"
+    ],
+    "tool_result_seen": true,
+    "tool_result_ids": [
+      "call_1779694067062448776"
+    ],
+    "subagent_message_seen": true,
+    "subagent_message_tool_ids": [
+      "call_1779694067062448776"
+    ],
+    "subagent_source_models": [
+      "GPT-5.4"
+    ],
+    "ok": true
+  },
+  "copied_session_files": {
+    "session.json": "Gemini-3.1-Pro-Preview-stage3_synthesis-2.coco.session.json",
+    "session.log": "Gemini-3.1-Pro-Preview-stage3_synthesis-2.coco.session.log",
+    "events.jsonl": "Gemini-3.1-Pro-Preview-stage3_synthesis-2.coco.events.jsonl",
+    "traces.jsonl": "Gemini-3.1-Pro-Preview-stage3_synthesis-2.coco.traces.jsonl"
+  },
+  "raw_model_markers": [
+    "GPT-5.4",
+    "Gemini-3.1-Pro-Preview"
+  ],
+  "error": "expected model Gemini-3.1-Pro-Preview, actual model GPT-5.4",
+  "captured_at": "2026-05-25T07:28:44Z"
+}

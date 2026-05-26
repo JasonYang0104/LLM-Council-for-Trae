@@ -1,0 +1,109 @@
+{
+  "usecase": "usecase_2",
+  "model": "MiniMax-M2.7",
+  "status": "ok",
+  "error": null,
+  "exit_code": 0,
+  "latency_seconds": 313.41,
+  "query_timeout_seconds": 660,
+  "used_traecli_y": true,
+  "expected_model": "MiniMax-M2.7",
+  "actual_model": "MiniMax-M2.7",
+  "model_mismatch": false,
+  "response_chars": 5551,
+  "empty": false,
+  "has_partial_output": false,
+  "session_id": "real-usecase-20260525-rerun-y-usecase_2-MiniMax-M2.7",
+  "stdout_path": "raw/usecase_2/MiniMax-M2.7/usecase_2-MiniMax-M2.7.coco.stream.jsonl",
+  "stderr_path": "raw/usecase_2/MiniMax-M2.7/usecase_2-MiniMax-M2.7.coco.stderr.log",
+  "copied_session_files": {
+    "session.json": "usecase_2-MiniMax-M2.7.coco.session.json",
+    "session.log": "usecase_2-MiniMax-M2.7.coco.session.log",
+    "events.jsonl": "usecase_2-MiniMax-M2.7.coco.events.jsonl",
+    "traces.jsonl": "usecase_2-MiniMax-M2.7.coco.traces.jsonl"
+  },
+  "stream_scan": {
+    "tool_calls": 31,
+    "tool_results": 31,
+    "tool_names": {
+      "Read": 1,
+      "WebSearch": 24,
+      "WebFetch": 6
+    },
+    "status_events": 12,
+    "result_subtype": "success",
+    "first_assistant_content_line": 60,
+    "last_tool_call_line": 56,
+    "permission_marker_count": 5,
+    "permission_marker_lines": [
+      1,
+      6,
+      26,
+      32,
+      61
+    ],
+    "queue_marker_count": 0,
+    "queue_marker_lines": [],
+    "error_marker_count": 4,
+    "error_marker_lines": [
+      27,
+      30,
+      33,
+      39
+    ],
+    "last_errorish_line": "{\"type\":\"user\",\"subtype\":\"tool_result\",\"session_id\":\"real-usecase-20260525-rerun-y-usecase_2-MiniMax-M2.7\",\"uuid\":\"67e6a0e7535c76fbd719debc2bdcc3b2\",\"tool_use_id\":\"call_function_9duwibz5k8f0_1\",\"tool_name\":\"WebFetch\",\"is_error\":true,\"content\":{\"content\":[{\"type\":\"text\",\"text\":\"failed to fetch URL: HTTP 403: 403 Forbidden\"}],\"structured_content\":null,\"is_error\":true}}"
+  },
+  "session_log_scan": {
+    "marker_counts": {
+      "permission": 3,
+      "authorize": 0,
+      "approval": 0,
+      "confirm": 0,
+      "denied": 0,
+      "queue": 0,
+      "queued": 0,
+      "排队": 0,
+      "failed to convert": 56,
+      "buildnotification failed": 28,
+      "deadline exceeded": 0,
+      "sse": 12
+    },
+    "snippets": [
+      "{\"time\":\"2026-05-25T19:50:05.966439+08:00\",\"level\":\"ERROR\",\"msg\":\"unsupported tool output conversion\",\"tool\":\"WebSearch\",\"output_type\":{\"query\":\"AI coding agent hackathon non-developers tech stack recommendation 2025 2026\",\"results\":[{\"title\":\"8 Power Tools to Win Your Next Hackathon: The 2026 AI-First Tech Stack\",\"url\":\"https://momen.app/blogs/essential-hackathon-tools-2025-ai-first-tech-stack/\",\"snippet\":\"You will learn as you build your first hackathon project. No, you do not. Many tools work",
+      "{\"time\":\"2026-05-25T19:50:05.966464+08:00\",\"level\":\"ERROR\",\"msg\":\"failed to convert ADK output to model format\",\"tool\":\"WebSearch\"}",
+      "{\"time\":\"2026-05-25T19:50:05.966478+08:00\",\"level\":\"ERROR\",\"msg\":\"BuildNotification failed\",\"error\":\"failed to convert ADK output to model format\"}",
+      "{\"time\":\"2026-05-25T19:50:06.229335+08:00\",\"level\":\"ERROR\",\"msg\":\"unsupported tool output conversion\",\"tool\":\"WebSearch\",\"output_type\":{\"query\":\"Cursor Trae AI IDE hackathon MVP development non-programmers best stack\",\"results\":[{\"title\":\"Comparing Modern AI Coding Assistants: GitHub Copilot, Cursor, Windsurf, Google AI Studio, Deepsite, Replit, Cline.ai, and OpenAI Codex and more | by Roberto Infante | Medium\",\"url\":\"https://medium.com/@roberto.g.infante/comparing-modern-ai-coding-assistants-gi",
+      "{\"time\":\"2026-05-25T19:50:06.229359+08:00\",\"level\":\"ERROR\",\"msg\":\"failed to convert ADK output to model format\",\"tool\":\"WebSearch\"}",
+      "{\"time\":\"2026-05-25T19:50:06.229372+08:00\",\"level\":\"ERROR\",\"msg\":\"BuildNotification failed\",\"error\":\"failed to convert ADK output to model format\"}",
+      "{\"time\":\"2026-05-25T19:50:06.437656+08:00\",\"level\":\"ERROR\",\"msg\":\"failed to convert ADK output to model format\",\"tool\":\"WebSearch\"}",
+      "{\"time\":\"2026-05-25T19:50:06.437666+08:00\",\"level\":\"ERROR\",\"msg\":\"BuildNotification failed\",\"error\":\"failed to convert ADK output to model format\"}",
+      "{\"time\":\"2026-05-25T19:50:18.861199+08:00\",\"level\":\"ERROR\",\"msg\":\"unsupported tool output conversion\",\"tool\":\"WebSearch\",\"output_type\":{\"query\":\"hackathon tech stack 2025 non-technical participants streamlit gradio nextjs comparison AI coding\",\"results\":[{\"title\":\"GenAI Hackathon by Impetus & AWS: Innovate with GenAI ...\",\"url\":\"https://impetusawsgenaihackathon.devpost.com/\",\"snippet\":\"Make sure to submit your final project before the deadline: July 10, 2025. We can’t wait to see your innovative",
+      "{\"time\":\"2026-05-25T19:50:18.861238+08:00\",\"level\":\"ERROR\",\"msg\":\"failed to convert ADK output to model format\",\"tool\":\"WebSearch\"}",
+      "{\"time\":\"2026-05-25T19:50:18.861251+08:00\",\"level\":\"ERROR\",\"msg\":\"BuildNotification failed\",\"error\":\"failed to convert ADK output to model format\"}",
+      "{\"time\":\"2026-05-25T19:50:18.910209+08:00\",\"level\":\"ERROR\",\"msg\":\"failed to convert ADK output to model format\",\"tool\":\"WebSearch\"}",
+      "{\"time\":\"2026-05-25T19:50:18.910218+08:00\",\"level\":\"ERROR\",\"msg\":\"BuildNotification failed\",\"error\":\"failed to convert ADK output to model format\"}",
+      "{\"time\":\"2026-05-25T19:50:19.015677+08:00\",\"level\":\"ERROR\",\"msg\":\"failed to convert ADK output to model format\",\"tool\":\"WebSearch\"}",
+      "{\"time\":\"2026-05-25T19:50:19.01569+08:00\",\"level\":\"ERROR\",\"msg\":\"BuildNotification failed\",\"error\":\"failed to convert ADK output to model format\"}",
+      "{\"time\":\"2026-05-25T19:50:32.19292+08:00\",\"level\":\"ERROR\",\"msg\":\"unsupported tool output conversion\",\"tool\":\"WebSearch\",\"output_type\":{\"query\":\"AI coding agent project structure complexity error rate debugging non-technical users experience reports\",\"results\":[{\"title\":\"The 80% Problem: Why AI Agents Ship Fast But Create Hidden Technical Debt | Augment Code\",\"url\":\"https://www.augmentcode.com/guides/the-80-percent-problem-ai-agents-technical-debt\",\"snippet\":\"METR's experienced developer study fo",
+      "{\"time\":\"2026-05-25T19:50:32.19295+08:00\",\"level\":\"ERROR\",\"msg\":\"failed to convert ADK output to model format\",\"tool\":\"WebSearch\"}",
+      "{\"time\":\"2026-05-25T19:50:32.19296+08:00\",\"level\":\"ERROR\",\"msg\":\"BuildNotification failed\",\"error\":\"failed to convert ADK output to model format\"}",
+      "{\"time\":\"2026-05-25T19:50:32.322842+08:00\",\"level\":\"ERROR\",\"msg\":\"unsupported tool output conversion\",\"tool\":\"WebSearch\",\"output_type\":{\"query\":\"Streamlit vs Next.js hackathon non-developer AI agent debugging error fixing experience 2025\",\"results\":[{\"title\":\"Compare Next.js vs. Streamlit in 2026\",\"url\":\"https://slashdot.org/software/comparison/Next.js-vs-Streamlit/\",\"snippet\":\"StackAI is an enterprise AI automation platform that allows organizations to build end-to-end internal tools and proces",
+      "{\"time\":\"2026-05-25T19:50:32.322907+08:00\",\"level\":\"ERROR\",\"msg\":\"failed to convert ADK output to model format\",\"tool\":\"WebSearch\"}"
+    ]
+  },
+  "command": [
+    "traecli",
+    "-y",
+    "<prompt 2 chars>",
+    "请你作为一名熟悉 AI coding、前端工程、黑客松交付和非开发者工具设计的资深技术顾问，帮我调研并判断：\n\n\n\n    在公司内部黑客松场景中，一批对开发不熟练的非开发者同事，会使用 Trae-CN（ 类似Cursor ）这类支持 skill 等Agent配套的coding Agent，从想法开始，经过需求澄清、PRD、原型、修改确认、开发交付，最终做出一个可本地运行、可演示的 Web MVP / 内部工具 / 数据看板 / 表单流程 / AI 小工具。\n\n\n\n    问题：这类“非开发者 + AI Agent + 黑客松开发套件”的默认技术栈应该选什么？\n\n\n\n    请按以下要求调研和输出：\n\n\n    - 搜索并参考开发者多的平台，比如hacker news、Reddit、Github、X等等\n    - 请优先参考官方文档、AI IDE 实践经验、成熟开发者讨论、黑客松或 MVP 开发经验。\n    - 不要只看“专业开发者喜欢什么”，重点看“非开发者在 AI Agent 帮助下能否稳定做出来、能否继续改、能否排错、能否演示”。\n    - 请特别分析 AI Agent 生成和修改代码时，不同技术栈的优劣：项目结构是否简单、错误是否容易被 Agent 自动修复、依赖是否稳定、启动命令是否简单、UI 是否容易做得好看、是否容易本地演示。\n    - 请区分“默认技术栈”和“触发条件下切换的备选技术栈”。\n    - 请指出哪些路线看似简单，但经过多轮修改后会变难。\n    - 请给出明确推荐，不要平均主义。\n    - 请给出置信度：高 / 中 / 低。请列出能推翻你推荐的证据或条件。\n    - 列出你参考的主要资料链接，并简要说明每个资料支持了什么判断。\n\n\n    慢慢来，全面地，深入地，详细地，错综复杂地，彻底地，think before answring，ultrathink",
+    "-c",
+    "model.name=MiniMax-M2.7",
+    "--output-format",
+    "stream-json",
+    "--query-timeout",
+    "660s",
+    "--session-id",
+    "real-usecase-20260525-rerun-y-usecase_2-MiniMax-M2.7"
+  ],
+  "captured_at": "2026-05-25T11:54:47Z"
+}

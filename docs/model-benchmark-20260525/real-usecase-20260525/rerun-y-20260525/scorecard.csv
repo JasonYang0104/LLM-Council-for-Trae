@@ -1,0 +1,5 @@
+usecase,model,status,exit_code,latency_seconds,response_chars,empty,has_partial_output,actual_model,model_mismatch,error,used_traecli_y
+usecase_2,GPT-5.4,failed,1,666.18,23,False,True,GPT-5.4,False,traecli result error,True
+usecase_3,GPT-5.4,ok,0,415.67,18560,False,False,GPT-5.4,False,,True
+usecase_2,MiniMax-M2.7,ok,0,313.41,5551,False,False,MiniMax-M2.7,False,,True
+usecase_3,MiniMax-M2.7,ok,0,114.54,5176,False,False,MiniMax-M2.7,False,,True
