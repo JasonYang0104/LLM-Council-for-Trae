@@ -16,6 +16,7 @@ class RuntimeHealth:
     models: list[dict[str, Any]]
     errors: list[str]
     warnings: list[str]
+    ignored_errors: list[str]
 
 
 def get_models(runtime_command: str = DEFAULT_TRAECLI) -> list[dict[str, Any]]:
@@ -55,6 +56,7 @@ def require_models_available(expected: list[str], models: list[dict[str, Any]]) 
 def doctor(runtime_command: str = DEFAULT_TRAECLI) -> RuntimeHealth:
     errors: list[str] = []
     warnings: list[str] = []
+    ignored_errors: list[str] = []
 
     version_proc = run_command([runtime_command, "--version"], timeout=30)
     version = version_proc.stdout.strip() or version_proc.stderr.strip() or None
@@ -71,7 +73,11 @@ def doctor(runtime_command: str = DEFAULT_TRAECLI) -> RuntimeHealth:
         except Exception as exc:  # pragma: no cover - defensive reporting
             errors.append(f"could not parse doctor JSON: {exc}")
     if doctor_proc.returncode >= 2:
-        errors.append(doctor_proc.stderr.strip() or doctor_proc.stdout.strip() or "traecli doctor reported errors")
+        if doctor_has_only_mcp_errors(doctor_json):
+            ignored_errors.extend(doctor_error_messages(doctor_json))
+            warnings.append("traecli doctor reported MCP-only errors; ignored for CLC model execution")
+        else:
+            errors.append(doctor_proc.stderr.strip() or doctor_proc.stdout.strip() or "traecli doctor reported errors")
     elif doctor_proc.returncode == 1:
         warnings.append("traecli doctor reported warnings")
 
@@ -93,4 +99,32 @@ def doctor(runtime_command: str = DEFAULT_TRAECLI) -> RuntimeHealth:
         models=models,
         errors=errors,
         warnings=warnings,
+        ignored_errors=ignored_errors,
     )
+
+
+def doctor_error_checks(doctor_json: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(doctor_json, dict):
+        return []
+    checks = doctor_json.get("checks")
+    if not isinstance(checks, list):
+        return []
+    return [
+        check
+        for check in checks
+        if isinstance(check, dict) and check.get("severity") == "error"
+    ]
+
+
+def doctor_has_only_mcp_errors(doctor_json: dict[str, Any] | None) -> bool:
+    checks = doctor_error_checks(doctor_json)
+    return bool(checks) and all(check.get("name") == "mcp" for check in checks)
+
+
+def doctor_error_messages(doctor_json: dict[str, Any] | None) -> list[str]:
+    messages: list[str] = []
+    for check in doctor_error_checks(doctor_json):
+        name = check.get("name") or "unknown"
+        message = check.get("message") or "doctor check failed"
+        messages.append(f"{name}: {message}")
+    return messages or ["traecli doctor reported MCP-only errors"]

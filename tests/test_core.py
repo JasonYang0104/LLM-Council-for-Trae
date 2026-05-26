@@ -3,7 +3,10 @@ import tempfile
 import unittest
 from io import StringIO
 from pathlib import Path
+from subprocess import CompletedProcess
+from unittest.mock import patch
 
+from coco_llm_council.cli import failure_recommendations
 from coco_llm_council.council import (
     build_stage1_prompt,
     build_stage2_prompt,
@@ -12,12 +15,19 @@ from coco_llm_council.council import (
     parse_ranking_from_text,
 )
 from coco_llm_council.html_export import export_html
+from coco_llm_council.model_benchmark import (
+    BenchmarkTask,
+    benchmark_record_from_call,
+    recommend_rosters_from_scorecard,
+    scorecard_rows,
+)
 from coco_llm_council.model_selection import (
     recommend_model_choice,
     resolve_model_tokens,
     select_model_choice_interactively,
 )
-from coco_llm_council.provider import parse_stream_json
+from coco_llm_council.models import doctor as runtime_doctor
+from coco_llm_council.provider import ModelCallResult, parse_stream_json
 from coco_llm_council.store import ArtifactStore
 from coco_llm_council.validation import validate_run
 
@@ -169,6 +179,118 @@ FINAL RANKING:
         choice = recommend_model_choice(models)
         self.assertEqual(choice.members, ["GPT-5.4", "GLM-5.1", "DeepSeek-V4-Pro"])
         self.assertEqual(choice.chairman, "GPT-5.4")
+
+    def test_doctor_downgrades_mcp_only_errors_when_models_work(self):
+        doctor_payload = {
+            "checks": [
+                {"name": "binary", "severity": "info", "message": "ok"},
+                {"name": "mcp", "severity": "error", "message": "2 MCP server(s) failed to initialize"},
+            ]
+        }
+        models_payload = [{"name": "GLM-5.1"}]
+        with patch(
+            "coco_llm_council.models.run_command",
+            side_effect=[
+                CompletedProcess(["fake", "--version"], 0, stdout="fake version", stderr=""),
+                CompletedProcess(["fake", "doctor", "--json"], 2, stdout=json.dumps(doctor_payload), stderr=""),
+                CompletedProcess(["fake", "models", "--json"], 0, stdout=json.dumps(models_payload), stderr=""),
+            ],
+        ):
+            health = runtime_doctor("fake")
+        self.assertTrue(health.ok)
+        self.assertEqual(health.errors, [])
+        self.assertIn("MCP-only", health.warnings[0])
+        self.assertEqual(health.ignored_errors, ["mcp: 2 MCP server(s) failed to initialize"])
+
+    def test_doctor_keeps_non_mcp_errors_as_failures(self):
+        doctor_payload = {
+            "checks": [
+                {"name": "auth", "severity": "error", "message": "not logged in"},
+            ]
+        }
+        models_payload = [{"name": "GLM-5.1"}]
+        with patch(
+            "coco_llm_council.models.run_command",
+            side_effect=[
+                CompletedProcess(["fake", "--version"], 0, stdout="fake version", stderr=""),
+                CompletedProcess(["fake", "doctor", "--json"], 2, stdout=json.dumps(doctor_payload), stderr=""),
+                CompletedProcess(["fake", "models", "--json"], 0, stdout=json.dumps(models_payload), stderr=""),
+            ],
+        ):
+            health = runtime_doctor("fake")
+        self.assertFalse(health.ok)
+        self.assertTrue(health.errors)
+        self.assertEqual(health.ignored_errors, [])
+
+    def test_failure_recommendations_explain_model_timeout(self):
+        manifest = {
+            "failures": [
+                {
+                    "stage_record": "Response A",
+                    "status": "failed",
+                    "error": "model 'GPT-5.4': context deadline exceeded",
+                    "expected_model": "GPT-5.4",
+                    "actual_model": "GPT-5.4",
+                }
+            ],
+            "stages": {
+                "stage1": [
+                    {"model": "GPT-5.4", "status": "failed"},
+                    {"model": "GLM-5.1", "status": "ok"},
+                    {"model": "DeepSeek-V4-Pro", "status": "ok"},
+                ]
+            },
+        }
+        recommendations = failure_recommendations(manifest)
+        self.assertEqual(len(recommendations), 1)
+        self.assertIn("GPT-5.4 超时", recommendations[0])
+        self.assertIn("提高 --timeout", recommendations[0])
+        self.assertIn("GLM-5.1, DeepSeek-V4-Pro", recommendations[0])
+
+    def test_benchmark_record_tracks_latency_and_parse_status(self):
+        task = BenchmarkTask(
+            name="stage2_ranking",
+            stage="stage2",
+            role="reviewer",
+            prompt="Rank responses.",
+            parse_kind="ranking",
+            valid_labels=["Response A", "Response B"],
+        )
+        call = ModelCallResult(
+            expected_model="GLM-5.1",
+            actual_model="GLM-5.1",
+            response="FINAL RANKING:\n1. Response B\n2. Response A",
+            status="ok",
+            session_id="s1",
+            command=["traecli"],
+            exit_code=0,
+            stdout_path="out.jsonl",
+            stderr_path="err.log",
+        )
+        record = benchmark_record_from_call(task, "GLM-5.1", 1, call, latency_seconds=2.345)
+        self.assertEqual(record["status"], "ok")
+        self.assertEqual(record["latency_seconds"], 2.35)
+        self.assertTrue(record["parse_ok"])
+        self.assertEqual(record["response_chars"], len(call.response))
+
+    def test_scorecard_and_rosters_prioritize_stability_then_latency(self):
+        records = [
+            {"model": "fast", "role": "member", "stage": "stage1", "status": "ok", "parse_ok": True, "latency_seconds": 10, "actual_model": "fast", "expected_model": "fast"},
+            {"model": "fast", "role": "reviewer", "stage": "stage2", "status": "ok", "parse_ok": True, "latency_seconds": 12, "actual_model": "fast", "expected_model": "fast"},
+            {"model": "stable-chair", "role": "chairman", "stage": "stage3", "status": "ok", "parse_ok": True, "latency_seconds": 20, "actual_model": "stable-chair", "expected_model": "stable-chair"},
+            {"model": "slow", "role": "member", "stage": "stage1", "status": "ok", "parse_ok": True, "latency_seconds": 95, "actual_model": "slow", "expected_model": "slow"},
+            {"model": "flaky", "role": "member", "stage": "stage1", "status": "failed", "parse_ok": False, "latency_seconds": 30, "actual_model": None, "expected_model": "flaky"},
+        ]
+        rows = scorecard_rows(records)
+        by_model = {row["model"]: row for row in rows}
+        self.assertEqual(by_model["fast"]["success_rate"], "1.00")
+        self.assertEqual(by_model["flaky"]["success_rate"], "0.00")
+
+        rosters = recommend_rosters_from_scorecard(rows)
+        self.assertEqual(rosters["chairman"], "stable-chair")
+        self.assertIn("fast", rosters["fast_default_members"])
+        self.assertNotIn("slow", rosters["fast_default_members"])
+        self.assertIn("slow", rosters["research_stress_members"])
 
     def test_interactive_model_selection_accepts_recommendation(self):
         models = [{"name": "GPT-5.4"}, {"name": "GLM-5.1"}, {"name": "DeepSeek-V4-Pro"}]

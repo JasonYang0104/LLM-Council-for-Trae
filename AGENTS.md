@@ -28,6 +28,8 @@
 
 真实 council run 需要当前 COCO / `traecli` 可用。如果 COCO 不可用，只验证非 live 部分：单元测试、fixture schema validation、模型推荐逻辑、非交互 CLI 失败路径，以及明确可用的 fake runtime E2E。不要把 fake runtime 结果说成 live COCO 结果。
 
+CLC 的 direct model execution 不依赖外部 MCP server。`traecli doctor` 如果只报告 MCP 初始化失败，但 `traecli --version` 和 `traecli models --json` 正常，run 不应被硬阻断；这类 MCP-only error 应记录到 `runtime/doctor.json` 的 `ignored_errors` 和 `manifest.warnings`，后续排查时作为环境噪音处理。非 MCP 的 doctor error、模型列表为空或模型缺失仍然必须失败。
+
 模型选择已经在 CLI 内主动发生：
 
 - `coco-llm-council run --input <file> --json` 在 TTY 中会列出当前 `traecli models --json` 结果，并询问是否使用推荐模型套。

@@ -326,8 +326,11 @@ async def run_full_council(
         "doctor": health.doctor,
         "errors": health.errors,
         "warnings": health.warnings,
+        "ignored_errors": health.ignored_errors,
     })
     store.write_json("runtime/coco.models.json", health.models)
+    manifest["warnings"].extend(health.warnings)
+    manifest["warnings"].extend(f"ignored runtime doctor error: {error}" for error in health.ignored_errors)
     if not health.ok:
         manifest["status"] = "failed"
         manifest["failures"].extend(health.errors)

@@ -10,3 +10,8 @@ venv/
 build/
 dist/
 .coco-llm-council/
+.trae/
+*.png
+findings.md
+progress.md
+task_plan.md

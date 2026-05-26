@@ -103,6 +103,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         "models": {"count": len(health.models), "names": [m.get("name") for m in health.models]},
         "warnings": health.warnings,
         "errors": health.errors,
+        "ignored_errors": health.ignored_errors,
     }
     return emit(payload, args.json_output, ok=health.ok, text=f"doctor {'ok' if health.ok else 'failed'}; models={len(health.models)}")
 
@@ -150,7 +151,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         "store": str(store.root),
         "manifest": str(store.root / "manifest.json"),
         "html": str(store.root / "html" / "index.html") if export_record else None,
+        "warnings": manifest.get("warnings", []),
         "failures": manifest.get("failures", []),
+        "recommendations": failure_recommendations(manifest),
     }
     return emit(payload, args.json_output, ok=manifest.get("status") == "ok", text=f"run {run_id} {manifest.get('status')} -> {store.root}")
 
@@ -295,8 +298,67 @@ def summary_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
         "members": manifest.get("config", {}).get("members"),
         "chairman": manifest.get("config", {}).get("chairman"),
         "aggregate_rankings": manifest.get("metadata", {}).get("aggregate_rankings"),
+        "warnings": manifest.get("warnings"),
         "failures": manifest.get("failures"),
     }
+
+
+def failure_recommendations(manifest: dict[str, Any]) -> list[str]:
+    failures = manifest.get("failures") or []
+    if not isinstance(failures, list):
+        return []
+
+    successful_models = successful_stage1_models(manifest)
+    recommendations: list[str] = []
+    for failure in failures:
+        if isinstance(failure, dict):
+            error = str(failure.get("error") or "")
+            expected_model = failure.get("expected_model")
+            stage_record = failure.get("stage_record")
+        else:
+            error = str(failure)
+            expected_model = None
+            stage_record = None
+        lower_error = error.lower()
+        if "context deadline exceeded" in lower_error or "timeout" in lower_error:
+            recommendations.append(model_failure_hint(stage_record, expected_model, "超时", successful_models))
+        elif "traecli result error" in lower_error:
+            recommendations.append(model_failure_hint(stage_record, expected_model, "返回 traecli result error", successful_models))
+        elif "model(s) not available" in lower_error:
+            recommendations.append("模型不在当前 traecli models --json 列表中；请先运行 coco-llm-council models --recommend --json，再显式传 --members/--chairman。")
+    return unique_strings(recommendations)
+
+
+def successful_stage1_models(manifest: dict[str, Any]) -> list[str]:
+    stages = manifest.get("stages") if isinstance(manifest.get("stages"), dict) else {}
+    stage1 = stages.get("stage1") if isinstance(stages, dict) else []
+    if not isinstance(stage1, list):
+        return []
+    models: list[str] = []
+    for item in stage1:
+        if not isinstance(item, dict) or item.get("status") != "ok":
+            continue
+        model = item.get("model")
+        if isinstance(model, str) and model not in models:
+            models.append(model)
+    return models
+
+
+def model_failure_hint(stage_record: Any, expected_model: Any, reason: str, successful_models: list[str]) -> str:
+    model_text = str(expected_model) if expected_model else "该模型"
+    stage_text = f"{stage_record} " if stage_record else ""
+    hint = f"{stage_text}{model_text} {reason}；可提高 --timeout，或替换/移除该模型后重跑。"
+    if successful_models:
+        hint += " 本次 Stage 1 已成功响应的模型: " + ", ".join(successful_models) + "。"
+    return hint
+
+
+def unique_strings(values: list[str]) -> list[str]:
+    unique: list[str] = []
+    for value in values:
+        if value and value not in unique:
+            unique.append(value)
+    return unique
 
 
 def emit(payload: Any, as_json: bool, ok: bool = True, text: str | None = None) -> int:

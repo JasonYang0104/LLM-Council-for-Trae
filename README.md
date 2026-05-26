@@ -66,6 +66,8 @@ coco-llm-council models --recommend --json
 - `traecli models --json` 是否能列出模型。
 - `coco-llm-council` 自身是否能找到项目文件。
 
+CLC 的 direct council run 不依赖外部 MCP server。如果 `traecli doctor --json` 只报告 MCP 初始化失败，但 `traecli --version` 和 `traecli models --json` 正常，CLC 会把这类 MCP-only error 记录到 `runtime/doctor.json` 的 `ignored_errors` 和 `manifest.warnings`，但不会阻断 run。非 MCP 的 doctor error、模型列表为空或模型缺失仍会失败。
+
 ### 4. 运行一次 direct council
 
 ```bash
@@ -260,6 +262,8 @@ schema:stage2.A.review.ranking
 schema:stage3.final.response
 schema:html.export.format
 ```
+
+`run --json` 在失败时会额外输出 `recommendations`。例如某个模型出现 timeout、`context deadline exceeded` 或 `traecli result error`，CLI 会提示提高 `--timeout`，或先用本次 Stage 1 已成功响应的模型组合重跑。
 
 ## HTML Export
 
