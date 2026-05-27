@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CLC E2E 复盘 — 2026-05-27</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Charter:wght@400;500&family=Noto+Serif+SC:wght@400;500&display=swap');
+  :root {
+    --paper: #f5f4ed;
+    --paper2: #efeee5;
+    --ink: #1f1d18;
+    --ink2: #6b665b;
+    --accent: #1B365D;
+    --rule: #d4d1c5;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { font-size: 15px; }
+  body {
+    font-family: 'Noto Serif SC', 'Charter', 'Source Serif Pro', 'Iowan Old Style', serif;
+    background: var(--paper);
+    color: var(--ink);
+    line-height: 1.55;
+    padding: 3rem 2rem;
+    max-width: 780px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 1.85rem;
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: 0.02em;
+    margin-bottom: 0.3rem;
+    color: var(--ink);
+  }
+  .lede {
+    font-size: 0.95rem;
+    color: var(--ink2);
+    margin-bottom: 2.5rem;
+    line-height: 1.5;
+    border-left: 2px solid var(--accent);
+    padding-left: 0.9rem;
+  }
+  h2 {
+    font-size: 1.25rem;
+    font-weight: 500;
+    line-height: 1.25;
+    margin-top: 2.5rem;
+    margin-bottom: 0.8rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink);
+  }
+  h3 {
+    font-size: 1.05rem;
+    font-weight: 500;
+    line-height: 1.3;
+    margin-top: 1.8rem;
+    margin-bottom: 0.5rem;
+    color: var(--accent);
+  }
+  p { margin-bottom: 0.7rem; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.8rem 0 1.2rem;
+    font-size: 0.88rem;
+    line-height: 1.45;
+  }
+  th, td {
+    padding: 0.4rem 0.6rem;
+    text-align: left;
+    border-bottom: 1px solid var(--rule);
+  }
+  th {
+    font-weight: 500;
+    color: var(--accent);
+    font-size: 0.82rem;
+    letter-spacing: 0.03em;
+  }
+  code {
+    font-family: 'SF Mono', 'Menlo', monospace;
+    font-size: 0.85em;
+    background: var(--paper2);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+  }
+  .tag {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 500;
+    padding: 0.15em 0.5em;
+    border-radius: 3px;
+    letter-spacing: 0.04em;
+    vertical-align: middle;
+  }
+  .tag-ok { background: #d4edda; color: #1a5c2a; }
+  .tag-degraded { background: #fff3cd; color: #856404; }
+  .tag-fail { background: #f8d7da; color: #721c24; }
+  .tag-green { background: #d4edda; color: #1a5c2a; }
+  .tag-yellow { background: #fff3cd; color: #856404; }
+  .tag-red { background: #f8d7da; color: #721c24; }
+  .tag-p0 { background: #f8d7da; color: #721c24; }
+  .tag-p1 { background: #fff3cd; color: #856404; }
+  .tag-p2 { background: #d1ecf1; color: #0c5460; }
+  .tag-p3 { background: var(--paper2); color: var(--ink2); }
+  ul, ol { margin: 0.4rem 0 0.8rem 1.5rem; }
+  li { margin-bottom: 0.3rem; }
+  blockquote {
+    border-left: 2px solid var(--accent);
+    padding-left: 0.9rem;
+    color: var(--ink2);
+    margin: 0.6rem 0;
+    font-style: italic;
+  }
+  strong { font-weight: 500; }
+  .section-rule {
+    border: none;
+    border-top: 1px solid var(--rule);
+    margin: 2rem 0;
+  }
+  .colophon {
+    margin-top: 3rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--rule);
+    font-size: 0.78rem;
+    color: var(--ink2);
+    line-height: 1.5;
+  }
+  .check { color: #1a5c2a; }
+  .warn { color: #856404; }
+</style>
+</head>
+<body>
+
+<h1>CLC E2E 复盘</h1>
+<p style="font-size:0.9rem;color:var(--ink2);margin-bottom:0.2rem;">2026-05-27 · P0→P1→P2 全量验证</p>
+
+<p class="lede">本轮在完成 P0→P1→P2 全部代码改动后，使用新代码重跑了 3 个梯度难度的 E2E 用例，验证 quorum 机制、chairman fallback、流式 tool budget 实时中断、分层超时、HTML 模型表现摘要等新功能。</p>
+
+<h2>E2E 结果总览</h2>
+<table>
+  <thead>
+    <tr><th>问题</th><th>难度</th><th>成员</th><th>状态</th><th>S1</th><th>S2</th><th>S3</th><th>Fallback</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>社交判断</td><td>简单</td><td>8</td><td><span class="tag tag-degraded">degraded_ok</span></td><td>7/8</td><td>7/8</td><td>ok</td><td>—</td></tr>
+    <tr><td>黑客松技术栈</td><td>中等</td><td>3</td><td><span class="tag tag-ok">ok</span></td><td>2/3</td><td>3/3</td><td>ok</td><td>GLM-5.1 → Qwen3.6-Plus</td></tr>
+    <tr><td>本地AI预测</td><td>复杂</td><td>5</td><td><span class="tag tag-ok">ok</span></td><td>5/5</td><td>4/5</td><td>ok</td><td>—</td></tr>
+  </tbody>
+</table>
+
+<h2>新功能验证</h2>
+
+<h3><span class="check">✓</span> 已验证通过</h3>
+<ol>
+  <li><strong>quorum 降级运行</strong>：Q1 Doubao-Seed-2.0-Code 在 S1 失败，7/8 ok → 排除 chairman 后 6/7 ≥ min_valid=4 → <code>degraded_ok</code>，全流程继续执行</li>
+  <li><strong>chairman fallback</strong>：Q2 GLM-5.1 作为 chairman 在 S1 失败，S3 自动 fallback 到 Qwen3.6-Plus，<code>fallback_from=GLM-5.1</code></li>
+  <li><strong>degraded_ok HTML 导出</strong>：修复了 <code>status == "ok"</code> 才导出 HTML 的 bug</li>
+  <li><strong>模型表现摘要</strong>：HTML 中新增模型表现摘要区块，替换"存在警告"横幅</li>
+  <li><strong>effective_min 自适应</strong>：<code>min(min_valid_members, total)</code> 确保小 roster 不会因 min_valid 过高而永远失败</li>
+</ol>
+
+<h3><span class="warn">⚠</span> 部分验证 / 需关注</h3>
+<ol start="6">
+  <li><strong>流式 tool budget 实时中断</strong>：代码已实现，但本轮未触发 budget 超限，需构造超限场景专门验证</li>
+  <li><strong>分层超时</strong>：代码已接线，但所有模型均在 soft checkpoint 前完成，需构造慢模型场景验证</li>
+  <li><strong>CancelledError 处理</strong>：代码已实现，但本轮未触发，需构造超时场景验证</li>
+</ol>
+
+<hr class="section-rule">
+
+<h2>发现的问题</h2>
+
+<h3><span class="tag tag-p0">P0</span> traecli runtime 大面积不稳定</h3>
+<p><strong>现象</strong>：8 模型并发时，Q2 黑客松技术栈 7/8 返回 <code>traecli result error</code>，连 GLM-5.1 和 Kimi-K2.6 也失败。降低到 3 模型后才跑通。</p>
+<p><strong>根因</strong>：<code>traecli</code> 内部并发处理存在资源竞争或连接池耗尽。并发 8 个进程时大部分返回 result error；DeepSeek-V4-Pro 和 Qwen3.6-Plus 偶发 Go 侧 segfault（<code>conf.go:141</code> 的 <code>RealName</code> 空指针）。</p>
+<p><strong>建议</strong>：</p>
+<ul>
+  <li><strong>短期</strong>：在 <code>TraeCliProvider</code> 中引入并发控制 semaphore，默认 <code>concurrency=3</code></li>
+  <li><strong>中期</strong>：对 <code>traecli result error</code> 自动重试 1 次（间隔 10s），区分 runtime 偶发崩溃 vs 模型本身不行</li>
+  <li><strong>长期</strong>：向 traecli 团队反馈 segfault bug，推动修复</li>
+</ul>
+
+<h3><span class="tag tag-p1">P1</span> 模型稳定性梯队明确，roster 策略未跟上</h3>
+<p>今日 9 次 run 的模型成功率统计：</p>
+<table>
+  <thead><tr><th>模型</th><th>成功率</th><th>梯队</th></tr></thead>
+  <tbody>
+    <tr><td>Gemini-3.1-Pro-Preview</td><td>91%</td><td><span class="tag tag-green">稳定</span></td></tr>
+    <tr><td>GLM-5.1</td><td>82%</td><td><span class="tag tag-green">稳定</span></td></tr>
+    <tr><td>Qwen3.6-Plus</td><td>81%</td><td><span class="tag tag-green">稳定</span></td></tr>
+    <tr><td>GPT-5.4</td><td>80%</td><td><span class="tag tag-yellow">偶发失败</span></td></tr>
+    <tr><td>MiniMax-M2.7</td><td>80%</td><td><span class="tag tag-yellow">偶发失败</span></td></tr>
+    <tr><td>Kimi-K2.6</td><td>67%</td><td><span class="tag tag-yellow">并发敏感</span></td></tr>
+    <tr><td>Doubao-Seed-2.0-Code</td><td>60%</td><td><span class="tag tag-red">不稳定</span></td></tr>
+    <tr><td>DeepSeek-V4-Pro</td><td>56%</td><td><span class="tag tag-red">不稳定</span></td></tr>
+  </tbody>
+</table>
+<p><strong>建议</strong>：更新 <code>PREFERRED_MEMBERS</code> 按稳定性排序；将 Doubao 和 DeepSeek 降级为"可选"；在 <code>recommend_model_choice</code> 中引入成功率权重。</p>
+
+<h3><span class="tag tag-p1">P1</span> meta.json 中 tool_calls_count 缺失</h3>
+<p><strong>现象</strong>：本轮 E2E 所有 stage1 的 meta.json 中 <code>tool_calls_count</code> 和 <code>turns_count</code> 未写入，HTML 模型表现摘要显示为 <code>—</code>。</p>
+<p><strong>建议</strong>：在 <code>stage1_collect_responses</code> 中对每个 call_result 调用 <code>write_json(meta_path, call.to_json())</code>，同步修复 stage2/stage3。</p>
+
+<h3><span class="tag tag-p2">P2</span> degraded_ok 状态下 CLI 退出码为 1</h3>
+<p><strong>现象</strong>：Q1 返回 <code>degraded_ok</code> 但 CLI 退出码为 1，调用方误以为完全失败。</p>
+<p><strong>建议</strong>：<code>degraded_ok</code> 返回退出码 0（或新增退出码 2 供脚本区分），JSON 输出中标注 <code>degraded: true</code>。</p>
+
+<h3><span class="tag tag-p2">P2</span> chairman 兼任 member 时 quorum 逻辑过严</h3>
+<p><strong>现象</strong>：8 成员 roster 中 chairman 也是 member，排除 chairman 后 7 个非主席需至少 6 个 ok，容错空间仅 1 个。</p>
+<p><strong>建议</strong>：区分 chairman 独立 vs 兼任 member 两种场景——兼任时其 stage1 ok 应计入 quorum，但 chairman 角色的失败不触发 stage1 失败。</p>
+
+<hr class="section-rule">
+
+<h2>后续推进计划</h2>
+<table>
+  <thead><tr><th>优先级</th><th>任务</th><th>预期效果</th></tr></thead>
+  <tbody>
+    <tr><td><span class="tag tag-p0">P0</span></td><td>引入并发 semaphore（默认 3）</td><td>解决 8 模型并发大面积崩溃</td></tr>
+    <tr><td><span class="tag tag-p0">P0</span></td><td><code>traecli result error</code> 自动重试 1 次</td><td>区分 runtime 偶发崩溃 vs 模型不行</td></tr>
+    <tr><td><span class="tag tag-p1">P1</span></td><td>更新 PREFERRED_MEMBERS 按稳定性排序</td><td>默认 roster 优先使用稳定模型</td></tr>
+    <tr><td><span class="tag tag-p1">P1</span></td><td>修复 meta.json 写入 tool_calls_count</td><td>HTML 模型表现摘要数据完整</td></tr>
+    <tr><td><span class="tag tag-p2">P2</span></td><td><code>degraded_ok</code> 返回退出码 0</td><td>调用方不会误判为完全失败</td></tr>
+    <tr><td><span class="tag tag-p2">P2</span></td><td>chairman 兼任 member quorum 优化</td><td>8 成员 roster 容错空间合理化</td></tr>
+    <tr><td><span class="tag tag-p3">P3</span></td><td>构造超限/超时场景验证</td><td>确认实时中断和 quorum checkpoint 行为</td></tr>
+    <tr><td><span class="tag tag-p3">P3</span></td><td>向 traecli 团队反馈 segfault</td><td>推动上游修复 Go 侧空指针</td></tr>
+  </tbody>
+</table>
+
+<hr class="section-rule">
+
+<h2>附录：本轮代码改动</h2>
+<table>
+  <thead><tr><th>文件</th><th>改动摘要</th></tr></thead>
+  <tbody>
+    <tr><td><code>council.py</code></td><td>quorum 6/8、chairman 排除、record_stage_failures 不覆盖状态、effective_min 自适应、stage1 三层超时</td></tr>
+    <tr><td><code>provider.py</code></td><td>monitor_stream_for_budget 流式函数、query_model 流式读取 + 实时 kill、CancelledError 处理、buffer 10MB</td></tr>
+    <tr><td><code>html_export.py</code></td><td>render_model_performance_summary 替换"存在警告"横幅</td></tr>
+    <tr><td><code>cli.py</code></td><td>argparse 默认值 6/8、degraded_ok 允许 HTML 导出</td></tr>
+    <tr><td><code>test_core.py</code></td><td>+21 新测试（quorum、fallback、流式 budget、模型选择、分层超时）</td></tr>
+  </tbody>
+</table>
+<p style="margin-top:0.5rem;">测试：39 → 60（+21），全部通过。</p>
+
+<div class="colophon">
+  COCO-LLM-Council · E2E Retrospective · Generated 2026-05-27
+</div>
+
+</body>
+</html>

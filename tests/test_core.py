@@ -13,7 +13,10 @@ from coco_llm_council.council import (
     build_stage3_prompt,
     calculate_aggregate_rankings,
     classify_stage1_status,
+    CouncilConfig,
+    initial_manifest,
     parse_ranking_from_text,
+    record_stage_failures,
 )
 from coco_llm_council.html_export import export_html
 from coco_llm_council.model_benchmark import (
@@ -28,7 +31,7 @@ from coco_llm_council.model_selection import (
     select_model_choice_interactively,
 )
 from coco_llm_council.models import doctor as runtime_doctor
-from coco_llm_council.provider import ModelCallResult, parse_stream_json
+from coco_llm_council.provider import ModelCallResult, monitor_stream_for_budget, parse_stream_json
 from coco_llm_council.store import ArtifactStore
 from coco_llm_council.validation import validate_run
 
@@ -730,6 +733,767 @@ FINAL RANKING:
         self.assertEqual(j["assistant_content_chars_total"], 500)
         self.assertEqual(j["last_assistant_content_chars"], 200)
         self.assertFalse(j["raw_partial_recoverable"])
+
+    def test_record_stage_failures_does_not_override_quorum_status(self):
+        manifest = initial_manifest("run-quorum-test", "test", CouncilConfig(members=["A", "B", "C"], chairman="X"))
+        manifest["status"] = "degraded_ok"
+        records = [
+            {"label": "Response A", "model": "A", "status": "ok"},
+            {"label": "Response B", "model": "B", "status": "failed", "error": "timeout"},
+            {"label": "Response C", "model": "C", "status": "ok"},
+        ]
+        record_stage_failures(manifest, records)
+        self.assertEqual(manifest["status"], "degraded_ok")
+        self.assertEqual(len(manifest["failures"]), 1)
+        self.assertEqual(manifest["failures"][0]["stage_record"], "Response B")
+
+    def test_min_valid_members_default_is_6(self):
+        config = CouncilConfig(members=["A"], chairman="B")
+        self.assertEqual(config.min_valid_members, 6)
+
+    def test_target_valid_members_default_is_8(self):
+        config = CouncilConfig(members=["A"], chairman="B")
+        self.assertEqual(config.target_valid_members, 8)
+
+    def test_chairman_excluded_from_quorum_count(self):
+        results = [
+            {"model": "GLM-5.1", "status": "ok"},
+            {"model": "Qwen3.6-Plus", "status": "ok"},
+            {"model": "Kimi-K2.6", "status": "ok"},
+            {"model": "DeepSeek-V4-Pro", "status": "ok"},
+            {"model": "GPT-5.4", "status": "ok"},
+            {"model": "MiniMax-M2.7", "status": "ok"},
+            {"model": "Gemini-3.1", "status": "ok"},
+            {"model": "openrouter-2o", "status": "failed"},
+        ]
+        status = classify_stage1_status(results, min_valid_members=6, chairman_model="GLM-5.1")
+        self.assertEqual(status, "degraded_ok")
+
+    def test_chairman_in_members_but_excluded_quorum_fails_if_rest_insufficient(self):
+        results = [
+            {"model": "GLM-5.1", "status": "ok"},
+            {"model": "Qwen3.6-Plus", "status": "ok"},
+            {"model": "Kimi-K2.6", "status": "ok"},
+            {"model": "DeepSeek-V4-Pro", "status": "failed"},
+            {"model": "GPT-5.4", "status": "failed"},
+            {"model": "MiniMax-M2.7", "status": "failed"},
+            {"model": "Gemini-3.1", "status": "failed"},
+        ]
+        status = classify_stage1_status(results, min_valid_members=6, chairman_model="GLM-5.1")
+        self.assertEqual(status, "failed")
+
+    def test_classify_stage1_status_ok_with_chairman_excluded(self):
+        results = [
+            {"model": "GLM-5.1", "status": "ok"},
+            {"model": "Qwen3.6-Plus", "status": "ok"},
+        ]
+        status = classify_stage1_status(results, min_valid_members=2, chairman_model="GLM-5.1")
+        self.assertEqual(status, "ok")
+
+    def test_stage2_all_failed_sets_manifest_failed(self):
+        manifest = initial_manifest("run-s2-fail", "test", CouncilConfig(members=["A", "B"], chairman="C"))
+        manifest["status"] = "ok"
+        stage2_results = [
+            {"reviewer_label": "A", "model": "A", "status": "failed", "error": "timeout"},
+            {"reviewer_label": "B", "model": "B", "status": "failed", "error": "timeout"},
+        ]
+        record_stage_failures(manifest, stage2_results)
+        valid_s2 = [r for r in stage2_results if r.get("status") == "ok"]
+        if not valid_s2:
+            manifest["status"] = "failed"
+        self.assertEqual(manifest["status"], "failed")
+
+    def test_stage3_chairman_failed_sets_manifest_failed(self):
+        manifest = initial_manifest("run-s3-fail", "test", CouncilConfig(members=["A"], chairman="C"))
+        manifest["status"] = "ok"
+        stage3_result = {"model": "C", "status": "failed", "error": "timeout"}
+        record_stage_failures(manifest, [stage3_result])
+        if stage3_result.get("status") != "ok":
+            manifest["status"] = "failed"
+        self.assertEqual(manifest["status"], "failed")
+
+    def test_degraded_ok_preserved_with_partial_stage2_failures(self):
+        manifest = initial_manifest("run-deg-s2", "test", CouncilConfig(members=["A", "B", "C"], chairman="D"))
+        manifest["status"] = "degraded_ok"
+        stage2_results = [
+            {"reviewer_label": "A", "model": "A", "status": "ok"},
+            {"reviewer_label": "B", "model": "B", "status": "failed", "error": "timeout"},
+        ]
+        record_stage_failures(manifest, stage2_results)
+        valid_s2 = [r for r in stage2_results if r.get("status") == "ok"]
+        if not valid_s2:
+            manifest["status"] = "failed"
+        self.assertEqual(manifest["status"], "degraded_ok")
+
+    def test_monitor_stream_detects_budget_exceeded(self):
+        async def _run():
+            lines = []
+            for i in range(5):
+                tc = [{"id": f"tc{i}", "type": "function", "function": {"name": "WebSearch", "arguments": "{}"}}]
+                lines.append(json.dumps({"type": "assistant", "message": {"role": "assistant", "content": f"step {i}", "tool_calls": tc}}).encode())
+            lines.append(json.dumps({"type": "result", "result": "done", "is_error": False}).encode())
+
+            async def stream():
+                for line in lines:
+                    yield line
+
+            collected, tool_calls_seen, budget_exceeded = await monitor_stream_for_budget(stream(), tool_limit=3)
+            self.assertTrue(budget_exceeded)
+            self.assertGreater(tool_calls_seen, 3)
+            self.assertGreater(len(collected), 0)
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_monitor_stream_ok_under_budget(self):
+        async def _run():
+            lines = []
+            for i in range(2):
+                tc = [{"id": f"tc{i}", "type": "function", "function": {"name": "WebSearch", "arguments": "{}"}}]
+                lines.append(json.dumps({"type": "assistant", "message": {"role": "assistant", "content": f"step {i}", "tool_calls": tc}}).encode())
+            lines.append(json.dumps({"type": "result", "result": "done", "is_error": False}).encode())
+
+            async def stream():
+                for line in lines:
+                    yield line
+
+            collected, tool_calls_seen, budget_exceeded = await monitor_stream_for_budget(stream(), tool_limit=30)
+            self.assertFalse(budget_exceeded)
+            self.assertEqual(tool_calls_seen, 2)
+            self.assertEqual(len(collected), 3)
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_monitor_stream_handles_malformed_lines(self):
+        async def _run():
+            lines = [
+                b"not json\n",
+                json.dumps({"type": "assistant", "message": {"role": "assistant", "content": "ok"}}).encode(),
+                b"\n",
+            ]
+
+            async def stream():
+                for line in lines:
+                    yield line
+
+            collected, tool_calls_seen, budget_exceeded = await monitor_stream_for_budget(stream(), tool_limit=30)
+            self.assertFalse(budget_exceeded)
+            self.assertEqual(len(collected), 3)
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_model_performance_summary_in_html_export(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-perf-summary")
+            manifest = {
+                "schema_version": 1,
+                "run_id": "run-perf-summary",
+                "created_at": "2026-05-22T00:00:00Z",
+                "updated_at": "2026-05-22T00:00:00Z",
+                "status": "ok",
+                "input_chars": 4,
+                "config": {"members": ["GPT-5.4", "GLM-5.1"], "chairman": "GPT-5.4", "provider_mode": "direct", "runtime_command": "fake", "query_timeout": 180, "export_html": True},
+                "artifacts": {"html": "html/index.html"},
+                "metadata": {
+                    "label_to_model": {"Response A": "GPT-5.4", "Response B": "GLM-5.1"},
+                    "aggregate_rankings": [{"model": "GPT-5.4", "average_rank": 1.0, "rankings_count": 1, "positions": [1]}],
+                },
+                "stages": {
+                    "stage1": [
+                        {"label": "Response A", "file_label": "A", "model": "GPT-5.4", "expected_model": "GPT-5.4", "actual_model": "GPT-5.4", "response": "A", "status": "ok", "tool_calls_count": 2, "turns_count": 3},
+                        {"label": "Response B", "file_label": "B", "model": "GLM-5.1", "expected_model": "GLM-5.1", "actual_model": "GLM-5.1", "response": "B", "status": "ok", "tool_calls_count": 0, "turns_count": 1},
+                    ],
+                    "stage2": [
+                        review_json() | {"tool_calls_count": 1, "turns_count": 2},
+                    ],
+                    "stage3": final_json() | {"tool_calls_count": 0, "turns_count": 1},
+                },
+                "warnings": ["test warning"],
+                "failures": [],
+            }
+            store.write_manifest(manifest)
+            plain_files = [
+                "input.md", "config.json", "runtime/doctor.json", "runtime/coco.models.json",
+                "stage1/member.prompt.md", "stage1/A.response.md", "stage1/A.coco.stream.jsonl",
+                "stage1/B.response.md", "stage1/B.coco.stream.jsonl",
+                "stage2/review.prompt.md", "stage2/label_to_model.json", "stage2/aggregate.json",
+                "stage2/A.review.md", "stage2/A.coco.stream.jsonl",
+                "stage3/chairman.prompt.md", "stage3/final.md", "stage3/final.coco.stream.jsonl",
+            ]
+            for relative in plain_files:
+                store.write_text(relative, "{}\n")
+            write_json_text(store, "stage1/A.meta.json", stage_meta("GPT-5.4"))
+            write_json_text(store, "stage1/B.meta.json", stage_meta("GLM-5.1"))
+            write_json_text(store, "stage2/A.meta.json", stage_meta("GPT-5.4"))
+            write_json_text(store, "stage2/A.review.json", review_json())
+            write_json_text(store, "stage3/final.meta.json", stage_meta("GPT-5.4"))
+            write_json_text(store, "stage3/final.json", final_json())
+            export_html(store)
+            html_text = (store.root / "html" / "index.html").read_text(encoding="utf-8")
+            self.assertNotIn("模型表现摘要", html_text)
+            self.assertNotIn("class='model-performance'", html_text)
+            self.assertNotIn('id="decision-detail"', html_text)
+            self.assertNotIn("存在警告", html_text)
+            summary_pos = html_text.index("decision-summary")
+            final_pos = html_text.index("final-answer")
+            evidence_pos = html_text.index('id="evidence"')
+            self.assertLess(summary_pos, final_pos)
+            self.assertLess(final_pos, evidence_pos)
+
+    def test_stage3_returns_tuple_with_required_fields(self):
+        async def _run():
+            from coco_llm_council.council import stage3_synthesize_final, CouncilConfig
+            from coco_llm_council.provider import ModelCallResult, TraeCliProvider
+            from coco_llm_council.store import ArtifactStore
+            from unittest.mock import AsyncMock
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s3-tuple")
+            config = CouncilConfig(members=["GLM-5.1"], chairman="GLM-5.1")
+
+            ok_call = ModelCallResult(
+                expected_model="GLM-5.1", actual_model="GLM-5.1", response="Final answer",
+                status="ok", session_id="s1", command=["traecli"], exit_code=0,
+                stdout_path="out.jsonl", stderr_path="err.log",
+            )
+            provider = TraeCliProvider.__new__(TraeCliProvider)
+            provider.query_model = AsyncMock(return_value=ok_call)
+
+            final, meta = await stage3_synthesize_final(
+                "test query",
+                [{"label": "Response A", "model": "GLM-5.1", "response": "A", "status": "ok"}],
+                [{"model": "GLM-5.1", "ranking": "1. Response A", "parsed_ranking": ["Response A"], "status": "ok"}],
+                config, provider, store,
+            )
+            self.assertIsInstance(final, dict)
+            self.assertIsInstance(meta, dict)
+            self.assertIn("model", final)
+            self.assertIn("status", final)
+            self.assertIn("response", final)
+            self.assertEqual(final["status"], "ok")
+            self.assertIn("attempted", meta)
+            self.assertIn("used", meta)
+            self.assertIn("fallback_from", meta)
+            self.assertIsNone(meta["fallback_from"])
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_stage3_fallback_records_in_metadata(self):
+        async def _run():
+            from coco_llm_council.council import stage3_synthesize_final, CouncilConfig
+            from coco_llm_council.provider import ModelCallResult, TraeCliProvider
+            from coco_llm_council.store import ArtifactStore
+            from unittest.mock import AsyncMock
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s3-fb")
+            config = CouncilConfig(members=["GLM-5.1"], chairman="GLM-5.1")
+
+            fail_call = ModelCallResult(
+                expected_model="GLM-5.1", actual_model=None, response="",
+                status="failed", session_id="s1", command=["traecli"], exit_code=1,
+                stdout_path="out.jsonl", stderr_path="err.log", error="timeout",
+            )
+            ok_call = ModelCallResult(
+                expected_model="Qwen3.6-Plus", actual_model="Qwen3.6-Plus", response="Fallback answer",
+                status="ok", session_id="s2", command=["traecli"], exit_code=0,
+                stdout_path="out.jsonl", stderr_path="err.log",
+            )
+            provider = TraeCliProvider.__new__(TraeCliProvider)
+            provider.query_model = AsyncMock(side_effect=[fail_call, ok_call])
+
+            final, meta = await stage3_synthesize_final(
+                "test query",
+                [{"label": "Response A", "model": "GLM-5.1", "response": "A", "status": "ok"}],
+                [{"model": "GLM-5.1", "ranking": "1. Response A", "parsed_ranking": ["Response A"], "status": "ok"}],
+                config, provider, store,
+                fallback_chain=["Qwen3.6-Plus"],
+            )
+            self.assertEqual(final["model"], "Qwen3.6-Plus")
+            self.assertEqual(final["status"], "ok")
+            self.assertEqual(meta["used"], "Qwen3.6-Plus")
+            self.assertEqual(meta["fallback_from"], "GLM-5.1")
+            self.assertEqual(meta["attempted"], ["GLM-5.1", "Qwen3.6-Plus"])
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_recommend_model_choice_prefers_non_openrouter(self):
+        from coco_llm_council.model_selection import recommend_model_choice
+        models = [
+            {"name": "openrouter-2o"},
+            {"name": "GLM-5.1"},
+            {"name": "Qwen3.6-Plus"},
+        ]
+        choice = recommend_model_choice(models)
+        self.assertNotIn("openrouter-2o", choice.members)
+        self.assertEqual(choice.source, "recommended")
+
+    def test_recommend_model_choice_fallback_to_openrouter(self):
+        from coco_llm_council.model_selection import recommend_model_choice
+        models = [{"name": "openrouter-2o"}]
+        choice = recommend_model_choice(models)
+        self.assertEqual(choice.members, ["openrouter-2o"])
+
+    def test_recommend_model_choice_empty_models(self):
+        from coco_llm_council.model_selection import recommend_model_choice
+        choice = recommend_model_choice([])
+        self.assertEqual(choice.source, "static-default")
+
+    def test_recommend_model_chairman_from_preferred(self):
+        from coco_llm_council.model_selection import recommend_model_choice
+        models = [
+            {"name": "GLM-5.1"},
+            {"name": "Qwen3.6-Plus"},
+            {"name": "GPT-5.4"},
+        ]
+        choice = recommend_model_choice(models)
+        self.assertEqual(choice.chairman, "GPT-5.4")
+
+    def test_stage1_hard_timeout_cancels_remaining(self):
+        async def _run():
+            from coco_llm_council.council import stage1_collect_responses, CouncilConfig
+            from coco_llm_council.provider import ModelCallResult, TraeCliProvider
+            from coco_llm_council.store import ArtifactStore
+            from unittest.mock import AsyncMock
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-hard-to")
+            config = CouncilConfig(
+                members=["A", "B", "C"],
+                chairman="X",
+                member_soft_checkpoint=1,
+                member_quorum_checkpoint=2,
+                member_hard_timeout=3,
+            )
+
+            async def slow_query(**kwargs):
+                await asyncio.sleep(10)
+                return ModelCallResult(
+                    expected_model=kwargs["model"], actual_model=kwargs["model"],
+                    response="ok", status="ok", session_id="s1",
+                    command=[], exit_code=0, stdout_path="", stderr_path="",
+                )
+
+            provider = TraeCliProvider.__new__(TraeCliProvider)
+            provider.query_model = slow_query
+
+            results = await asyncio.wait_for(
+                stage1_collect_responses("test", config, provider, store),
+                timeout=15,
+            )
+            failed = [r for r in results if r["status"] == "failed"]
+            self.assertGreater(len(failed), 0)
+            self.assertTrue(any("cancelled_by_stage_timeout" in (r.get("error") or "") for r in results))
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_stage1_quorum_checkpoint_skips_when_sufficient(self):
+        async def _run():
+            from coco_llm_council.council import stage1_collect_responses, CouncilConfig
+            from coco_llm_council.provider import ModelCallResult, TraeCliProvider
+            from coco_llm_council.store import ArtifactStore
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-quorum-to")
+            config = CouncilConfig(
+                members=["A", "B", "C", "D"],
+                chairman="X",
+                min_valid_members=2,
+                member_soft_checkpoint=1,
+                member_quorum_checkpoint=2,
+                member_hard_timeout=30,
+            )
+            call_count = 0
+
+            async def quick_then_slow(**kwargs):
+                nonlocal call_count
+                call_count += 1
+                if call_count <= 2:
+                    return ModelCallResult(
+                        expected_model=kwargs["model"], actual_model=kwargs["model"],
+                        response="ok", status="ok", session_id="s1",
+                        command=[], exit_code=0, stdout_path="", stderr_path="",
+                    )
+                await asyncio.sleep(60)
+                return ModelCallResult(
+                    expected_model=kwargs["model"], actual_model=kwargs["model"],
+                    response="ok", status="ok", session_id="s1",
+                    command=[], exit_code=0, stdout_path="", stderr_path="",
+                )
+
+            provider = TraeCliProvider.__new__(TraeCliProvider)
+            provider.query_model = quick_then_slow
+
+            results = await asyncio.wait_for(
+                stage1_collect_responses("test", config, provider, store),
+                timeout=20,
+            )
+            ok_results = [r for r in results if r["status"] == "ok"]
+            self.assertGreaterEqual(len(ok_results), 2)
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_model_call_result_new_fields(self):
+        result = ModelCallResult(
+            expected_model="GPT-5.4", actual_model="GPT-5.4", response="ok",
+            status="ok", session_id="s1", command=["traecli"], exit_code=0,
+            stdout_path="out.jsonl", stderr_path="err.log",
+        )
+        self.assertEqual(result.tool_calls_count, 0)
+        self.assertEqual(result.turns_count, 0)
+        self.assertFalse(result.retried)
+        self.assertIsNone(result.retry_error)
+        j = result.to_json()
+        self.assertEqual(j["tool_calls_count"], 0)
+        self.assertEqual(j["turns_count"], 0)
+        self.assertFalse(j["retried"])
+        self.assertIsNone(j["retry_error"])
+
+        result2 = ModelCallResult(
+            expected_model="GPT-5.4", actual_model="GPT-5.4", response="ok",
+            status="ok", session_id="s1", command=["traecli"], exit_code=0,
+            stdout_path="out.jsonl", stderr_path="err.log",
+            tool_calls_count=5, turns_count=3, retried=True, retry_error="first error",
+        )
+        self.assertEqual(result2.tool_calls_count, 5)
+        self.assertEqual(result2.turns_count, 3)
+        self.assertTrue(result2.retried)
+        self.assertEqual(result2.retry_error, "first error")
+
+    def test_stage1_result_dict_has_metrics(self):
+        async def _run():
+            from coco_llm_council.council import stage1_collect_responses, CouncilConfig
+            from coco_llm_council.provider import ModelCallResult, TraeCliProvider
+            from unittest.mock import AsyncMock
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s1-metrics")
+            config = CouncilConfig(members=["GLM-5.1"], chairman="X")
+
+            ok_call = ModelCallResult(
+                expected_model="GLM-5.1", actual_model="GLM-5.1", response="Answer",
+                status="ok", session_id="s1", command=["traecli"], exit_code=0,
+                stdout_path="out.jsonl", stderr_path="err.log",
+                tool_calls_count=3, turns_count=5,
+                tool_budget_status="ok", raw_partial_recoverable=False,
+            )
+            provider = TraeCliProvider.__new__(TraeCliProvider)
+            provider.query_model = AsyncMock(return_value=ok_call)
+
+            results = await stage1_collect_responses("test", config, provider, store)
+            self.assertEqual(len(results), 1)
+            r = results[0]
+            self.assertEqual(r["tool_calls_count"], 3)
+            self.assertEqual(r["turns_count"], 5)
+            self.assertEqual(r["tool_budget_status"], "ok")
+            self.assertFalse(r["raw_partial_recoverable"])
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_stage2_result_dict_has_metrics(self):
+        async def _run():
+            from coco_llm_council.council import stage2_collect_rankings, CouncilConfig
+            from coco_llm_council.provider import ModelCallResult, TraeCliProvider
+            from unittest.mock import AsyncMock
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s2-metrics")
+            config = CouncilConfig(members=["GLM-5.1"], chairman="X")
+
+            ok_call = ModelCallResult(
+                expected_model="GLM-5.1", actual_model="GLM-5.1",
+                response="FINAL RANKING:\n1. Response A",
+                status="ok", session_id="s1", command=["traecli"], exit_code=0,
+                stdout_path="out.jsonl", stderr_path="err.log",
+                tool_calls_count=1, turns_count=2,
+                tool_budget_status="ok", raw_partial_recoverable=False,
+            )
+            provider = TraeCliProvider.__new__(TraeCliProvider)
+            provider.query_model = AsyncMock(return_value=ok_call)
+
+            stage1_results = [{"label": "Response A", "model": "GLM-5.1", "response": "A", "status": "ok"}]
+            results, _label_map = await stage2_collect_rankings("test", stage1_results, config, provider, store)
+            self.assertEqual(len(results), 1)
+            r = results[0]
+            self.assertEqual(r["tool_calls_count"], 1)
+            self.assertEqual(r["turns_count"], 2)
+            self.assertEqual(r["tool_budget_status"], "ok")
+            self.assertFalse(r["raw_partial_recoverable"])
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_stage3_result_dict_has_metrics(self):
+        async def _run():
+            from coco_llm_council.council import stage3_synthesize_final, CouncilConfig
+            from coco_llm_council.provider import ModelCallResult, TraeCliProvider
+            from unittest.mock import AsyncMock
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s3-metrics")
+            config = CouncilConfig(members=["GLM-5.1"], chairman="GLM-5.1")
+
+            ok_call = ModelCallResult(
+                expected_model="GLM-5.1", actual_model="GLM-5.1", response="Final answer",
+                status="ok", session_id="s1", command=["traecli"], exit_code=0,
+                stdout_path="out.jsonl", stderr_path="err.log",
+                tool_calls_count=0, turns_count=1,
+                tool_budget_status="ok", raw_partial_recoverable=False,
+            )
+            provider = TraeCliProvider.__new__(TraeCliProvider)
+            provider.query_model = AsyncMock(return_value=ok_call)
+
+            final, meta = await stage3_synthesize_final(
+                "test query",
+                [{"label": "Response A", "model": "GLM-5.1", "response": "A", "status": "ok"}],
+                [{"model": "GLM-5.1", "ranking": "1. Response A", "parsed_ranking": ["Response A"], "status": "ok"}],
+                config, provider, store,
+            )
+            self.assertEqual(final["tool_calls_count"], 0)
+            self.assertEqual(final["turns_count"], 1)
+            self.assertEqual(final["tool_budget_status"], "ok")
+            self.assertFalse(final["raw_partial_recoverable"])
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_retry_on_runtime_error(self):
+        async def _run():
+            from coco_llm_council.provider import TraeCliProvider, ModelCallResult
+            from unittest.mock import AsyncMock, patch
+
+            provider = TraeCliProvider.__new__(TraeCliProvider)
+
+            fail_call = ModelCallResult(
+                expected_model="GPT-5.4", actual_model=None, response="",
+                status="failed", session_id="s1", command=["traecli"], exit_code=1,
+                stdout_path="out.jsonl", stderr_path="err.log",
+                error="traecli result error",
+            )
+            ok_call = ModelCallResult(
+                expected_model="GPT-5.4", actual_model="GPT-5.4", response="OK",
+                status="ok", session_id="s2", command=["traecli"], exit_code=0,
+                stdout_path="out.jsonl", stderr_path="err.log",
+            )
+
+            with patch.object(provider, '_query_model_once', new_callable=AsyncMock) as mock_once:
+                mock_once.side_effect = [fail_call, ok_call]
+                with patch('coco_llm_council.provider.asyncio.sleep', new_callable=AsyncMock):
+                    result = await provider.query_model(
+                        model="GPT-5.4", prompt="test", run_id="r1",
+                        stage="stage1", label="A", output_dir=Path(tempfile.mkdtemp()),
+                    )
+
+            self.assertEqual(result.status, "ok")
+            self.assertTrue(result.retried)
+            self.assertEqual(result.retry_error, "traecli result error")
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_no_retry_on_model_error(self):
+        async def _run():
+            from coco_llm_council.provider import TraeCliProvider, ModelCallResult
+            from unittest.mock import AsyncMock, patch
+
+            provider = TraeCliProvider.__new__(TraeCliProvider)
+
+            fail_call = ModelCallResult(
+                expected_model="GPT-5.4", actual_model="GPT-5.4", response="",
+                status="failed", session_id="s1", command=["traecli"], exit_code=0,
+                stdout_path="out.jsonl", stderr_path="err.log",
+                error="empty model response",
+            )
+
+            with patch.object(provider, '_query_model_once', new_callable=AsyncMock) as mock_once:
+                mock_once.return_value = fail_call
+                result = await provider.query_model(
+                    model="GPT-5.4", prompt="test", run_id="r1",
+                    stage="stage1", label="A", output_dir=Path(tempfile.mkdtemp()),
+                )
+
+            self.assertEqual(result.status, "failed")
+            self.assertFalse(result.retried)
+            self.assertEqual(mock_once.call_count, 1)
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_no_retry_on_budget_kill(self):
+        async def _run():
+            from coco_llm_council.provider import TraeCliProvider, ModelCallResult
+            from unittest.mock import AsyncMock, patch
+
+            provider = TraeCliProvider.__new__(TraeCliProvider)
+
+            budget_call = ModelCallResult(
+                expected_model="GPT-5.4", actual_model="GPT-5.4", response="partial",
+                status="failed", session_id="s1", command=["traecli"], exit_code=1,
+                stdout_path="out.jsonl", stderr_path="err.log",
+                error="dropped_tool_budget: killed after 50 tool calls (limit 45)",
+                tool_budget_status="dropped",
+            )
+
+            with patch.object(provider, '_query_model_once', new_callable=AsyncMock) as mock_once:
+                mock_once.return_value = budget_call
+                result = await provider.query_model(
+                    model="GPT-5.4", prompt="test", run_id="r1",
+                    stage="stage1", label="A", output_dir=Path(tempfile.mkdtemp()),
+                )
+
+            self.assertEqual(result.status, "failed")
+            self.assertFalse(result.retried)
+            self.assertEqual(mock_once.call_count, 1)
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_html_no_quorum_status_card(self):
+        from coco_llm_council.html_export import render_summary_cards
+        manifest = {
+            "config": {"members": ["GPT-5.4"], "chairman": "GPT-5.4"},
+            "status": "ok",
+        }
+        html = render_summary_cards(manifest, [])
+        self.assertNotIn("Quorum 状态", html)
+        self.assertIn("最高排序成员", html)
+        self.assertIn("成员模型", html)
+        self.assertIn("主席模型", html)
+
+    def test_html_no_chairman_fallback_card(self):
+        from coco_llm_council.html_export import render_summary_cards
+        manifest = {
+            "config": {"members": ["GPT-5.4"], "chairman": "Qwen3.6-Plus"},
+            "metadata": {"chairman": {"fallback_from": "GPT-5.4", "used": "Qwen3.6-Plus"}},
+            "status": "ok",
+        }
+        html = render_summary_cards(manifest, [])
+        self.assertNotIn("主席降级", html)
+        self.assertNotIn("fallback_from", html)
+
+    def test_html_no_degraded_banner(self):
+        from coco_llm_council.html_export import render_alerts
+        html = render_alerts([], [], manifest_status="degraded_ok")
+        self.assertNotIn("Quorum 降级", html)
+        self.assertNotIn("warning-banner", html)
+        self.assertEqual(html, "")
+
+    def test_html_summary_cards_above_final_answer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-c3-layout")
+            manifest = {
+                "schema_version": 1,
+                "run_id": "run-c3-layout",
+                "created_at": "2026-05-22T00:00:00Z",
+                "updated_at": "2026-05-22T00:00:00Z",
+                "status": "ok",
+                "input_chars": 4,
+                "config": {"members": ["GPT-5.4"], "chairman": "GPT-5.4", "provider_mode": "direct", "runtime_command": "fake", "query_timeout": 180, "export_html": True},
+                "artifacts": {"html": "html/index.html"},
+                "metadata": {
+                    "label_to_model": {"Response A": "GPT-5.4"},
+                    "aggregate_rankings": [{"model": "GPT-5.4", "average_rank": 1.0, "rankings_count": 1, "positions": [1]}],
+                },
+                "stages": {
+                    "stage1": [
+                        {"label": "Response A", "file_label": "A", "model": "GPT-5.4", "expected_model": "GPT-5.4", "actual_model": "GPT-5.4", "response": "A", "status": "ok", "tool_calls_count": 0, "turns_count": 1},
+                    ],
+                    "stage2": [
+                        review_json() | {"tool_calls_count": 0, "turns_count": 1},
+                    ],
+                    "stage3": final_json() | {"tool_calls_count": 0, "turns_count": 1},
+                },
+                "warnings": [],
+                "failures": [],
+            }
+            store.write_manifest(manifest)
+            plain_files = [
+                "input.md", "config.json", "runtime/doctor.json", "runtime/coco.models.json",
+                "stage1/member.prompt.md", "stage1/A.response.md", "stage1/A.coco.stream.jsonl",
+                "stage2/review.prompt.md", "stage2/label_to_model.json", "stage2/aggregate.json",
+                "stage2/A.review.md", "stage2/A.coco.stream.jsonl",
+                "stage3/chairman.prompt.md", "stage3/final.md", "stage3/final.coco.stream.jsonl",
+            ]
+            for relative in plain_files:
+                store.write_text(relative, "{}\n")
+            write_json_text(store, "stage1/A.meta.json", stage_meta("GPT-5.4"))
+            write_json_text(store, "stage2/A.meta.json", stage_meta("GPT-5.4"))
+            write_json_text(store, "stage2/A.review.json", review_json())
+            write_json_text(store, "stage3/final.meta.json", stage_meta("GPT-5.4"))
+            write_json_text(store, "stage3/final.json", final_json())
+            export_html(store)
+            html_text = (store.root / "html" / "index.html").read_text(encoding="utf-8")
+            self.assertNotIn('id="decision-detail"', html_text)
+            self.assertNotIn("class='model-performance'", html_text)
+            self.assertNotIn("模型表现摘要", html_text)
+            summary_pos = html_text.index("decision-summary")
+            final_pos = html_text.index("final-answer")
+            evidence_pos = html_text.index('id="evidence"')
+            self.assertLess(summary_pos, final_pos)
+            self.assertLess(final_pos, evidence_pos)
+
+    def test_degraded_ok_exit_code_zero(self):
+        from coco_llm_council.cli import emit
+        payload = {"run_id": "test", "status": "degraded_ok", "degraded": True}
+        exit_code = emit(payload, as_json=False, ok=True, text="degraded_ok")
+        self.assertEqual(exit_code, 0)
+
+    def test_degraded_ok_json_has_degraded_flag(self):
+        from coco_llm_council.cli import emit
+        import sys
+        payload = {"run_id": "test", "status": "degraded_ok", "degraded": True}
+        old_stdout = sys.stdout
+        sys.stdout = StringIO()
+        exit_code = emit(payload, as_json=True, ok=True, text="degraded_ok")
+        output = sys.stdout.getvalue()
+        sys.stdout = old_stdout
+        self.assertEqual(exit_code, 0)
+        data = json.loads(output)
+        self.assertTrue(data.get("degraded"))
+
+    def test_chairman_as_member_ok_counts_toward_quorum(self):
+        results = [
+            {"model": "GPT-5.4", "status": "ok"},
+            {"model": "GLM-5.1", "status": "ok"},
+            {"model": "Qwen3.6-Plus", "status": "ok"},
+            {"model": "Kimi-K2.6", "status": "ok"},
+            {"model": "DeepSeek-V4", "status": "ok"},
+            {"model": "Llama4-M", "status": "ok"},
+            {"model": "Mistral-L", "status": "failed"},
+        ]
+        status = classify_stage1_status(results, min_valid_members=6, chairman_model="GPT-5.4")
+        self.assertEqual(status, "degraded_ok")
+        status_without_chairman_counting = classify_stage1_status(
+            [r for r in results if r["model"] != "GPT-5.4"],
+            min_valid_members=6,
+            chairman_model="GPT-5.4",
+        )
+        self.assertEqual(status_without_chairman_counting, "failed")
+
+    def test_chairman_as_member_failed_is_free(self):
+        results = [
+            {"model": "GPT-5.4", "status": "failed"},
+            {"model": "GLM-5.1", "status": "ok"},
+            {"model": "Qwen3.6-Plus", "status": "ok"},
+            {"model": "Kimi-K2.6", "status": "ok"},
+            {"model": "DeepSeek-V4", "status": "ok"},
+            {"model": "Llama4-M", "status": "ok"},
+        ]
+        status = classify_stage1_status(results, min_valid_members=6, chairman_model="GPT-5.4")
+        self.assertEqual(status, "ok")
+
+    def test_chairman_independent_still_excluded(self):
+        results = [
+            {"model": "GPT-5.4", "status": "ok"},
+            {"model": "GLM-5.1", "status": "ok"},
+            {"model": "Qwen3.6-Plus", "status": "ok"},
+            {"model": "Kimi-K2.6", "status": "ok"},
+            {"model": "DeepSeek-V4", "status": "failed"},
+            {"model": "Llama4-M", "status": "failed"},
+            {"model": "Mistral-L", "status": "failed"},
+        ]
+        status = classify_stage1_status(results, min_valid_members=6, chairman_model="Claude-4")
+        self.assertEqual(status, "failed")
 
 
 if __name__ == "__main__":

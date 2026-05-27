@@ -30,8 +30,8 @@ class CouncilConfig:
     member_agents: list[str | None] | None = None
     chairman_agent: str | None = None
     use_yolo: bool = True
-    min_valid_members: int = 4
-    target_valid_members: int = 5
+    min_valid_members: int = 6
+    target_valid_members: int = 8
     chairman_fallback: list[str] | None = None
     member_soft_checkpoint: int = 300
     member_quorum_checkpoint: int = 480
@@ -54,10 +54,10 @@ async def stage1_collect_responses(
     prompt = build_stage1_prompt(user_query)
     store.write_text("stage1/member.prompt.md", prompt + "\n")
     output_dir = store.path("stage1")
-    tasks = []
+    task_map: dict[asyncio.Task, tuple[int, str, str]] = {}
     for index, model in enumerate(config.members):
         label = chr(65 + index)
-        tasks.append(
+        task = asyncio.create_task(
             provider.query_model(
                 model=model,
                 prompt=prompt,
@@ -68,11 +68,65 @@ async def stage1_collect_responses(
                 agent=config.agent_for_member(index),
             )
         )
-    call_results = await asyncio.gather(*tasks)
+        task_map[task] = (index, model, label)
+
+    call_results: list[ModelCallResult | None] = [None] * len(config.members)
+    loop = asyncio.get_running_loop()
+    stage_start = loop.time()
+    soft_warned = False
+    pending: set[asyncio.Task] = set(task_map.keys())
+
+    while pending:
+        elapsed = loop.time() - stage_start
+
+        if elapsed > config.member_hard_timeout:
+            store.event("stage1_hard_timeout", {"elapsed_seconds": int(elapsed)})
+            for t in pending:
+                t.cancel()
+            break
+
+        if not soft_warned and elapsed > config.member_soft_checkpoint:
+            store.event("stage1_soft_checkpoint", {"elapsed_seconds": int(elapsed)})
+            soft_warned = True
+
+        if elapsed > config.member_quorum_checkpoint:
+            ok_count = sum(1 for r in call_results if r is not None and r.status == "ok")
+            if ok_count >= config.min_valid_members:
+                store.event("stage1_quorum_checkpoint", {"ok_count": ok_count, "elapsed_seconds": int(elapsed)})
+                for t in pending:
+                    t.cancel()
+                break
+
+        done, pending = await asyncio.wait(pending, timeout=10, return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            idx, model, label = task_map[task]
+            try:
+                call_results[idx] = task.result()
+            except (asyncio.CancelledError, Exception) as exc:
+                call_results[idx] = ModelCallResult(
+                    expected_model=model, actual_model=None, response="",
+                    status="failed", session_id="", command=[], exit_code=-1,
+                    stdout_path="", stderr_path="", error=f"cancelled_by_stage_timeout: {exc}",
+                )
+
+    for task in task_map:
+        idx, model, label = task_map[task]
+        if call_results[idx] is None:
+            call_results[idx] = ModelCallResult(
+                expected_model=model, actual_model=None, response="",
+                status="failed", session_id="", command=[], exit_code=-1,
+                stdout_path="", stderr_path="", error="cancelled_by_stage_timeout",
+            )
 
     stage1_results: list[dict[str, Any]] = []
     for index, (model, call) in enumerate(zip(config.members, call_results)):
         label = chr(65 + index)
+        if call is None:
+            call = ModelCallResult(
+                expected_model=model, actual_model=None, response="",
+                status="failed", session_id="", command=[], exit_code=-1,
+                stdout_path="", stderr_path="", error="cancelled_by_stage_timeout",
+            )
         store.write_text(f"stage1/{label}.response.md", call.response + "\n")
         stage1_results.append(
             {
@@ -88,6 +142,12 @@ async def stage1_collect_responses(
                 "meta_path": f"stage1/{label}.meta.json",
                 "response_path": f"stage1/{label}.response.md",
                 "error": call.error,
+                "tool_calls_count": call.tool_calls_count,
+                "turns_count": call.turns_count,
+                "tool_budget_status": call.tool_budget_status,
+                "raw_partial_recoverable": call.raw_partial_recoverable,
+                "retried": call.retried,
+                "retry_error": call.retry_error,
             }
         )
     return stage1_results
@@ -143,6 +203,12 @@ async def stage2_collect_rankings(
             "error": call.error,
             "review_path": f"stage2/{label}.review.md",
             "json_path": f"stage2/{label}.review.json",
+            "tool_calls_count": call.tool_calls_count,
+            "turns_count": call.turns_count,
+            "tool_budget_status": call.tool_budget_status,
+            "raw_partial_recoverable": call.raw_partial_recoverable,
+            "retried": call.retried,
+            "retry_error": call.retry_error,
         }
         store.write_text(f"stage2/{label}.review.md", call.response + "\n")
         store.write_json(f"stage2/{label}.review.json", review)
@@ -214,6 +280,12 @@ async def stage3_synthesize_final(
         "prompt_path": "stage3/chairman.prompt.md",
         "response_path": "stage3/final.md",
         "json_path": "stage3/final.json",
+        "tool_calls_count": call.tool_calls_count,
+        "turns_count": call.turns_count,
+        "tool_budget_status": call.tool_budget_status,
+        "raw_partial_recoverable": call.raw_partial_recoverable,
+        "retried": call.retried,
+        "retry_error": call.retry_error,
     }
     store.write_text("stage3/final.md", call.response + "\n")
     store.write_json("stage3/final.json", final)
@@ -394,9 +466,9 @@ async def run_full_council(
     store.event("stage1_start", {"members": config.members})
     stage1_results = await stage1_collect_responses(user_query, config, provider, store)
     manifest["stages"]["stage1"] = stage1_results
-    stage1_status = classify_stage1_status(stage1_results, config.min_valid_members)
+    stage1_status = classify_stage1_status(stage1_results, config.min_valid_members, chairman_model=config.chairman)
     update_manifest_with_stage1_status(manifest, stage1_status)
-    update_manifest_status(manifest, stage1_results)
+    record_stage_failures(manifest, stage1_results)
     store.write_manifest(manifest)
     if stage1_status == "failed":
         return manifest
@@ -409,9 +481,11 @@ async def run_full_council(
     manifest["metadata"]["label_to_model"] = label_to_model
     manifest["metadata"]["aggregate_rankings"] = aggregate_rankings
     manifest["stages"]["stage2"] = stage2_results
-    update_manifest_status(manifest, stage2_results)
-    store.write_manifest(manifest)
-    if manifest["status"] == "failed":
+    record_stage_failures(manifest, stage2_results)
+    valid_stage2 = [r for r in stage2_results if r.get("status") == "ok"]
+    if not valid_stage2:
+        manifest["status"] = "failed"
+        store.write_manifest(manifest)
         return manifest
 
     fallback_chain = config.chairman_fallback
@@ -426,7 +500,9 @@ async def run_full_council(
     )
     manifest["stages"]["stage3"] = stage3_result
     manifest["metadata"]["chairman"] = chairman_meta
-    update_manifest_status(manifest, [stage3_result])
+    record_stage_failures(manifest, [stage3_result])
+    if stage3_result.get("status") != "ok":
+        manifest["status"] = "failed"
     store.write_manifest(manifest)
     return manifest
 
@@ -478,11 +554,26 @@ def config_to_json(config: CouncilConfig) -> dict[str, Any]:
     }
 
 
-def classify_stage1_status(results: list[dict[str, Any]], min_valid_members: int = 4) -> str:
-    ok_count = sum(1 for r in results if r.get("status") == "ok")
-    if ok_count == len(results):
+def classify_stage1_status(results: list[dict[str, Any]], min_valid_members: int = 6, chairman_model: str | None = None) -> str:
+    chairman_in_members = chairman_model and any(r.get("model") == chairman_model for r in results)
+    if chairman_in_members:
+        chairman_results = [r for r in results if r.get("model") == chairman_model]
+        non_chairman = [r for r in results if r.get("model") != chairman_model]
+        chairman_ok = all(r.get("status") == "ok" for r in chairman_results)
+        if chairman_ok:
+            ok_count = sum(1 for r in non_chairman if r.get("status") == "ok") + len(chairman_results)
+            total = len(non_chairman) + len(chairman_results)
+        else:
+            ok_count = sum(1 for r in non_chairman if r.get("status") == "ok")
+            total = len(non_chairman)
+    else:
+        non_chairman = [r for r in results if r.get("model") != chairman_model] if chairman_model else results
+        ok_count = sum(1 for r in non_chairman if r.get("status") == "ok")
+        total = len(non_chairman)
+    effective_min = min(min_valid_members, total)
+    if ok_count == total and total > 0:
         return "ok"
-    if ok_count >= min_valid_members:
+    if ok_count >= effective_min:
         return "degraded_ok"
     return "failed"
 
@@ -494,7 +585,7 @@ def update_manifest_with_stage1_status(manifest: dict[str, Any], stage1_status: 
         manifest["status"] = "degraded_ok"
 
 
-def update_manifest_status(manifest: dict[str, Any], records: list[dict[str, Any]]) -> None:
+def record_stage_failures(manifest: dict[str, Any], records: list[dict[str, Any]]) -> None:
     for record in records:
         if record.get("status") not in ("ok",):
             failure = {
@@ -505,7 +596,6 @@ def update_manifest_status(manifest: dict[str, Any], records: list[dict[str, Any
                 "actual_model": record.get("actual_model"),
             }
             manifest["failures"].append(failure)
-            manifest["status"] = "failed"
 
 
 def load_profile(path: Path) -> dict[str, Any]:

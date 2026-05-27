@@ -234,10 +234,10 @@ th {{ background:var(--paper-deep); }}
 .status-degraded_ok {{ color:var(--warn); }}
 .summary-strip {{
   display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
+  grid-template-columns:repeat(3,minmax(0,1fr));
   border-top:1px solid var(--line);
   border-bottom:1px solid var(--line);
-  margin:32px 0 36px;
+  margin:0 0 24px;
 }}
 .summary-card {{ padding:14px; border-right:1px solid var(--line); min-width:0; }}
 .summary-card:last-child {{ border-right:0; }}
@@ -322,6 +322,9 @@ svg {{ width:100%; max-width:760px; height:auto; display:block; }}
     </div>
     </section>
     {render_alerts(warnings, failures, manifest.get('status', 'ok'))}
+    <section id="decision-summary" class="summary-strip" aria-label="决策摘要">
+      {render_summary_cards(manifest, aggregate)}
+    </section>
     <article id="final-answer" class="reader answer">
       <div class="stamp">已验证<br>阶段 3</div>
       <p class="reader-label">阶段 3 · 主席综合</p>
@@ -329,9 +332,6 @@ svg {{ width:100%; max-width:760px; height:auto; display:block; }}
         {final_html or "<p class='meta'>未找到最终答案内容。</p>"}
       </div>
     </article>
-    <section id="decision-summary" class="summary-strip" aria-label="决策摘要">
-      {render_summary_cards(manifest, aggregate)}
-    </section>
     <section id="evidence" class="appendix" aria-label="证据层">
       <h2 class="appendix-title">证据附录</h2>
       <details id="stage1"><summary>附录 A · 阶段 1 候选回答</summary><div class="details-body">{stage1_tabs}</div></details>
@@ -577,20 +577,57 @@ def render_ranking_matrix(aggregate: list[dict[str, Any]]) -> str:
 
 def render_summary_cards(manifest: dict[str, Any], aggregate: list[dict[str, Any]]) -> str:
     config = manifest.get("config") if isinstance(manifest.get("config"), dict) else {}
-    metadata = manifest.get("metadata") if isinstance(manifest.get("metadata"), dict) else {}
     top_model = aggregate[0].get("model") if aggregate and isinstance(aggregate[0], dict) else "暂无聚合排序"
-    manifest_status = manifest.get("status", "ok")
-    quorum_label = "Quorum 正常" if manifest_status == "ok" else ("Quorum 降级" if manifest_status == "degraded_ok" else "Quorum 失败")
-    chairman_meta = metadata.get("chairman") if isinstance(metadata.get("chairman"), dict) else None
-    fallback_trace = ""
-    if chairman_meta and chairman_meta.get("fallback_from") is not None:
-        fallback_trace = f"<div class='summary-card'><h3>主席降级</h3><p>{esc(chairman_meta['fallback_from'])} → {esc(chairman_meta['used'])}</p></div>"
     return (
         f"<div class='summary-card'><h3>最高排序成员</h3><p>{esc(top_model)}</p></div>"
         f"<div class='summary-card'><h3>成员模型</h3><p>{esc(', '.join(config.get('members') or []))}</p></div>"
         f"<div class='summary-card'><h3>主席模型</h3><p>{esc(config.get('chairman'))}</p></div>"
-        f"<div class='summary-card'><h3>Quorum 状态</h3><p>{esc(quorum_label)}</p></div>"
-        f"{fallback_trace}"
+    )
+
+
+def render_model_performance_summary(manifest: dict[str, Any]) -> str:
+    stages = manifest.get("stages") if isinstance(manifest.get("stages"), dict) else {}
+    stage1 = stages.get("stage1") if isinstance(stages.get("stage1"), list) else []
+    stage2 = stages.get("stage2") if isinstance(stages.get("stage2"), list) else []
+    stage3 = stages.get("stage3") if isinstance(stages.get("stage3"), dict) else {}
+    rows = []
+    for item in stage1:
+        if not isinstance(item, dict):
+            continue
+        rows.append(_performance_row(item.get("model", "?"), "阶段 1", item))
+    for item in stage2:
+        if not isinstance(item, dict):
+            continue
+        rows.append(_performance_row(item.get("model", "?"), "阶段 2", item))
+    if stage3:
+        rows.append(_performance_row(stage3.get("model", "?"), "阶段 3", stage3))
+    if not rows:
+        return ""
+    header = "<tr><th>模型</th><th>阶段</th><th>状态</th><th>工具调用</th><th>轮次</th><th>备注</th></tr>"
+    return (
+        f"<div class='model-performance' aria-label='模型表现摘要'>"
+        f"<h2 class='appendix-title'>模型表现摘要</h2>"
+        f"<table><thead>{header}</thead><tbody>{''.join(rows)}</tbody></table>"
+        f"</div>"
+    )
+
+
+def _performance_row(model, stage_label, item):
+    status = item.get("status", "?")
+    status_class = f"status-{esc(status)}" if status in ("ok", "failed", "degraded_ok") else ""
+    tc = item.get("tool_calls_count")
+    turns = item.get("turns_count")
+    remarks = []
+    if item.get("raw_partial_recoverable"):
+        remarks.append("部分输出可恢复")
+    if item.get("tool_budget_status") and item.get("tool_budget_status") not in ("ok", None):
+        remarks.append(f"工具预算：{item.get('tool_budget_status')}")
+    return (
+        f"<tr><td>{esc(model)}</td><td>{esc(stage_label)}</td>"
+        f"<td class='{status_class}'>{esc(status)}</td>"
+        f"<td>{esc(str(tc)) if tc is not None else '—'}</td>"
+        f"<td>{esc(str(turns)) if turns is not None else '—'}</td>"
+        f"<td>{esc('；'.join(remarks)) if remarks else '—'}</td></tr>"
     )
 
 
@@ -609,11 +646,7 @@ def render_metadata(manifest: dict[str, Any], warnings: list[Any], failures: lis
 
 def render_alerts(warnings: list[Any], failures: list[Any], manifest_status: str = "ok") -> str:
     failure_html = "" if not failures else f"<div class='failure-banner'><strong>存在失败项。</strong><pre><code>{esc(json.dumps(failures, ensure_ascii=False, indent=2))}</code></pre></div>"
-    warning_html = "" if not warnings else f"<div class='warning-banner'><strong>存在警告。</strong><pre><code>{esc(json.dumps(warnings, ensure_ascii=False, indent=2))}</code></pre></div>"
-    degraded_html = ""
-    if manifest_status == "degraded_ok" and not failures:
-        degraded_html = "<div class='warning-banner'><strong>Quorum 降级运行。</strong>部分成员未成功响应，但已达到最低有效成员数，council 继续运行。</div>"
-    return failure_html + warning_html + degraded_html
+    return failure_html
 
 
 def render_trace(stage1: list[Any], stage2: list[Any], stage3: dict[str, Any] | None) -> str:

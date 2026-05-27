@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import shlex
 import subprocess
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -47,7 +50,25 @@ def append_jsonl(path: Path, data: Any) -> None:
 
 
 def run_command(args: list[str], timeout: int | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, text=True, capture_output=True, timeout=timeout, check=False)
+    try:
+        return subprocess.run(args, text=True, capture_output=True, timeout=timeout, check=False)
+    except subprocess.TimeoutExpired:
+        with tempfile.NamedTemporaryFile(mode="w+", suffix=".out", delete=False) as tmp_out:
+            out_path = tmp_out.name
+        with tempfile.NamedTemporaryFile(mode="w+", suffix=".err", delete=False) as tmp_err:
+            err_path = tmp_err.name
+        try:
+            shell_cmd = " ".join(shlex.quote(a) for a in args)
+            rc = os.system(f"{shell_cmd} >{shlex.quote(out_path)} 2>{shlex.quote(err_path)}")
+            actual_rc = rc >> 8 if os.name != "nt" else rc
+            with open(out_path, "r") as f:
+                stdout = f.read()
+            with open(err_path, "r") as f:
+                stderr = f.read()
+            return subprocess.CompletedProcess(args=args, returncode=actual_rc, stdout=stdout, stderr=stderr)
+        finally:
+            os.unlink(out_path)
+            os.unlink(err_path)
 
 
 def parse_json_output(stdout: str) -> Any:

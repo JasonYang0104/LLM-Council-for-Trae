@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,10 @@ class ModelCallResult:
     assistant_content_chars_total: int = 0
     last_assistant_content_chars: int = 0
     raw_partial_recoverable: bool = False
+    tool_calls_count: int = 0
+    turns_count: int = 0
+    retried: bool = False
+    retry_error: str | None = None
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -55,7 +60,44 @@ class ModelCallResult:
             "assistant_content_chars_total": self.assistant_content_chars_total,
             "last_assistant_content_chars": self.last_assistant_content_chars,
             "raw_partial_recoverable": self.raw_partial_recoverable,
+            "tool_calls_count": self.tool_calls_count,
+            "turns_count": self.turns_count,
+            "retried": self.retried,
+            "retry_error": self.retry_error,
         }
+
+
+async def monitor_stream_for_budget(
+    stream: AsyncIterator[bytes],
+    tool_limit: int,
+) -> tuple[list[bytes], int, bool]:
+    collected: list[bytes] = []
+    tool_calls_seen = 0
+    budget_exceeded = False
+
+    try:
+        async for raw_line in stream:
+            collected.append(raw_line)
+            if budget_exceeded:
+                continue
+            line = raw_line.decode("utf-8", errors="replace").strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if event.get("type") == "assistant":
+                message = event.get("message")
+                if isinstance(message, dict):
+                    for _tc in message.get("tool_calls") or []:
+                        tool_calls_seen += 1
+                if tool_calls_seen > tool_limit:
+                    budget_exceeded = True
+    except Exception:
+        pass
+
+    return collected, tool_calls_seen, budget_exceeded
 
 
 class TraeCliProvider:
@@ -70,9 +112,9 @@ class TraeCliProvider:
         self.query_timeout = query_timeout
         self.runtime_cwd = runtime_cwd
         self.use_yolo = use_yolo
-        self.explore_tool_limit: int = 30
-        self.explore_turn_limit: int = 10
-        self.deliver_tool_limit: int = 60
+        self.explore_tool_limit: int = 16
+        self.explore_turn_limit: int = 12
+        self.deliver_tool_limit: int = 45
         self.deliver_turn_limit: int = 24
 
     def _build_command(
@@ -112,6 +154,40 @@ class TraeCliProvider:
         output_dir: Path,
         agent: str | None = None,
     ) -> ModelCallResult:
+        result = await self._query_model_once(
+            model=model, prompt=prompt, run_id=run_id,
+            stage=stage, label=label, output_dir=output_dir, agent=agent,
+        )
+        is_runtime_error = (
+            result.status == "failed"
+            and result.exit_code != 0
+            and result.error is not None
+            and "dropped_tool_budget" not in result.error
+            and result.error != "timeout"
+        )
+        if is_runtime_error:
+            first_error = result.error
+            await asyncio.sleep(10)
+            result = await self._query_model_once(
+                model=model, prompt=prompt, run_id=run_id,
+                stage=stage, label=label, output_dir=output_dir, agent=agent,
+            )
+            result.retried = True
+            result.retry_error = first_error
+            write_json(output_dir / f"{label}.meta.json", result.to_json() | {"captured_at": utc_now()})
+        return result
+
+    async def _query_model_once(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        run_id: str,
+        stage: str,
+        label: str,
+        output_dir: Path,
+        agent: str | None = None,
+    ) -> ModelCallResult:
         output_dir.mkdir(parents=True, exist_ok=True)
         session_id = slugify(f"{run_id}-{stage}-{label}")
         stream_path = output_dir / f"{label}.coco.stream.jsonl"
@@ -125,12 +201,34 @@ class TraeCliProvider:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(self.runtime_cwd) if self.runtime_cwd else None,
+            limit=10 * 1024 * 1024,
         )
+        budget_killed = False
         try:
-            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=self.query_timeout + 30)
+            collected, _stream_tool_calls, budget_exceeded = await asyncio.wait_for(
+                monitor_stream_for_budget(proc.stdout, self.deliver_tool_limit),
+                timeout=self.query_timeout + 30,
+            )
+            if budget_exceeded:
+                budget_killed = True
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
+            try:
+                await proc.wait()
+            except ProcessLookupError:
+                pass
+            stdout_b = b"".join(collected)
+            stderr_b = await proc.stderr.read()
         except asyncio.TimeoutError:
             proc.kill()
-            stdout_b, stderr_b = await proc.communicate()
+            try:
+                await proc.wait()
+            except ProcessLookupError:
+                pass
+            stdout_b = b""
+            stderr_b = b""
             stdout = stdout_b.decode("utf-8", errors="replace")
             stderr = stderr_b.decode("utf-8", errors="replace") + "\nTimed out while waiting for traecli."
             write_text(stream_path, stdout)
@@ -151,6 +249,12 @@ class TraeCliProvider:
                 error="timeout",
                 permission_mode=permission_mode,
             )
+        except asyncio.CancelledError:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+            raise
 
         stdout = stdout_b.decode("utf-8", errors="replace")
         stderr = stderr_b.decode("utf-8", errors="replace")
@@ -181,10 +285,13 @@ class TraeCliProvider:
 
         copied = copy_coco_session_files(session_id, output_dir, label)
         tool_budget_status = "ok"
-        if tool_calls_count > self.deliver_tool_limit or turns_count > self.deliver_turn_limit:
+        if budget_killed or tool_calls_count > self.deliver_tool_limit or turns_count > self.deliver_turn_limit:
             tool_budget_status = "dropped_tool_budget"
         elif tool_calls_count > self.explore_tool_limit or turns_count > self.explore_turn_limit:
             tool_budget_status = "near_limit"
+        if budget_killed and status == "ok":
+            status = "failed"
+            error = f"dropped_tool_budget: killed after {tool_calls_count} tool calls (limit {self.deliver_tool_limit})"
         result = ModelCallResult(
             expected_model=model,
             actual_model=actual_model,
@@ -206,6 +313,8 @@ class TraeCliProvider:
             assistant_content_chars_total=parsed.get("assistant_content_chars_total", 0),
             last_assistant_content_chars=parsed.get("last_assistant_content_chars", 0),
             raw_partial_recoverable=parsed.get("raw_partial_recoverable", False),
+            tool_calls_count=tool_calls_count,
+            turns_count=turns_count,
         )
         write_json(output_dir / f"{label}.meta.json", result.to_json() | {"captured_at": utc_now()})
         return result

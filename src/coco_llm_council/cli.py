@@ -54,8 +54,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--run-id", help="Explicit run id. Default generated from UTC timestamp.")
     run_p.add_argument("--timeout", type=int, default=180, help="Per-model query timeout seconds.")
     run_p.add_argument("--no-yolo", action="store_true", help="Do not pass --yolo to traecli.")
-    run_p.add_argument("--min-valid-members", type=int, default=4, help="Minimum valid members for quorum.")
-    run_p.add_argument("--target-valid-members", type=int, default=5, help="Target valid members for quorum.")
+    run_p.add_argument("--min-valid-members", type=int, default=6, help="Minimum valid members for quorum.")
+    run_p.add_argument("--target-valid-members", type=int, default=8, help="Target valid members for quorum.")
     run_p.add_argument("--chairman-fallback", help="Comma-separated fallback chairman models.")
     run_p.add_argument("--member-mode", choices=["normal", "deep_research"], default="normal", help="Member execution mode.")
     run_p.add_argument("--skip-html", action="store_true", help="Skip automatic HTML export after Stage 3.")
@@ -147,12 +147,13 @@ def cmd_run(args: argparse.Namespace) -> int:
     store = ArtifactStore.create(store_base, run_id)
     manifest = asyncio.run(run_full_council(user_query, config, store))
     export_record = None
-    if manifest.get("status") == "ok" and config.export_html:
+    if manifest.get("status") in ("ok", "degraded_ok") and config.export_html:
         export_record = export_html(store)
         manifest = store.read_manifest()
     payload = {
         "run_id": run_id,
         "status": manifest.get("status"),
+        "degraded": manifest.get("status") == "degraded_ok",
         "store": str(store.root),
         "manifest": str(store.root / "manifest.json"),
         "html": str(store.root / "html" / "index.html") if export_record else None,
@@ -160,7 +161,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         "failures": manifest.get("failures", []),
         "recommendations": failure_recommendations(manifest),
     }
-    return emit(payload, args.json_output, ok=manifest.get("status") == "ok", text=f"run {run_id} {manifest.get('status')} -> {store.root}")
+    return emit(payload, args.json_output, ok=manifest.get("status") in ("ok", "degraded_ok"), text=f"run {run_id} {manifest.get('status')} -> {store.root}")
 
 
 def cmd_show(args: argparse.Namespace) -> int:
@@ -250,8 +251,8 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
         member_agents=member_agents,
         chairman_agent=chairman_agent,
         use_yolo=not getattr(args, "no_yolo", False),
-        min_valid_members=getattr(args, "min_valid_members", 4),
-        target_valid_members=getattr(args, "target_valid_members", 5),
+        min_valid_members=getattr(args, "min_valid_members", 6),
+        target_valid_members=getattr(args, "target_valid_members", 8),
         chairman_fallback=chairman_fallback,
         member_mode=getattr(args, "member_mode", "normal"),
     )
