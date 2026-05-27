@@ -105,8 +105,8 @@ coco-llm-council run \
 默认模型套是：
 
 ```text
-members: GPT-5.4, GLM-5.1
-chairman: GPT-5.4
+members: GPT-5.4, GLM-5.1, Qwen3.6-Plus, Kimi-K2.6, DeepSeek-V4-Pro, Gemini-3.1-Pro-Preview
+chairman: Kimi-K2.6
 ```
 
 CLC 的模型询问是 CLI 自己的终端输入，不依赖 Agent 的 AskUserQuestion **（注释：Agent 用来向用户发起澄清问题的工具能力）**。如果外层 Agent 不能交互式输入，使用 `--default-models`、`--members/--chairman` 或 `--profile`。
@@ -296,9 +296,8 @@ make test
 当前验证基线：
 
 ```text
-unittest: 14 tests passed
-live-smoke-20260522161928: validate ok, 171 checks, 0 failures
-subagent-hard-20260522165545: validate ok, 236 checks, 0 failures
+unittest: 69 tests passed
+C1-C5 (数据透传/重试/HTML布局/退出码/quorum逻辑) 已落地
 ```
 
 常用开发命令：
@@ -334,8 +333,6 @@ PYTHONPATH=src python3 -m coco_llm_council.cli run --input examples/question.md 
 
 ## Current Status
 
-`COCO-llm-council` 已达到第一版可用状态：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、subagent evidence validation、主动模型选择和中文默认输出都已落地，并已纳入 git 管理。
+`COCO-llm-council` 已达到第二版可用状态：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、subagent evidence validation、主动模型选择和中文默认输出都已落地。C1-C5 增强（数据透传、自动重试、HTML 布局优化、退出码修正、quorum 逻辑）已落地并通过 69 个单元测试。
 
-真实 direct / subagent council run 取决于当前 COCO / `traecli` 是否可用。2026-05-22 阶段收尾时，COCO 被用户确认暂不可用，因此只复验了不依赖 live COCO 的部分：单元测试、推荐模型 JSON、非交互错误路径、fake runtime 三阶段 E2E、HTML 和 validate。
-
-下一阶段更值得做的是 profile 管理、结构化 Stage 2 ranking 输出、更多模型 roster 配置，以及更完整的跨文件 schema 校验。
+模型阵容已收敛为 6 成员 + Kimi-K2.6 主席 + DeepSeek-V4-Pro/GPT-5.4 备选链。HTML 报告结构已稳定化。待推进项：P0 HTML failure 隐藏 + prompt 修复、P1 阵容代码落地、P2 Stage 1 quorum 重试、P3 E2E 重跑。

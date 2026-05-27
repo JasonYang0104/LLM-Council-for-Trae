@@ -67,6 +67,37 @@ coco-llm-council validate <run_id> --json
 - 如果没有 live run：明确是 non-live / fake-runtime / skipped，并说明阻断点。
 - 需要下一阶段处理的问题。
 
+## 当前模型阵容（2026-05-27 收敛）
+
+- **成员（6人）**：GPT-5.4、GLM-5.1、Qwen3.6-Plus、Kimi-K2.6、DeepSeek-V4-Pro、Gemini-3.1-Pro-Preview
+- **主席**：Kimi-K2.6
+- **主席备选链**：DeepSeek-V4-Pro → GPT-5.4
+- **严禁使用**：Doubao 系、GPT-5.5
+- 主席和成员物理隔离：不同 session_id、不同输出目录、不同 prompt
+
+## Quorum 策略
+
+- `min_valid_members` 默认值 **3**（底线：至少 3 个成员有有效结果才继续）
+- Chairman 兼任 member 时：chairman ok 计入 quorum；chairman failed 免费（排除出 ok_count 和 total）
+- `degraded_ok` 退出码为 0，JSON 标注 `degraded: true`
+- Stage 1 quorum 不够时需对失败成员发起重试（P2 待实现）
+
+## HTML 报告结构
+
+```
+archive-hero → summary-strip → article#final-answer → section#evidence
+```
+
+- failures 不管有无都不展示
+- 模型表现摘要表格已取消
+- final-answer 输出综述答案，不是评价模型排名
+
+## 已知 Runtime 问题
+
+- traecli 在 stdout 是 pipe（非 tty）时可能挂起（MCP 初始化），`run_command` 已有 fallback 到 `os.system`
+- macOS 下 `os.system` 返回值需 `rc >> 8` 获取真实退出码
+- traecli 8 模型并发极不稳定，已收敛到 6 成员阵容
+
 ## Git 边界
 
 项目现在是 git repo。`.coco-llm-council/` 是本地 run artifacts，已被 ignore。不要改写或删除用户产物，除非用户明确要求。

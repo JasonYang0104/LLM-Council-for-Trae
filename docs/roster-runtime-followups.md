@@ -13,9 +13,9 @@
 当前聚焦 5 个推进点：
 
 1. `traecli -y` 默认化 → **已落地** ✅
-2. candidate pool + quorum + chairman fallback → **代码已落地，quorum 覆盖 bug 待修复** ⚠️
+2. candidate pool + quorum + chairman fallback → **C1-C5 已落地，P0-P2 待推进** ⚠️
 3. timeout / cutoff 策略放宽并结构化 → **config 已加，未接线** ⚠️
-4. 工具预算与长工具链失控治理 → **事后统计已实现，实时中断待做** ⚠️
+4. 工具预算与长工具链失控治理 → **实时中断已实现（monitor_stream_for_budget）** ✅
 5. partial output 救回与报告展示 → **已落地** ✅
 
 ***
@@ -40,11 +40,14 @@
 - `classify_stage1_status`：ok / degraded_ok / failed 三态
 - chairman fallback：primary 失败后按 chain 降级
 - manifest `metadata.chairman` 轨迹记录
+- C5: chairman 兼任 member quorum 逻辑（ok 计入，failed 免费）
+- C2: traecli result error 自动重试 1 次
+- C4: degraded_ok 退出码 0 + degraded:true
 
-待修复：
-- **quorum 覆盖 bug**：`update_manifest_status` 中 failure 记录覆盖了 quorum 的 degraded_ok 判定。修复方向：quorum 优先，failure 只记录细节不覆盖总状态
-- **min_valid_members 调整**：从 4/5 改为 6/8（用户 2026-05-26 确认）
-- **主席不计入 quorum**：chairman 成功不算在 min_valid_members 内
+待推进：
+- **P0**: render_alerts 不展示 failure + build_stage3_prompt 输出综述答案
+- **P1**: roster.py 更新为 6 成员阵容 + min_valid_members 改为 3
+- **P2**: Stage 1 quorum 不够时对失败成员发起重试
 
 ***
 
