@@ -170,7 +170,7 @@ FINAL RANKING:
         stage2_results = [{"model": "GPT-5.4", "ranking": "FINAL RANKING:\n1. Response A"}]
         stage3_prompt = build_stage3_prompt(question, stage1_results, stage2_results)
         self.assertIn("默认面向中文读者", stage3_prompt)
-        self.assertIn("最终答案", stage3_prompt)
+        self.assertIn("综述答案", stage3_prompt)
         self.assertIn(question, stage3_prompt)
 
     def test_model_recommendation_uses_current_available_models(self):
@@ -182,7 +182,7 @@ FINAL RANKING:
         ]
         choice = recommend_model_choice(models)
         self.assertEqual(choice.members, ["GPT-5.4", "GLM-5.1", "DeepSeek-V4-Pro"])
-        self.assertEqual(choice.chairman, "GPT-5.4")
+        self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
 
     def test_doctor_downgrades_mcp_only_errors_when_models_work(self):
         doctor_payload = {
@@ -301,7 +301,7 @@ FINAL RANKING:
         stderr = StringIO()
         choice = select_model_choice_interactively(models, stdin=StringIO("\n"), stderr=stderr)
         self.assertEqual(choice.members, ["GPT-5.4", "GLM-5.1", "DeepSeek-V4-Pro"])
-        self.assertEqual(choice.chairman, "GPT-5.4")
+        self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
         self.assertIn("CLC 检测到当前 COCO 可用模型", stderr.getvalue())
         self.assertIn("推荐 council 模型套", stderr.getvalue())
 
@@ -747,9 +747,9 @@ FINAL RANKING:
         self.assertEqual(len(manifest["failures"]), 1)
         self.assertEqual(manifest["failures"][0]["stage_record"], "Response B")
 
-    def test_min_valid_members_default_is_6(self):
+    def test_min_valid_members_default_is_3(self):
         config = CouncilConfig(members=["A"], chairman="B")
-        self.assertEqual(config.min_valid_members, 6)
+        self.assertEqual(config.min_valid_members, 3)
 
     def test_target_valid_members_default_is_8(self):
         config = CouncilConfig(members=["A"], chairman="B")
@@ -1047,9 +1047,10 @@ FINAL RANKING:
             {"name": "GLM-5.1"},
             {"name": "Qwen3.6-Plus"},
             {"name": "GPT-5.4"},
+            {"name": "Kimi-K2.6"},
         ]
         choice = recommend_model_choice(models)
-        self.assertEqual(choice.chairman, "GPT-5.4")
+        self.assertEqual(choice.chairman, "Kimi-K2.6")
 
     def test_stage1_hard_timeout_cancels_remaining(self):
         async def _run():
@@ -1494,6 +1495,188 @@ FINAL RANKING:
         ]
         status = classify_stage1_status(results, min_valid_members=6, chairman_model="Claude-4")
         self.assertEqual(status, "failed")
+
+    def _make_stage2_stage3_mocks(self, council_mod):
+        async def mock_stage2(user_query, stage1_results, config, provider, store):
+            label_to_model = {r["label"]: r["model"] for r in stage1_results}
+            stage2_results = []
+            for i, model in enumerate(config.members):
+                label = chr(65 + i)
+                labels_list = list(label_to_model.keys())
+                ranking_text = "FINAL RANKING:\n" + "\n".join(f"{j+1}. {l}" for j, l in enumerate(labels_list))
+                stage2_results.append({
+                    "reviewer_label": label,
+                    "model": model,
+                    "expected_model": model,
+                    "actual_model": model,
+                    "ranking": ranking_text,
+                    "parsed_ranking": labels_list,
+                    "parse_status": "ok",
+                    "status": "ok",
+                    "error": None,
+                    "review_path": f"stage2/{label}.review.md",
+                    "json_path": f"stage2/{label}.review.json",
+                    "tool_calls_count": 0,
+                    "turns_count": 1,
+                    "tool_budget_status": "ok",
+                    "raw_partial_recoverable": False,
+                    "retried": False,
+                    "retry_error": None,
+                })
+            return stage2_results, label_to_model
+
+        async def mock_stage3(user_query, stage1_results, stage2_results, config, provider, store, fallback_chain=None):
+            final = {
+                "model": config.chairman,
+                "expected_model": config.chairman,
+                "actual_model": config.chairman,
+                "response": "Final answer",
+                "status": "ok",
+                "error": None,
+                "prompt_path": "stage3/chairman.prompt.md",
+                "response_path": "stage3/final.md",
+                "json_path": "stage3/final.json",
+                "tool_calls_count": 0,
+                "turns_count": 1,
+                "tool_budget_status": "ok",
+                "raw_partial_recoverable": False,
+                "retried": False,
+                "retry_error": None,
+            }
+            meta = {"attempted": [config.chairman], "used": config.chairman, "fallback_from": None}
+            return final, meta
+
+        return mock_stage2, mock_stage3
+
+    def test_stage1_quorum_retry_recovers_failed_members(self):
+        async def _run():
+            from coco_llm_council.council import run_full_council, CouncilConfig
+            from coco_llm_council.provider import ModelCallResult
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s1-retry-ok")
+            config = CouncilConfig(
+                members=["M1", "M2", "M3", "M4"],
+                chairman="M1",
+                min_valid_members=3,
+                stage1_max_retries=1,
+                member_soft_checkpoint=999,
+                member_quorum_checkpoint=999,
+                member_hard_timeout=999,
+            )
+
+            import coco_llm_council.council as council_mod
+            call_count = {"count": 0}
+
+            async def query_side_effect(**kwargs):
+                model = kwargs["model"]
+                stage = kwargs["stage"]
+                call_count["count"] += 1
+                if stage == "stage1" and model in ("M2", "M3") and call_count["count"] <= 4:
+                    return ModelCallResult(
+                        expected_model=model, actual_model=None, response="",
+                        status="failed", session_id="s1", command=["traecli"], exit_code=1,
+                        stdout_path="out.jsonl", stderr_path="err.log", error="traecli result error",
+                    )
+                return ModelCallResult(
+                    expected_model=model, actual_model=model,
+                    response=f"Answer from {model}", status="ok",
+                    session_id=f"s-{model}", command=["traecli"], exit_code=0,
+                    stdout_path="out.jsonl", stderr_path="err.log",
+                )
+
+            class MockProvider:
+                def __init__(self, *args, **kwargs):
+                    pass
+                async def query_model(self, **kwargs):
+                    return await query_side_effect(**kwargs)
+
+            mock_s2, mock_s3 = self._make_stage2_stage3_mocks(council_mod)
+
+            with patch.object(council_mod, "runtime_doctor") as mock_doctor:
+                mock_doctor.return_value = type("Health", (), {
+                    "ok": True, "command": "fake", "version": "1.0",
+                    "doctor_exit_code": 0, "doctor": {}, "errors": [],
+                    "warnings": [], "ignored_errors": [],
+                    "models": [{"name": "M1"}, {"name": "M2"}, {"name": "M3"}, {"name": "M4"}],
+                })()
+                with patch.object(council_mod, "require_models_available"):
+                    with patch.object(council_mod, "TraeCliProvider", MockProvider):
+                        with patch.object(council_mod, "stage2_collect_rankings", mock_s2):
+                            with patch.object(council_mod, "stage3_synthesize_final", mock_s3):
+                                manifest = await run_full_council("test query", config, store)
+                                self.assertIn(manifest["status"], ("ok", "degraded_ok"))
+                                stage1 = manifest["stages"]["stage1"]
+                                ok_count = sum(1 for r in stage1 if r["status"] == "ok")
+                                self.assertGreaterEqual(ok_count, 3)
+                                self.assertTrue(any(r.get("retried") for r in stage1))
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_stage1_quorum_retry_excludes_chairman_failed(self):
+        async def _run():
+            from coco_llm_council.council import run_full_council, CouncilConfig
+            from coco_llm_council.provider import ModelCallResult
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s1-retry-chair-fail")
+            config = CouncilConfig(
+                members=["M1", "M2", "M3", "M4"],
+                chairman="M1",
+                min_valid_members=3,
+                stage1_max_retries=1,
+                member_soft_checkpoint=999,
+                member_quorum_checkpoint=999,
+                member_hard_timeout=999,
+            )
+
+            import coco_llm_council.council as council_mod
+
+            async def query_side_effect(**kwargs):
+                model = kwargs["model"]
+                stage = kwargs["stage"]
+                if stage == "stage1" and model == "M1":
+                    return ModelCallResult(
+                        expected_model="M1", actual_model=None, response="",
+                        status="failed", session_id="s1", command=["traecli"], exit_code=1,
+                        stdout_path="out.jsonl", stderr_path="err.log", error="timeout",
+                    )
+                return ModelCallResult(
+                    expected_model=model, actual_model=model,
+                    response=f"Answer from {model}", status="ok",
+                    session_id=f"s-{model}", command=["traecli"], exit_code=0,
+                    stdout_path="out.jsonl", stderr_path="err.log",
+                )
+
+            class MockProvider:
+                def __init__(self, *args, **kwargs):
+                    pass
+                async def query_model(self, **kwargs):
+                    return await query_side_effect(**kwargs)
+
+            mock_s2, mock_s3 = self._make_stage2_stage3_mocks(council_mod)
+
+            with patch.object(council_mod, "runtime_doctor") as mock_doctor:
+                mock_doctor.return_value = type("Health", (), {
+                    "ok": True, "command": "fake", "version": "1.0",
+                    "doctor_exit_code": 0, "doctor": {}, "errors": [],
+                    "warnings": [], "ignored_errors": [],
+                    "models": [{"name": "M1"}, {"name": "M2"}, {"name": "M3"}, {"name": "M4"}],
+                })()
+                with patch.object(council_mod, "require_models_available"):
+                    with patch.object(council_mod, "TraeCliProvider", MockProvider):
+                        with patch.object(council_mod, "stage2_collect_rankings", mock_s2):
+                            with patch.object(council_mod, "stage3_synthesize_final", mock_s3):
+                                manifest = await run_full_council("test query", config, store)
+                                self.assertIn(manifest["status"], ("ok", "degraded_ok"))
+                                stage1 = manifest["stages"]["stage1"]
+                                m1 = [r for r in stage1 if r["model"] == "M1"][0]
+                                self.assertEqual(m1["status"], "failed")
+                                self.assertFalse(m1.get("retried"))
+                                ok_count = sum(1 for r in stage1 if r["status"] == "ok")
+                                self.assertEqual(ok_count, 3)
+
+        import asyncio
+        asyncio.run(_run())
 
 
 if __name__ == "__main__":

@@ -54,7 +54,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--run-id", help="Explicit run id. Default generated from UTC timestamp.")
     run_p.add_argument("--timeout", type=int, default=180, help="Per-model query timeout seconds.")
     run_p.add_argument("--no-yolo", action="store_true", help="Do not pass --yolo to traecli.")
-    run_p.add_argument("--min-valid-members", type=int, default=6, help="Minimum valid members for quorum.")
+    run_p.add_argument("--min-valid-members", type=int, default=3, help="Minimum valid members for quorum.")
     run_p.add_argument("--target-valid-members", type=int, default=8, help="Target valid members for quorum.")
     run_p.add_argument("--chairman-fallback", help="Comma-separated fallback chairman models.")
     run_p.add_argument("--member-mode", choices=["normal", "deep_research"], default="normal", help="Member execution mode.")
@@ -251,7 +251,7 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
         member_agents=member_agents,
         chairman_agent=chairman_agent,
         use_yolo=not getattr(args, "no_yolo", False),
-        min_valid_members=getattr(args, "min_valid_members", 6),
+        min_valid_members=getattr(args, "min_valid_members", 3),
         target_valid_members=getattr(args, "target_valid_members", 8),
         chairman_fallback=chairman_fallback,
         member_mode=getattr(args, "member_mode", "normal"),

@@ -12,12 +12,11 @@ PREFERRED_MEMBERS = [
     "DeepSeek-V4-Pro",
     "Kimi-K2.6",
     "Qwen3.6-Plus",
+    "Gemini-3.1-Pro-Preview",
     "MiniMax-M2.7",
-    "Doubao-Seed-2.0-Code",
-    "GPT-5.5",
     "GPT-5.2",
 ]
-PREFERRED_CHAIRMEN = ["GPT-5.4", "GPT-5.5", "GPT-5.2", "GLM-5.1"]
+PREFERRED_CHAIRMEN = ["Kimi-K2.6", "DeepSeek-V4-Pro", "GPT-5.4", "GLM-5.1"]
 
 
 @dataclass(frozen=True)

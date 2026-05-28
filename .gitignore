@@ -15,3 +15,13 @@ dist/
 findings.md
 progress.md
 task_plan.md
+notes.md
+docs/execution-plan-*/
+docs/goal-prompt.md
+docs/html-export-archival-brief-*.md
+docs/roster-runtime-followups.md
+docs/retrospective-*/
+docs/session-brief-*/
+docs/model-benchmark-*/
+examples/e2e-*
+examples/q[0-9]-*

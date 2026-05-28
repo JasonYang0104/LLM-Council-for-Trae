@@ -1,9 +1,0 @@
-model,samples,success_rate,parse_ok_rate,member_ok_parse_rate,reviewer_ok_parse_rate,chairman_ok_parse_rate,p50_latency_seconds,p95_latency_seconds,max_latency_seconds,timeout_count,empty_count,model_mismatch_count,failed_count
-DeepSeek-V4-Pro,8,1.00,0.88,0.75,1.00,1.00,23.77,36.53,36.53,0,0,0,0
-GLM-5.1,8,1.00,0.88,0.75,1.00,1.00,27.08,33.58,33.58,0,0,0,0
-GPT-5.4,8,1.00,1.00,1.00,1.00,1.00,25.42,76.98,76.98,0,0,0,0
-Gemini-3.1-Pro-Preview,8,0.88,1.00,1.00,1.00,0.50,23.34,73.30,73.30,0,0,1,1
-Kimi-K2.6,8,1.00,1.00,1.00,1.00,1.00,23.06,120.93,120.93,0,0,0,0
-MiniMax-M2.7,8,1.00,1.00,1.00,1.00,1.00,20.09,35.37,35.37,0,0,0,0
-Qwen3.6-Plus,8,1.00,0.88,0.75,1.00,1.00,24.27,45.22,45.22,0,0,0,0
-openrouter-2o,8,1.00,1.00,1.00,1.00,1.00,24.11,44.89,44.89,0,0,0,0

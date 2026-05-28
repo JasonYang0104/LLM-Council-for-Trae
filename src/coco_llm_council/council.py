@@ -13,8 +13,8 @@ from .store import ArtifactStore
 from .utils import utc_now, write_json
 
 
-DEFAULT_MEMBERS = ["GPT-5.4", "GLM-5.1"]
-DEFAULT_CHAIRMAN = "GPT-5.4"
+DEFAULT_MEMBERS = ["GPT-5.4", "GLM-5.1", "Qwen3.6-Plus", "Kimi-K2.6", "DeepSeek-V4-Pro", "Gemini-3.1-Pro-Preview"]
+DEFAULT_CHAIRMAN = "Kimi-K2.6"
 DEFAULT_READER_LANGUAGE_INSTRUCTION = "默认面向中文读者，使用简体中文回答。若用户原始问题明确指定另一种输出语言，则遵循用户指定语言。"
 
 
@@ -30,7 +30,7 @@ class CouncilConfig:
     member_agents: list[str | None] | None = None
     chairman_agent: str | None = None
     use_yolo: bool = True
-    min_valid_members: int = 6
+    min_valid_members: int = 3
     target_valid_members: int = 8
     chairman_fallback: list[str] | None = None
     member_soft_checkpoint: int = 300
@@ -38,6 +38,7 @@ class CouncilConfig:
     member_hard_timeout: int = 660
     chairman_timeout: int = 720
     member_mode: str = "normal"
+    stage1_max_retries: int = 1
 
     def agent_for_member(self, index: int) -> str | None:
         if not self.member_agents or index >= len(self.member_agents):
@@ -362,12 +363,12 @@ def build_stage3_prompt(
 阶段 2 - 同侪排序与评价：
 {stage2_text}
 
-你的任务是综合以上信息，给出一个清晰、准确、有判断力的最终答案。请考虑：
+你的任务是综合以上所有信息，给出一个直接、清晰、有判断力的综述答案。请考虑：
 - 各个回答提供的有效洞察。
 - 同侪排序反映出的回答质量差异。
 - 模型之间的一致意见和分歧。
 
-请输出代表 council 集体判断的最终答案："""
+重要：你的输出应该是针对原始问题的综述性最终答案，而不是对各模型表现的评价或排名。不要评价哪个模型更好，不要输出模型排名对比。直接回答用户的问题。"""
 
 
 def parse_ranking_from_text(ranking_text: str) -> list[str]:
@@ -465,6 +466,54 @@ async def run_full_council(
 
     store.event("stage1_start", {"members": config.members})
     stage1_results = await stage1_collect_responses(user_query, config, provider, store)
+
+    for retry_round in range(config.stage1_max_retries):
+        stage1_status = classify_stage1_status(stage1_results, config.min_valid_members, chairman_model=config.chairman)
+        if stage1_status != "failed":
+            break
+        failed_indices = [
+            i for i, r in enumerate(stage1_results)
+            if r.get("status") != "ok" and not (config.chairman and r.get("model") == config.chairman and r.get("status") == "failed")
+        ]
+        if not failed_indices:
+            break
+        store.event("stage1_retry", {"round": retry_round + 1, "failed_count": len(failed_indices)})
+        for idx in failed_indices:
+            model = config.members[idx]
+            label = chr(65 + idx)
+            output_dir = store.path("stage1")
+            retry_call = await provider.query_model(
+                model=model,
+                prompt=build_stage1_prompt(user_query),
+                run_id=store.root.name,
+                stage="stage1",
+                label=label,
+                output_dir=output_dir,
+                agent=config.agent_for_member(idx),
+            )
+            stage1_results[idx] = {
+                "label": f"Response {label}",
+                "file_label": label,
+                "model": model,
+                "expected_model": retry_call.expected_model,
+                "actual_model": retry_call.actual_model,
+                "agent": retry_call.agent,
+                "subagent_invocation": retry_call.subagent_invocation,
+                "response": retry_call.response,
+                "status": retry_call.status,
+                "meta_path": f"stage1/{label}.meta.json",
+                "response_path": f"stage1/{label}.response.md",
+                "error": retry_call.error,
+                "tool_calls_count": retry_call.tool_calls_count,
+                "turns_count": retry_call.turns_count,
+                "tool_budget_status": retry_call.tool_budget_status,
+                "raw_partial_recoverable": retry_call.raw_partial_recoverable,
+                "retried": True,
+                "retry_error": retry_call.retry_error or retry_call.error,
+            }
+            store.write_text(f"stage1/{label}.response.md", retry_call.response + "\n")
+            store.write_json(f"stage1/{label}.meta.json", retry_call.to_json() | {"captured_at": utc_now()})
+
     manifest["stages"]["stage1"] = stage1_results
     stage1_status = classify_stage1_status(stage1_results, config.min_valid_members, chairman_model=config.chairman)
     update_manifest_with_stage1_status(manifest, stage1_status)
@@ -551,6 +600,7 @@ def config_to_json(config: CouncilConfig) -> dict[str, Any]:
         "member_hard_timeout": config.member_hard_timeout,
         "chairman_timeout": config.chairman_timeout,
         "member_mode": config.member_mode,
+        "stage1_max_retries": config.stage1_max_retries,
     }
 
 

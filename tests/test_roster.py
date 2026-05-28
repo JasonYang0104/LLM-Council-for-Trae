@@ -29,8 +29,8 @@ class TestRoster(unittest.TestCase):
         self.assertIsInstance(CHAIRMAN_FALLBACK_CHAIN, list)
         self.assertGreater(len(CHAIRMAN_FALLBACK_CHAIN), 0)
 
-    def test_primary_chairman_is_glm51(self):
-        self.assertEqual(PRIMARY_CHAIRMAN, "GLM-5.1")
+    def test_primary_chairman_is_kimi(self):
+        self.assertEqual(PRIMARY_CHAIRMAN, "Kimi-K2.6")
 
 
 if __name__ == "__main__":

@@ -11,9 +11,9 @@ VENDOR_TIERS = [
     {"vendor": "openrouter", "primary": "openrouter-2o", "fallback": "openrouter-1o"},
 ]
 
-PRIMARY_CHAIRMAN = "GLM-5.1"
+PRIMARY_CHAIRMAN = "Kimi-K2.6"
 
-CHAIRMAN_FALLBACK_CHAIN = ["Qwen3.6-Plus", "DeepSeek-V4-Pro"]
+CHAIRMAN_FALLBACK_CHAIN = ["DeepSeek-V4-Pro", "GPT-5.4"]
 
 
 def resolve_fallback(model_name: str) -> Optional[str]:

@@ -645,8 +645,7 @@ def render_metadata(manifest: dict[str, Any], warnings: list[Any], failures: lis
 
 
 def render_alerts(warnings: list[Any], failures: list[Any], manifest_status: str = "ok") -> str:
-    failure_html = "" if not failures else f"<div class='failure-banner'><strong>存在失败项。</strong><pre><code>{esc(json.dumps(failures, ensure_ascii=False, indent=2))}</code></pre></div>"
-    return failure_html
+    return ""
 
 
 def render_trace(stage1: list[Any], stage2: list[Any], stage3: dict[str, Any] | None) -> str:

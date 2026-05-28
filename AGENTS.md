@@ -94,9 +94,27 @@ archive-hero → summary-strip → article#final-answer → section#evidence
 
 ## 已知 Runtime 问题
 
-- traecli 在 stdout 是 pipe（非 tty）时可能挂起（MCP 初始化），`run_command` 已有 fallback 到 `os.system`
-- macOS 下 `os.system` 返回值需 `rc >> 8` 获取真实退出码
-- traecli 8 模型并发极不稳定，已收敛到 6 成员阵容
+### traecli pipe hang（核心约束）
+
+`traecli` 在 stdout 为 pipe（非 tty）时会走不同的内部代码路径（疑似尝试初始化 MCP 连接），导致**无限期卡死**。同一命令在真实终端中秒回。
+
+经过 4 种方案验证后的最终结论：
+
+- `subprocess.Popen` / `subprocess.run` / `subprocess.Popen(shell=True)` — 全部 hang
+- `signal.alarm` + `os.system` — alarm 触发但 C 层阻塞不返回
+- **唯一可行路径：`os.system` + 临时文件重定向**
+
+**工程硬约束**：`run_command` 调用 traecli 时必须使用 `os.system`，严禁引入 subprocess 系列函数。`os.system` 的 `timeout` 参数对 traecli 调用无效（C 层阻塞无法被 Python 中断），超时控制由调用方整体 timeout 兜底。实现见 `src/coco_llm_council/utils.py` 第 52-75 行。
+
+不要试图「修复」这个设计——它是已知环境限制下的最优解。
+
+### macOS 退出码
+
+`os.system` 返回值在 macOS 上是 wait status，需 `rc >> 8` 获取真实退出码。
+
+### 并发稳定性
+
+traecli 8 模型并发极不稳定，已收敛到 6 成员阵容（GPT-5.4、GLM-5.1、Qwen3.6-Plus、Kimi-K2.6、DeepSeek-V4-Pro、Gemini-3.1-Pro-Preview）。Doubao 系和 GPT-5.5 已被排除。
 
 ## Git 边界
 
