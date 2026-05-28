@@ -296,8 +296,8 @@ make test
 当前验证基线：
 
 ```text
-unittest: 69 tests passed
-C1-C5 (数据透传/重试/HTML布局/退出码/quorum逻辑) 已落地
+unittest: 78 tests passed
+P0-P3 全部落地，3 个梯度 E2E 用例通过
 ```
 
 常用开发命令：
@@ -333,6 +333,6 @@ PYTHONPATH=src python3 -m coco_llm_council.cli run --input examples/question.md 
 
 ## Current Status
 
-`COCO-llm-council` 已达到第二版可用状态：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、subagent evidence validation、主动模型选择和中文默认输出都已落地。C1-C5 增强（数据透传、自动重试、HTML 布局优化、退出码修正、quorum 逻辑）已落地并通过 69 个单元测试。
+`COCO-llm-council` v1.0.0 已发布：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、subagent evidence validation、主动模型选择和中文默认输出全部落地。P0（failure 隐藏 + 主席综述 prompt）、P1（阵容代码落地）、P2（quorum 重试）、P3（E2E 验证）全部完成，78 个单元测试通过。
 
-模型阵容已收敛为 6 成员 + Kimi-K2.6 主席 + DeepSeek-V4-Pro/GPT-5.4 备选链。HTML 报告结构已稳定化。待推进项：P0 HTML failure 隐藏 + prompt 修复、P1 阵容代码落地、P2 Stage 1 quorum 重试、P3 E2E 重跑。
+模型阵容：6 成员（GPT-5.4、GLM-5.1、Qwen3.6-Plus、Kimi-K2.6、DeepSeek-V4-Pro、Gemini-3.1-Pro-Preview）+ Kimi-K2.6 主席 + DeepSeek-V4-Pro/GPT-5.4 备选链。HTML 报告结构已稳定化。
