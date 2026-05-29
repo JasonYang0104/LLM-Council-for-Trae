@@ -8,10 +8,26 @@
     {
       "agent": "council-glm51",
       "model": "GLM-5.1"
+    },
+    {
+      "agent": "council-qwen36",
+      "model": "Qwen3.6-Plus"
+    },
+    {
+      "agent": "council-kimi26",
+      "model": "Kimi-K2.6"
+    },
+    {
+      "agent": "council-deepseek-v4",
+      "model": "DeepSeek-V4-Pro"
+    },
+    {
+      "agent": "council-gemini31",
+      "model": "Gemini-3.1-Pro-Preview"
     }
   ],
   "chairman": {
-    "agent": "council-chairman-gpt54",
-    "model": "GPT-5.4"
+    "agent": "council-chairman-kimi26",
+    "model": "Kimi-K2.6"
   }
 }
