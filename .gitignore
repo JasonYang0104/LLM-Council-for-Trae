@@ -9,8 +9,8 @@ __pycache__/
 venv/
 build/
 dist/
-.coco-llm-council/
-.trae/
+.llm-council-for-trae/
+.trae/rules/
 *.png
 findings.md
 progress.md

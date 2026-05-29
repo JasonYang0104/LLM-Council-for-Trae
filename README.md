@@ -67,12 +67,13 @@ LCT 的 direct council run 不依赖外部 MCP server。如果 `traecli doctor -
 ```bash
 llm-council-for-trae run \
   --input examples/question.md \
+  --default-models \
   --run-id demo-direct \
   --timeout 180 \
   --json
 ```
 
-如果没有传 `--members`、`--chairman`、`--profile` 或 `--default-models`，LCT 会先列出当前 traecli 可用模型，并给出推荐套装：
+如果没有传 `--members`、`--chairman`、`--profile` 或 `--default-models`，LCT 会先列出当前 traecli 可用模型，并给出推荐套装（仅限交互终端）。在 Agent 或脚本等非交互场景，必须显式指定 `--default-models`、`--members/--chairman` 或 `--profile`：
 
 ```text
 LCT 检测到当前 traecli 可用模型：
