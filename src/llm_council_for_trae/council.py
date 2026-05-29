@@ -439,7 +439,7 @@ async def run_full_council(
         "warnings": health.warnings,
         "ignored_errors": health.ignored_errors,
     })
-    store.write_json("runtime/coco.models.json", health.models)
+    store.write_json("runtime/traecli.models.json", health.models)
     manifest["warnings"].extend(health.warnings)
     manifest["warnings"].extend(f"ignored runtime doctor error: {error}" for error in health.ignored_errors)
     if not health.ok:
@@ -570,7 +570,7 @@ def initial_manifest(run_id: str, user_query: str, config: CouncilConfig) -> dic
             "config": "config.json",
             "events": "events.jsonl",
             "runtime_doctor": "runtime/doctor.json",
-            "runtime_models": "runtime/coco.models.json",
+            "runtime_models": "runtime/traecli.models.json",
             "html": "html/index.html",
         },
         "stages": {"stage1": [], "stage2": [], "stage3": None},

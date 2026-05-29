@@ -12,7 +12,7 @@ from typing import Any
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_STORE_DIR = ".coco-llm-council/runs"
+DEFAULT_STORE_DIR = ".llm-council-for-trae/runs"
 DEFAULT_TRAECLI = "traecli"
 
 

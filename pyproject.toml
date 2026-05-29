@@ -1,12 +1,12 @@
 [project]
-name = "coco-llm-council"
-version = "0.1.0"
-description = "A COCO/traecli-backed LLM council CLI."
+name = "llm-council-for-trae"
+version = "1.1.0"
+description = "A traecli-backed LLM council CLI — multi-model deliberation with HTML export."
 requires-python = ">=3.10"
 dependencies = []
 
 [project.scripts]
-coco-llm-council = "coco_llm_council.cli:main"
+llm-council-for-trae = "llm_council_for_trae.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

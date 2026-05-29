@@ -22,14 +22,14 @@ from .validation import validate_run
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="coco-llm-council",
-        description="Run an llm-council style 3-stage council over COCO/traecli.",
+        prog="llm-council-for-trae",
+        description="Run an llm-council style 3-stage council over traecli.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--json", dest="json_output", action="store_true", help="Emit stable JSON output.")
     parser.add_argument("--runtime-command", default=DEFAULT_TRAECLI, help="Runtime command, default: traecli.")
     parser.add_argument("--runtime-cwd", help="Working directory for traecli subprocesses. Subagent mode defaults to this CLI project root.")
-    parser.add_argument("--store", help="Run store base directory. Default: .coco-llm-council/runs in cwd.")
+    parser.add_argument("--store", help="Run store base directory. Default: .llm-council-for-trae/runs in cwd.")
     sub = parser.add_subparsers(dest="command", required=True)
 
     doctor_p = sub.add_parser("doctor", help="Check runtime health and local CLI setup.")
@@ -37,7 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_p.set_defaults(func=cmd_doctor)
 
     models_p = sub.add_parser("models", help="List models reported by traecli.")
-    models_p.add_argument("--recommend", action="store_true", help="Also include CLC's recommended council roster.")
+    models_p.add_argument("--recommend", action="store_true", help="Also include LCT's recommended council roster.")
     models_p.add_argument("--json", dest="json_output", action="store_true", default=argparse.SUPPRESS)
     models_p.set_defaults(func=cmd_models)
 
@@ -47,10 +47,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_p = sub.add_parser("run", help="Run Stage 1, Stage 2, Stage 3, and HTML export.")
     run_p.add_argument("--input", required=True, help="Input markdown/text file.")
-    run_p.add_argument("--members", help="Comma-separated model roster. If omitted, CLC asks you to choose from current COCO models.")
+    run_p.add_argument("--members", help="Comma-separated model roster. If omitted, LCT asks you to choose from current traecli models.")
     run_p.add_argument("--chairman", help="Chairman model. If omitted with --members, default chairman is used.")
     run_p.add_argument("--profile", help="Optional JSON profile overriding members/chairman/provider.")
-    run_p.add_argument("--default-models", action="store_true", help="Skip model selection and use CLC's default model suite.")
+    run_p.add_argument("--default-models", action="store_true", help="Skip model selection and use LCT's default model suite.")
     run_p.add_argument("--run-id", help="Explicit run id. Default generated from UTC timestamp.")
     run_p.add_argument("--timeout", type=int, default=180, help="Per-model query timeout seconds.")
     run_p.add_argument("--no-yolo", action="store_true", help="Do not pass --yolo to traecli.")
@@ -84,7 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
     replay_p.add_argument("--json", dest="json_output", action="store_true", default=argparse.SUPPRESS)
     replay_p.set_defaults(func=cmd_replay)
 
-    raw_p = sub.add_parser("raw", help="Restricted raw escape hatch to COCO/traecli read-only commands.")
+    raw_p = sub.add_parser("raw", help="Restricted raw escape hatch to traecli read-only commands.")
     raw_p.add_argument("--unsafe", action="store_true", help="Allow arbitrary traecli args.")
     raw_p.add_argument("--json", dest="json_output", action="store_true", default=argparse.SUPPRESS)
     raw_p.add_argument("args", nargs=argparse.REMAINDER)
@@ -97,14 +97,14 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     health = runtime_doctor(args.runtime_command)
     payload = {
         "ok": health.ok,
-        "cli": {"name": "coco-llm-council", "version": __version__},
+        "cli": {"name": "llm-council-for-trae", "version": __version__},
         "runtime": {
             "command": health.command,
             "version": health.version,
             "doctor_exit_code": health.doctor_exit_code,
             "doctor": health.doctor,
         },
-        "auth": {"required_by_cli": False, "source": "coco-local-config"},
+        "auth": {"required_by_cli": False, "source": "traecli-local-config"},
         "models": {"count": len(health.models), "names": [m.get("name") for m in health.models]},
         "warnings": health.warnings,
         "errors": health.errors,
@@ -339,7 +339,7 @@ def failure_recommendations(manifest: dict[str, Any]) -> list[str]:
         elif "traecli result error" in lower_error:
             recommendations.append(model_failure_hint(stage_record, expected_model, "返回 traecli result error", successful_models))
         elif "model(s) not available" in lower_error:
-            recommendations.append("模型不在当前 traecli models --json 列表中；请先运行 coco-llm-council models --recommend --json，再显式传 --members/--chairman。")
+            recommendations.append("模型不在当前 traecli models --json 列表中；请先运行 llm-council-for-trae models --recommend --json，再显式传 --members/--chairman。")
     return unique_strings(recommendations)
 
 

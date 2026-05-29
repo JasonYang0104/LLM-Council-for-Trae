@@ -1,6 +1,6 @@
 import unittest
 
-from coco_llm_council.roster import (
+from llm_council_for_trae.roster import (
     CHAIRMAN_FALLBACK_CHAIN,
     PRIMARY_CHAIRMAN,
     VENDOR_TIERS,

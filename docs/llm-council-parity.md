@@ -4,7 +4,7 @@
 
 ## 必须对齐
 
-| llm-council 资产 | COCO-llm-council 对应物 | 状态 |
+| llm-council 资产 | LLM-Council-for-Trae 对应物 | 状态 |
 | --- | --- | --- |
 | `backend/council.py` | `src/coco_llm_council/council.py` | 已实现 |
 | `stage1_collect_responses` | Stage 1 member calls | 已实现 |
@@ -19,23 +19,23 @@
 
 ## 必须替换
 
-| llm-council 资产 | 替换原因 | COCO-llm-council 替代物 |
+| llm-council 资产 | 替换原因 | LLM-Council-for-Trae 替代物 |
 | --- | --- | --- |
 | `backend/openrouter.py` | 不使用 OpenRouter API | `traecli` provider |
-| `.env` API key | COCO 已有鉴权 | COCO 本机配置 |
+| `.env` API key | Trae CLI 已有鉴权 | Trae CLI 本机配置 |
 | React / Vite app | 不做 Web app | 单文件 HTML artifact |
-| `data/conversations/` | 长期复盘能力弱 | `.coco-llm-council/runs/<run_id>/` |
+| `data/conversations/` | 长期复盘能力弱 | `.llm-council-for-trae/runs/<run_id>/` |
 
 ## 已验证 run
 
-当前 parity 目标已经落到 CLI：`run` 可以在未显式传 `--members` / `--chairman` 时先用当前 COCO 模型列表推荐 council 套装，再执行同一套 Stage 1 / 2 / 3 protocol。模型选择是 COCO 适配层能力，不改变 `llm-council` 的核心 protocol。
+当前 parity 目标已经落到 CLI：`run` 可以在未显式传 `--members` / `--chairman` 时先用当前 Trae CLI 模型列表推荐 council 套装，再执行同一套 Stage 1 / 2 / 3 protocol。模型选择是 Trae CLI 适配层能力，不改变 `llm-council` 的核心 protocol。
 
 ```text
 run_id: live-smoke-20260522161928
 members: GPT-5.4, GLM-5.1
 chairman: GPT-5.4
 status: ok
-html: .coco-llm-council/runs/live-smoke-20260522161928/html/index.html
+html: .llm-council-for-trae/runs/live-smoke-20260522161928/html/index.html
 ```
 
 `validate` 已确认 Stage 1 / Stage 2 / Stage 3 的 expected model 和 actual model 完全一致，Stage 2 ranking parse 为 `ok`，HTML artifact 存在。

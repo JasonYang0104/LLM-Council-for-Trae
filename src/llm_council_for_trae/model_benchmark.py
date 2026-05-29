@@ -313,7 +313,7 @@ def write_scorecard(path: Path, rows: list[dict[str, str]]) -> None:
 
 def write_readme(output_dir: Path, rows: list[dict[str, str]], rosters: dict[str, Any], unavailable: list[str]) -> None:
     lines = [
-        "# CLC 模型基准测试",
+        "# LCT 模型基准测试",
         "",
         f"生成时间：`{utc_now()}`",
         "",
@@ -368,7 +368,7 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run COCO model benchmark tasks for CLC roster selection.")
+    parser = argparse.ArgumentParser(description="Run traecli model benchmark tasks for LCT roster selection.")
     parser.add_argument("--output", default="docs/model-benchmark-20260525")
     parser.add_argument("--models", default=",".join(DEFAULT_CANDIDATES))
     parser.add_argument("--tasks", help="Comma-separated task names. Default: all built-in tasks.")

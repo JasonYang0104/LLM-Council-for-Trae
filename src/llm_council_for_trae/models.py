@@ -75,7 +75,7 @@ def doctor(runtime_command: str = DEFAULT_TRAECLI) -> RuntimeHealth:
     if doctor_proc.returncode >= 2:
         if doctor_has_only_mcp_errors(doctor_json):
             ignored_errors.extend(doctor_error_messages(doctor_json))
-            warnings.append("traecli doctor reported MCP-only errors; ignored for CLC model execution")
+            warnings.append("traecli doctor reported MCP-only errors; ignored for LCT model execution")
         else:
             errors.append(doctor_proc.stderr.strip() or doctor_proc.stdout.strip() or "traecli doctor reported errors")
     elif doctor_proc.returncode == 1:

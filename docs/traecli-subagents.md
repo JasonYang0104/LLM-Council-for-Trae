@@ -1,15 +1,15 @@
-# COCO Subagents 研究入口
+# Trae CLI Subagents 研究入口
 
-本文记录 COCO-llm-council 对 subagent 的使用边界、已实现文件和验证口径。live subagent run 仍取决于当前 COCO / `traecli` 是否可用；COCO 不可用时，只能复验静态 profile、单元测试和已保存 artifacts。
+本文记录 LLM-Council-for-Trae 对 subagent 的使用边界、已实现文件和验证口径。live subagent run 仍取决于当前 traecli 是否可用；Trae CLI 不可用时，只能复验静态 profile、单元测试和已保存 artifacts。
 
 ## 当前设计判断
 
 - direct `traecli` provider 是 P1 默认路径。
-- COCO subagent provider 已作为 P2 路径实现，用于固定 council 成员。
+- Trae CLI subagent provider 已作为 P2 路径实现，用于固定 council 成员。
 - 每个固定成员放在 `.trae/agents/`。
 - subagent 文件必须显式声明 `model`。
 - run 结束后会校验 expected model 和 actual model。
-- 如果 COCO 对无效模型 fallback 到默认模型，run 必须失败。
+- 如果 Trae CLI 对无效模型 fallback 到默认模型，run 必须失败。
 
 ## 需要复验的命令
 
@@ -17,9 +17,9 @@
 traecli doc subagents
 traecli doc settings
 traecli models --json
-coco-llm-council subagents --json
-coco-llm-council run --input examples/question.md --profile profiles/subagents.json --json
-coco-llm-council validate <run_id> --json
+llm-council-for-trae subagents --json
+llm-council-for-trae run --input examples/question.md --profile profiles/subagents.json --json
+llm-council-for-trae validate <run_id> --json
 ```
 
 ## 目标文件形态
@@ -37,11 +37,11 @@ coco-llm-council validate <run_id> --json
 ```yaml
 ---
 name: council-gpt54
-description: COCO-llm-council member using GPT-5.4
+description: LLM-Council-for-Trae member using GPT-5.4
 model: GPT-5.4
 tools: []
 ---
-你是 COCO-llm-council 的 council member。只回答当前阶段 prompt，不读取 workspace 外内容。
+你是 LLM-Council-for-Trae 的 council member。只回答当前阶段 prompt，不读取 workspace 外内容。
 ```
 
 ## 当前已验证文件

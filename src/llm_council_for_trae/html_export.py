@@ -10,7 +10,7 @@ from .store import ArtifactStore
 from .utils import read_text, utc_now
 
 
-ARTIFACT_PROMPT = """COCO-llm-council HTML artifact rendering contract.
+ARTIFACT_PROMPT = """traecli-llm-council HTML artifact rendering contract.
 
 Do not call any model. Do not change the chairman synthesis. Render the existing artifacts only.
 Default reader surface: stage3/final.md as Markdown HTML, with Stage 1, Stage 2, provider trace, and manifest metadata as collapsible evidence.
@@ -38,9 +38,24 @@ def export_html(store: ArtifactStore) -> dict[str, Any]:
     return export_record
 
 
+def _extract_title(input_text: str, max_chars: int = 60) -> str:
+    if not input_text:
+        return "最终答案"
+    first_line = input_text.strip().split("\n")[0].strip()
+    heading = re.match(r"^#{1,6}\s+(.+)$", first_line)
+    if heading:
+        title = heading.group(1).strip()
+    else:
+        title = first_line
+    if len(title) > max_chars:
+        title = title[:max_chars].rstrip() + "…"
+    return title
+
+
 def render_html(root: Path, manifest: dict[str, Any]) -> str:
     input_text = safe_read(root / "input.md")
     final_text = safe_read(root / "stage3" / "final.md")
+    page_title = _extract_title(input_text)
     chairman_prompt = safe_read(root / "stage3" / "chairman.prompt.md")
     markdown_export = build_markdown_export(manifest, input_text, final_text)
     json_export = json.dumps(manifest, ensure_ascii=False, indent=2)
@@ -96,7 +111,7 @@ def render_html(root: Path, manifest: dict[str, Any]) -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>COCO LLM Council · {esc(manifest.get('run_id'))}</title>
+<title>{esc(page_title)} · LLM Council for Trae</title>
 <style>
 :root {{
   --bg:#e9e0cf;
@@ -168,7 +183,17 @@ button:focus-visible, a:focus-visible, summary:focus-visible {{ outline:3px soli
   padding:42px 0 28px;
   border-bottom:1px solid var(--line);
 }}
-h1 {{ margin:0; font-size:58px; line-height:1; font-weight:400; letter-spacing:0; }}
+h1 {{ margin:0; font-size:58px; line-height:1.05; font-weight:400; letter-spacing:0; }}
+.question-context {{
+  margin:18px 0 0;
+  padding:16px 20px;
+  border-left:3px solid var(--accent);
+  background:var(--accent-soft);
+  color:var(--body);
+  font:15px/1.65 var(--serif);
+  max-width:72ch;
+  white-space:pre-line;
+}}
 .run-meta {{ margin:14px 0 0; color:var(--muted); font:13px/1.55 var(--mono); }}
 .toolbar {{ display:flex; flex-wrap:wrap; justify-content:flex-start; gap:8px; max-width:420px; margin-top:24px; }}
 .copy-status {{ width:100%; color:var(--muted); font:12px/1.5 var(--mono); text-align:left; min-height:20px; }}
@@ -305,12 +330,13 @@ svg {{ width:100%; max-width:760px; height:auto; display:block; }}
 <main class="archive-shell">
   <div class="sheet">
     <header class="folio">
-      <span>COCO LLM Council / 归档副本</span>
+      <span>LLM Council for Trae / 归档副本</span>
       <span>{esc(manifest.get('run_id'))}</span>
     </header>
     <section class="archive-hero" aria-label="运行标题">
       <div>
-      <h1>最终答案</h1>
+      <h1>{esc(page_title)}</h1>
+      <p class="question-context">{esc(input_text.strip())}</p>
       <p class="run-meta">运行 {esc(manifest.get('run_id'))} · 状态 <strong class="status-{esc(manifest.get('status'))}">{esc(manifest.get('status'))}</strong> · 导出 {esc(generated_at)}</p>
     </div>
     <div class="toolbar" aria-label="导出操作">
@@ -689,7 +715,7 @@ def render_flow_svg() -> str:
 def build_markdown_export(manifest: dict[str, Any], input_text: str, final_text: str) -> str:
     aggregate = manifest.get("metadata", {}).get("aggregate_rankings") or []
     ranking = "\n".join(f"- {item.get('model')}: average rank {item.get('average_rank')}" for item in aggregate)
-    return f"""# COCO LLM Council 运行 {manifest.get('run_id')}
+    return f"""# LLM Council for Trae 运行 {manifest.get('run_id')}
 
 状态：{manifest.get('status')}
 

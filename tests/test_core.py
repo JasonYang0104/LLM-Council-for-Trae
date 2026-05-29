@@ -6,8 +6,8 @@ from pathlib import Path
 from subprocess import CompletedProcess
 from unittest.mock import patch
 
-from coco_llm_council.cli import failure_recommendations
-from coco_llm_council.council import (
+from llm_council_for_trae.cli import failure_recommendations
+from llm_council_for_trae.council import (
     build_stage1_prompt,
     build_stage2_prompt,
     build_stage3_prompt,
@@ -18,22 +18,22 @@ from coco_llm_council.council import (
     parse_ranking_from_text,
     record_stage_failures,
 )
-from coco_llm_council.html_export import export_html
-from coco_llm_council.model_benchmark import (
+from llm_council_for_trae.html_export import export_html
+from llm_council_for_trae.model_benchmark import (
     BenchmarkTask,
     benchmark_record_from_call,
     recommend_rosters_from_scorecard,
     scorecard_rows,
 )
-from coco_llm_council.model_selection import (
+from llm_council_for_trae.model_selection import (
     recommend_model_choice,
     resolve_model_tokens,
     select_model_choice_interactively,
 )
-from coco_llm_council.models import doctor as runtime_doctor
-from coco_llm_council.provider import ModelCallResult, monitor_stream_for_budget, parse_stream_json
-from coco_llm_council.store import ArtifactStore
-from coco_llm_council.validation import validate_run
+from llm_council_for_trae.models import doctor as runtime_doctor
+from llm_council_for_trae.provider import ModelCallResult, monitor_stream_for_budget, parse_stream_json
+from llm_council_for_trae.store import ArtifactStore
+from llm_council_for_trae.validation import validate_run
 
 
 def stage_meta(expected_model="GPT-5.4", actual_model=None):
@@ -45,8 +45,8 @@ def stage_meta(expected_model="GPT-5.4", actual_model=None):
         "session_id": "session-1",
         "command": ["traecli", "-p", "<prompt 2 chars>"],
         "exit_code": 0,
-        "stdout_path": "A.coco.stream.jsonl",
-        "stderr_path": "A.coco.stderr.log",
+        "stdout_path": "A.traecli.stream.jsonl",
+        "stderr_path": "A.traecli.stderr.log",
         "copied_session_files": {},
         "raw_model_markers": [actual_model or expected_model],
         "error": None,
@@ -112,18 +112,18 @@ def write_minimal_valid_direct_run(store):
         "input.md",
         "config.json",
         "runtime/doctor.json",
-        "runtime/coco.models.json",
+        "runtime/traecli.models.json",
         "stage1/member.prompt.md",
         "stage1/A.response.md",
-        "stage1/A.coco.stream.jsonl",
+        "stage1/A.traecli.stream.jsonl",
         "stage2/review.prompt.md",
         "stage2/label_to_model.json",
         "stage2/aggregate.json",
         "stage2/A.review.md",
-        "stage2/A.coco.stream.jsonl",
+        "stage2/A.traecli.stream.jsonl",
         "stage3/chairman.prompt.md",
         "stage3/final.md",
-        "stage3/final.coco.stream.jsonl",
+        "stage3/final.traecli.stream.jsonl",
         "html/index.html",
     ]:
         store.write_text(relative, "{}\n")
@@ -193,7 +193,7 @@ FINAL RANKING:
         }
         models_payload = [{"name": "GLM-5.1"}]
         with patch(
-            "coco_llm_council.models.run_command",
+            "llm_council_for_trae.models.run_command",
             side_effect=[
                 CompletedProcess(["fake", "--version"], 0, stdout="fake version", stderr=""),
                 CompletedProcess(["fake", "doctor", "--json"], 2, stdout=json.dumps(doctor_payload), stderr=""),
@@ -214,7 +214,7 @@ FINAL RANKING:
         }
         models_payload = [{"name": "GLM-5.1"}]
         with patch(
-            "coco_llm_council.models.run_command",
+            "llm_council_for_trae.models.run_command",
             side_effect=[
                 CompletedProcess(["fake", "--version"], 0, stdout="fake version", stderr=""),
                 CompletedProcess(["fake", "doctor", "--json"], 2, stdout=json.dumps(doctor_payload), stderr=""),
@@ -302,7 +302,7 @@ FINAL RANKING:
         choice = select_model_choice_interactively(models, stdin=StringIO("\n"), stderr=stderr)
         self.assertEqual(choice.members, ["GPT-5.4", "GLM-5.1", "DeepSeek-V4-Pro"])
         self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
-        self.assertIn("CLC 检测到当前 COCO 可用模型", stderr.getvalue())
+        self.assertIn("LCT 检测到当前 traecli 可用模型", stderr.getvalue())
         self.assertIn("推荐 council 模型套", stderr.getvalue())
 
     def test_interactive_model_selection_accepts_custom_numbered_models(self):
@@ -391,20 +391,20 @@ FINAL RANKING:
                 "input.md",
                 "config.json",
                 "runtime/doctor.json",
-                "runtime/coco.models.json",
+                "runtime/traecli.models.json",
                 "stage1/member.prompt.md",
                 "stage1/A.response.md",
-                "stage1/A.coco.stream.jsonl",
+                "stage1/A.traecli.stream.jsonl",
                 "stage1/B.response.md",
-                "stage1/B.coco.stream.jsonl",
+                "stage1/B.traecli.stream.jsonl",
                 "stage2/review.prompt.md",
                 "stage2/label_to_model.json",
                 "stage2/aggregate.json",
                 "stage2/A.review.md",
-                "stage2/A.coco.stream.jsonl",
+                "stage2/A.traecli.stream.jsonl",
                 "stage3/chairman.prompt.md",
                 "stage3/final.md",
-                "stage3/final.coco.stream.jsonl",
+                "stage3/final.traecli.stream.jsonl",
             ]
             for relative in plain_files:
                 store.write_text(relative, file_contents.get(relative, "{}\n"))
@@ -418,7 +418,7 @@ FINAL RANKING:
             validation = validate_run(store)
             self.assertEqual(validation["status"], "ok", validation["failures"])
             html = (store.root / "html" / "index.html").read_text(encoding="utf-8")
-            self.assertIn("COCO LLM Council", html)
+            self.assertIn("LLM Council for Trae", html)
             self.assertIn('lang="zh-CN"', html)
             self.assertIn("归档副本", html)
             self.assertIn('class="sheet"', html)
@@ -494,23 +494,23 @@ FINAL RANKING:
                 "input.md",
                 "config.json",
                 "runtime/doctor.json",
-                "runtime/coco.models.json",
+                "runtime/traecli.models.json",
                 "stage1/member.prompt.md",
                 "stage1/A.response.md",
                 "stage1/A.meta.json",
-                "stage1/A.coco.stream.jsonl",
+                "stage1/A.traecli.stream.jsonl",
                 "stage2/review.prompt.md",
                 "stage2/label_to_model.json",
                 "stage2/aggregate.json",
                 "stage2/A.review.md",
                 "stage2/A.review.json",
                 "stage2/A.meta.json",
-                "stage2/A.coco.stream.jsonl",
+                "stage2/A.traecli.stream.jsonl",
                 "stage3/chairman.prompt.md",
                 "stage3/final.md",
                 "stage3/final.json",
                 "stage3/final.meta.json",
-                "stage3/final.coco.stream.jsonl",
+                "stage3/final.traecli.stream.jsonl",
                 "html/index.html",
             ]:
                 store.write_text(relative, "{}\n")
@@ -556,19 +556,19 @@ FINAL RANKING:
                     self.assertTrue(any(check["name"] == expected_failure for check in validation["failures"]), validation["failures"])
 
     def test_provider_includes_yolo_by_default(self):
-        from coco_llm_council.provider import TraeCliProvider
+        from llm_council_for_trae.provider import TraeCliProvider
         provider = TraeCliProvider(use_yolo=True)
         self.assertIn("--yolo", provider._build_command("GPT-5.4", "test prompt", "run-1", "stage1", "A", "sess-1"))
 
     def test_provider_omits_yolo_when_disabled(self):
-        from coco_llm_council.provider import TraeCliProvider
+        from llm_council_for_trae.provider import TraeCliProvider
         provider = TraeCliProvider(use_yolo=False)
         cmd = provider._build_command("GPT-5.4", "test prompt", "run-1", "stage1", "A", "sess-1")
         self.assertNotIn("--yolo", cmd)
         self.assertNotIn("-y", cmd)
 
     def test_model_call_result_includes_permission_mode(self):
-        from coco_llm_council.provider import ModelCallResult
+        from llm_council_for_trae.provider import ModelCallResult
         result = ModelCallResult(
             expected_model="GPT-5.4",
             actual_model="GPT-5.4",
@@ -584,7 +584,7 @@ FINAL RANKING:
         self.assertEqual(result.to_json()["permission_mode"], "bypass_permissions")
 
     def test_stage_meta_schema_validates_permission_mode(self):
-        from coco_llm_council.schema_contract import validate_schema, STAGE_META_SCHEMA
+        from llm_council_for_trae.schema_contract import validate_schema, STAGE_META_SCHEMA
         meta = stage_meta()
         meta["permission_mode"] = "bypass_permissions"
         checks = validate_schema("meta", meta, STAGE_META_SCHEMA)
@@ -605,7 +605,7 @@ FINAL RANKING:
         self.assertEqual(classify_stage1_status(results, min_valid_members=4), "failed")
 
     def test_chairman_metadata_records_fallback(self):
-        from coco_llm_council.council import stage3_synthesize_final
+        from llm_council_for_trae.council import stage3_synthesize_final
         metadata = {
             "attempted": ["GLM-5.1", "Qwen3.6-Plus"],
             "used": "Qwen3.6-Plus",
@@ -637,11 +637,11 @@ FINAL RANKING:
             }
             store.write_manifest(manifest)
             for relative in [
-                "input.md", "config.json", "runtime/doctor.json", "runtime/coco.models.json",
-                "stage1/member.prompt.md", "stage1/A.response.md", "stage1/A.coco.stream.jsonl",
+                "input.md", "config.json", "runtime/doctor.json", "runtime/traecli.models.json",
+                "stage1/member.prompt.md", "stage1/A.response.md", "stage1/A.traecli.stream.jsonl",
                 "stage2/review.prompt.md", "stage2/label_to_model.json", "stage2/aggregate.json",
-                "stage2/A.review.md", "stage2/A.coco.stream.jsonl",
-                "stage3/chairman.prompt.md", "stage3/final.md", "stage3/final.coco.stream.jsonl",
+                "stage2/A.review.md", "stage2/A.traecli.stream.jsonl",
+                "stage3/chairman.prompt.md", "stage3/final.md", "stage3/final.traecli.stream.jsonl",
                 "html/index.html",
             ]:
                 store.write_text(relative, "{}\n")
@@ -698,7 +698,7 @@ FINAL RANKING:
         self.assertTrue(parsed["raw_partial_recoverable"])
 
     def test_model_call_result_includes_tool_budget_status(self):
-        from coco_llm_council.provider import ModelCallResult
+        from llm_council_for_trae.provider import ModelCallResult
         result = ModelCallResult(
             expected_model="GPT-5.4",
             actual_model="GPT-5.4",
@@ -714,7 +714,7 @@ FINAL RANKING:
         self.assertEqual(result.to_json()["tool_budget_status"], "ok")
 
     def test_model_call_result_includes_partial_output_fields(self):
-        from coco_llm_council.provider import ModelCallResult
+        from llm_council_for_trae.provider import ModelCallResult
         result = ModelCallResult(
             expected_model="GPT-5.4",
             actual_model="GPT-5.4",
@@ -915,12 +915,12 @@ FINAL RANKING:
             }
             store.write_manifest(manifest)
             plain_files = [
-                "input.md", "config.json", "runtime/doctor.json", "runtime/coco.models.json",
-                "stage1/member.prompt.md", "stage1/A.response.md", "stage1/A.coco.stream.jsonl",
-                "stage1/B.response.md", "stage1/B.coco.stream.jsonl",
+                "input.md", "config.json", "runtime/doctor.json", "runtime/traecli.models.json",
+                "stage1/member.prompt.md", "stage1/A.response.md", "stage1/A.traecli.stream.jsonl",
+                "stage1/B.response.md", "stage1/B.traecli.stream.jsonl",
                 "stage2/review.prompt.md", "stage2/label_to_model.json", "stage2/aggregate.json",
-                "stage2/A.review.md", "stage2/A.coco.stream.jsonl",
-                "stage3/chairman.prompt.md", "stage3/final.md", "stage3/final.coco.stream.jsonl",
+                "stage2/A.review.md", "stage2/A.traecli.stream.jsonl",
+                "stage3/chairman.prompt.md", "stage3/final.md", "stage3/final.traecli.stream.jsonl",
             ]
             for relative in plain_files:
                 store.write_text(relative, "{}\n")
@@ -944,9 +944,9 @@ FINAL RANKING:
 
     def test_stage3_returns_tuple_with_required_fields(self):
         async def _run():
-            from coco_llm_council.council import stage3_synthesize_final, CouncilConfig
-            from coco_llm_council.provider import ModelCallResult, TraeCliProvider
-            from coco_llm_council.store import ArtifactStore
+            from llm_council_for_trae.council import stage3_synthesize_final, CouncilConfig
+            from llm_council_for_trae.provider import ModelCallResult, TraeCliProvider
+            from llm_council_for_trae.store import ArtifactStore
             from unittest.mock import AsyncMock
 
             store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s3-tuple")
@@ -982,9 +982,9 @@ FINAL RANKING:
 
     def test_stage3_fallback_records_in_metadata(self):
         async def _run():
-            from coco_llm_council.council import stage3_synthesize_final, CouncilConfig
-            from coco_llm_council.provider import ModelCallResult, TraeCliProvider
-            from coco_llm_council.store import ArtifactStore
+            from llm_council_for_trae.council import stage3_synthesize_final, CouncilConfig
+            from llm_council_for_trae.provider import ModelCallResult, TraeCliProvider
+            from llm_council_for_trae.store import ArtifactStore
             from unittest.mock import AsyncMock
 
             store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s3-fb")
@@ -1020,7 +1020,7 @@ FINAL RANKING:
         asyncio.run(_run())
 
     def test_recommend_model_choice_prefers_non_openrouter(self):
-        from coco_llm_council.model_selection import recommend_model_choice
+        from llm_council_for_trae.model_selection import recommend_model_choice
         models = [
             {"name": "openrouter-2o"},
             {"name": "GLM-5.1"},
@@ -1031,18 +1031,18 @@ FINAL RANKING:
         self.assertEqual(choice.source, "recommended")
 
     def test_recommend_model_choice_fallback_to_openrouter(self):
-        from coco_llm_council.model_selection import recommend_model_choice
+        from llm_council_for_trae.model_selection import recommend_model_choice
         models = [{"name": "openrouter-2o"}]
         choice = recommend_model_choice(models)
         self.assertEqual(choice.members, ["openrouter-2o"])
 
     def test_recommend_model_choice_empty_models(self):
-        from coco_llm_council.model_selection import recommend_model_choice
+        from llm_council_for_trae.model_selection import recommend_model_choice
         choice = recommend_model_choice([])
         self.assertEqual(choice.source, "static-default")
 
     def test_recommend_model_chairman_from_preferred(self):
-        from coco_llm_council.model_selection import recommend_model_choice
+        from llm_council_for_trae.model_selection import recommend_model_choice
         models = [
             {"name": "GLM-5.1"},
             {"name": "Qwen3.6-Plus"},
@@ -1054,9 +1054,9 @@ FINAL RANKING:
 
     def test_stage1_hard_timeout_cancels_remaining(self):
         async def _run():
-            from coco_llm_council.council import stage1_collect_responses, CouncilConfig
-            from coco_llm_council.provider import ModelCallResult, TraeCliProvider
-            from coco_llm_council.store import ArtifactStore
+            from llm_council_for_trae.council import stage1_collect_responses, CouncilConfig
+            from llm_council_for_trae.provider import ModelCallResult, TraeCliProvider
+            from llm_council_for_trae.store import ArtifactStore
             from unittest.mock import AsyncMock
 
             store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-hard-to")
@@ -1092,9 +1092,9 @@ FINAL RANKING:
 
     def test_stage1_quorum_checkpoint_skips_when_sufficient(self):
         async def _run():
-            from coco_llm_council.council import stage1_collect_responses, CouncilConfig
-            from coco_llm_council.provider import ModelCallResult, TraeCliProvider
-            from coco_llm_council.store import ArtifactStore
+            from llm_council_for_trae.council import stage1_collect_responses, CouncilConfig
+            from llm_council_for_trae.provider import ModelCallResult, TraeCliProvider
+            from llm_council_for_trae.store import ArtifactStore
 
             store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-quorum-to")
             config = CouncilConfig(
@@ -1165,8 +1165,8 @@ FINAL RANKING:
 
     def test_stage1_result_dict_has_metrics(self):
         async def _run():
-            from coco_llm_council.council import stage1_collect_responses, CouncilConfig
-            from coco_llm_council.provider import ModelCallResult, TraeCliProvider
+            from llm_council_for_trae.council import stage1_collect_responses, CouncilConfig
+            from llm_council_for_trae.provider import ModelCallResult, TraeCliProvider
             from unittest.mock import AsyncMock
 
             store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s1-metrics")
@@ -1195,8 +1195,8 @@ FINAL RANKING:
 
     def test_stage2_result_dict_has_metrics(self):
         async def _run():
-            from coco_llm_council.council import stage2_collect_rankings, CouncilConfig
-            from coco_llm_council.provider import ModelCallResult, TraeCliProvider
+            from llm_council_for_trae.council import stage2_collect_rankings, CouncilConfig
+            from llm_council_for_trae.provider import ModelCallResult, TraeCliProvider
             from unittest.mock import AsyncMock
 
             store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s2-metrics")
@@ -1227,8 +1227,8 @@ FINAL RANKING:
 
     def test_stage3_result_dict_has_metrics(self):
         async def _run():
-            from coco_llm_council.council import stage3_synthesize_final, CouncilConfig
-            from coco_llm_council.provider import ModelCallResult, TraeCliProvider
+            from llm_council_for_trae.council import stage3_synthesize_final, CouncilConfig
+            from llm_council_for_trae.provider import ModelCallResult, TraeCliProvider
             from unittest.mock import AsyncMock
 
             store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s3-metrics")
@@ -1260,7 +1260,7 @@ FINAL RANKING:
 
     def test_retry_on_runtime_error(self):
         async def _run():
-            from coco_llm_council.provider import TraeCliProvider, ModelCallResult
+            from llm_council_for_trae.provider import TraeCliProvider, ModelCallResult
             from unittest.mock import AsyncMock, patch
 
             provider = TraeCliProvider.__new__(TraeCliProvider)
@@ -1279,7 +1279,7 @@ FINAL RANKING:
 
             with patch.object(provider, '_query_model_once', new_callable=AsyncMock) as mock_once:
                 mock_once.side_effect = [fail_call, ok_call]
-                with patch('coco_llm_council.provider.asyncio.sleep', new_callable=AsyncMock):
+                with patch('llm_council_for_trae.provider.asyncio.sleep', new_callable=AsyncMock):
                     result = await provider.query_model(
                         model="GPT-5.4", prompt="test", run_id="r1",
                         stage="stage1", label="A", output_dir=Path(tempfile.mkdtemp()),
@@ -1294,7 +1294,7 @@ FINAL RANKING:
 
     def test_no_retry_on_model_error(self):
         async def _run():
-            from coco_llm_council.provider import TraeCliProvider, ModelCallResult
+            from llm_council_for_trae.provider import TraeCliProvider, ModelCallResult
             from unittest.mock import AsyncMock, patch
 
             provider = TraeCliProvider.__new__(TraeCliProvider)
@@ -1322,7 +1322,7 @@ FINAL RANKING:
 
     def test_no_retry_on_budget_kill(self):
         async def _run():
-            from coco_llm_council.provider import TraeCliProvider, ModelCallResult
+            from llm_council_for_trae.provider import TraeCliProvider, ModelCallResult
             from unittest.mock import AsyncMock, patch
 
             provider = TraeCliProvider.__new__(TraeCliProvider)
@@ -1350,7 +1350,7 @@ FINAL RANKING:
         asyncio.run(_run())
 
     def test_html_no_quorum_status_card(self):
-        from coco_llm_council.html_export import render_summary_cards
+        from llm_council_for_trae.html_export import render_summary_cards
         manifest = {
             "config": {"members": ["GPT-5.4"], "chairman": "GPT-5.4"},
             "status": "ok",
@@ -1362,7 +1362,7 @@ FINAL RANKING:
         self.assertIn("主席模型", html)
 
     def test_html_no_chairman_fallback_card(self):
-        from coco_llm_council.html_export import render_summary_cards
+        from llm_council_for_trae.html_export import render_summary_cards
         manifest = {
             "config": {"members": ["GPT-5.4"], "chairman": "Qwen3.6-Plus"},
             "metadata": {"chairman": {"fallback_from": "GPT-5.4", "used": "Qwen3.6-Plus"}},
@@ -1373,7 +1373,7 @@ FINAL RANKING:
         self.assertNotIn("fallback_from", html)
 
     def test_html_no_degraded_banner(self):
-        from coco_llm_council.html_export import render_alerts
+        from llm_council_for_trae.html_export import render_alerts
         html = render_alerts([], [], manifest_status="degraded_ok")
         self.assertNotIn("Quorum 降级", html)
         self.assertNotIn("warning-banner", html)
@@ -1409,11 +1409,11 @@ FINAL RANKING:
             }
             store.write_manifest(manifest)
             plain_files = [
-                "input.md", "config.json", "runtime/doctor.json", "runtime/coco.models.json",
-                "stage1/member.prompt.md", "stage1/A.response.md", "stage1/A.coco.stream.jsonl",
+                "input.md", "config.json", "runtime/doctor.json", "runtime/traecli.models.json",
+                "stage1/member.prompt.md", "stage1/A.response.md", "stage1/A.traecli.stream.jsonl",
                 "stage2/review.prompt.md", "stage2/label_to_model.json", "stage2/aggregate.json",
-                "stage2/A.review.md", "stage2/A.coco.stream.jsonl",
-                "stage3/chairman.prompt.md", "stage3/final.md", "stage3/final.coco.stream.jsonl",
+                "stage2/A.review.md", "stage2/A.traecli.stream.jsonl",
+                "stage3/chairman.prompt.md", "stage3/final.md", "stage3/final.traecli.stream.jsonl",
             ]
             for relative in plain_files:
                 store.write_text(relative, "{}\n")
@@ -1434,13 +1434,13 @@ FINAL RANKING:
             self.assertLess(final_pos, evidence_pos)
 
     def test_degraded_ok_exit_code_zero(self):
-        from coco_llm_council.cli import emit
+        from llm_council_for_trae.cli import emit
         payload = {"run_id": "test", "status": "degraded_ok", "degraded": True}
         exit_code = emit(payload, as_json=False, ok=True, text="degraded_ok")
         self.assertEqual(exit_code, 0)
 
     def test_degraded_ok_json_has_degraded_flag(self):
-        from coco_llm_council.cli import emit
+        from llm_council_for_trae.cli import emit
         import sys
         payload = {"run_id": "test", "status": "degraded_ok", "degraded": True}
         old_stdout = sys.stdout
@@ -1550,8 +1550,8 @@ FINAL RANKING:
 
     def test_stage1_quorum_retry_recovers_failed_members(self):
         async def _run():
-            from coco_llm_council.council import run_full_council, CouncilConfig
-            from coco_llm_council.provider import ModelCallResult
+            from llm_council_for_trae.council import run_full_council, CouncilConfig
+            from llm_council_for_trae.provider import ModelCallResult
 
             store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s1-retry-ok")
             config = CouncilConfig(
@@ -1564,7 +1564,7 @@ FINAL RANKING:
                 member_hard_timeout=999,
             )
 
-            import coco_llm_council.council as council_mod
+            import llm_council_for_trae.council as council_mod
             call_count = {"count": 0}
 
             async def query_side_effect(**kwargs):
@@ -1615,8 +1615,8 @@ FINAL RANKING:
 
     def test_stage1_quorum_retry_excludes_chairman_failed(self):
         async def _run():
-            from coco_llm_council.council import run_full_council, CouncilConfig
-            from coco_llm_council.provider import ModelCallResult
+            from llm_council_for_trae.council import run_full_council, CouncilConfig
+            from llm_council_for_trae.provider import ModelCallResult
 
             store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s1-retry-chair-fail")
             config = CouncilConfig(
@@ -1629,7 +1629,7 @@ FINAL RANKING:
                 member_hard_timeout=999,
             )
 
-            import coco_llm_council.council as council_mod
+            import llm_council_for_trae.council as council_mod
 
             async def query_side_effect(**kwargs):
                 model = kwargs["model"]

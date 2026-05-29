@@ -108,7 +108,7 @@ class TraeCliProvider:
         runtime_cwd: Path | None = None,
         use_yolo: bool = True,
     ):
-        self.runtime_command = os.environ.get("COCO_LLM_COUNCIL_TRAECLI", runtime_command)
+        self.runtime_command = os.environ.get("LLM_COUNCIL_FOR_TRAE_TRAECLI", runtime_command)
         self.query_timeout = query_timeout
         self.runtime_cwd = runtime_cwd
         self.use_yolo = use_yolo
@@ -190,8 +190,8 @@ class TraeCliProvider:
     ) -> ModelCallResult:
         output_dir.mkdir(parents=True, exist_ok=True)
         session_id = slugify(f"{run_id}-{stage}-{label}")
-        stream_path = output_dir / f"{label}.coco.stream.jsonl"
-        stderr_path = output_dir / f"{label}.coco.stderr.log"
+        stream_path = output_dir / f"{label}.traecli.stream.jsonl"
+        stderr_path = output_dir / f"{label}.traecli.stderr.log"
         runtime_prompt = f"@{agent} {prompt}" if agent else prompt
         cmd = self._build_command(model, runtime_prompt, run_id, stage, label, session_id)
         permission_mode = "bypass_permissions" if self.use_yolo else "default"
@@ -283,7 +283,7 @@ class TraeCliProvider:
             status = "failed"
             error = f"expected subagent {agent} invocation evidence, got {subagent_invocation}"
 
-        copied = copy_coco_session_files(session_id, output_dir, label)
+        copied = copy_traecli_session_files(session_id, output_dir, label)
         tool_budget_status = "ok"
         if budget_killed or tool_calls_count > self.deliver_tool_limit or turns_count > self.deliver_turn_limit:
             tool_budget_status = "dropped_tool_budget"
@@ -465,13 +465,13 @@ def missing_subagent_invocation(expected_agent: str | None) -> dict[str, Any]:
     }
 
 
-def copy_coco_session_files(session_id: str, output_dir: Path, label: str) -> dict[str, str]:
+def copy_traecli_session_files(session_id: str, output_dir: Path, label: str) -> dict[str, str]:
     session_root = Path.home() / "Library" / "Caches" / "coco" / "sessions" / session_id
     copied: dict[str, str] = {}
     for name in ("session.json", "session.log", "events.jsonl", "traces.jsonl"):
         src = session_root / name
         if src.exists():
-            dest = output_dir / f"{label}.coco.{name}"
+            dest = output_dir / f"{label}.traecli.{name}"
             dest.write_bytes(src.read_bytes())
             copied[name] = dest.name
     return copied

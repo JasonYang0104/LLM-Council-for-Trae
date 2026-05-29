@@ -16,6 +16,9 @@ findings.md
 progress.md
 task_plan.md
 notes.md
+question.md
+.gitmodules
+AGENTS.md
 docs/execution-plan-*/
 docs/goal-prompt.md
 docs/html-export-archival-brief-*.md
@@ -23,5 +26,11 @@ docs/roster-runtime-followups.md
 docs/retrospective-*/
 docs/session-brief-*/
 docs/model-benchmark-*/
+docs/notes-*.md
+docs/director-brief-*.md
+docs/html-ux-review.md
 examples/e2e-*
 examples/q[0-9]-*
+examples/hackathon-*.md
+examples/local-ai-*.md
+examples/reliability-*.md

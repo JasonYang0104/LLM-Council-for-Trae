@@ -1,12 +1,12 @@
-# COCO-llm-council 启动方案
+# LLM-Council-for-Trae 启动方案
 
 日期：2026-05-22
 
 ## 结论
 
-新方向不再是“继续迭代旧 TR”，而是新建独立 workspace：`COCO-llm-council`。
+新方向不再是“继续迭代旧 TR”，而是新建独立 workspace：`LLM-Council-for-Trae`。
 
-目标是做一个独立 council CLI，名字暂定 `coco-llm-council`。它内部调用 `traecli`，一比一复刻 `llm-council` 的核心议事流程，同时排除原项目的 Web UI 和 OpenRouter API。COCO 是默认 runtime，COCO 自定义智能体是固定 council 成员的长期形态。
+目标是做一个独立 council CLI，名字暂定 `llm-council-for-trae`。它内部调用 `traecli`，一比一复刻 `llm-council` 的核心议事流程，同时排除原项目的 Web UI 和 OpenRouter API。Trae CLI 是默认 runtime，Trae CLI 自定义智能体是固定 council 成员的长期形态。
 
 旧 TR 保留不动，不迁移、不改写、不作为未来入口。旧 TR 只能作为历史经验参考，不能污染新项目的命名、命令、provider 边界和文档口径。
 
@@ -19,8 +19,8 @@
 ├── README.md
 ├── docs/
 │   ├── design.md
-│   ├── COCO_INSTALLATION_AND_PATHS.md
-│   ├── coco-subagents.md
+│   ├── TRAECLI_INSTALLATION_AND_PATHS.md
+│   ├── traecli-subagents.md
 │   ├── llm-council-parity.md
 │   └── goal-prompt.md
 ├── references/
@@ -32,18 +32,18 @@
 说明：
 
 - `docs/design.md`：本方案的主设计文档。
-- `docs/COCO_INSTALLATION_AND_PATHS.md`：COCO 安装、路径、鉴权、插件和模型说明。
-- `docs/coco-subagents.md`：后续补 COCO subagent 配置、模型指定、fallback 风险和验证方式。
+- `docs/TRAECLI_INSTALLATION_AND_PATHS.md`：Trae CLI 安装、路径、鉴权、插件和模型说明。
+- `docs/traecli-subagents.md`：后续补 Trae CLI subagent 配置、模型指定、fallback 风险和验证方式。
 - `docs/llm-council-parity.md`：逐项对照 `llm-council` 的复刻清单。
 - `docs/goal-prompt.md`：发给新会话的 `/goal` 启动提示词。
 - `references/llm-council/`：克隆 `karpathy/llm-council`，固定 commit，当作可读参考资产。
-- `.trae/agents/`：后续放 COCO 自定义智能体，例如 council member 和 chairman。
+- `.trae/agents/`：后续放 Trae CLI 自定义智能体，例如 council member 和 chairman。
 
 文档中的本地路径一律使用相对路径。绝对路径只出现在最终交付说明里，不写进 workspace 内部文档。
 
 ## 必须复用 llm-council 的资产
 
-只要不和 COCO runtime、HTML 输出、长期可复盘目标冲突，就复用 `llm-council` 的已有资产，不重新发明。
+只要不和 traecli runtime、HTML 输出、长期可复盘目标冲突，就复用 `llm-council` 的已有资产，不重新发明。
 
 必须复用或对齐：
 
@@ -69,8 +69,8 @@
 必须排除或替换：
 
 - React / Vite Web UI：替换成单文件 HTML artifact。
-- OpenRouter API：替换成 COCO / `traecli` provider。
-- `.env` API key 模式：替换成本机 COCO 鉴权与配置。
+- OpenRouter API：替换成 traecli provider。
+- `.env` API key 模式：替换成本机 traecli 鉴权与配置。
 - `data/conversations/` 弱存储：替换成可复盘 artifact store。
 - 仅靠自由文本解析排名：可以兼容，但默认应优先结构化输出，避免 parse failure。
 
@@ -81,7 +81,7 @@
 它能完成：
 
 - 调用某个模型。
-- 调用 COCO 自定义智能体。
+- 调用 Trae CLI 自定义智能体。
 - 输出 stream JSON。
 - 记录 session log。
 
@@ -95,21 +95,21 @@
 - 聚合排名。
 - 构造 chairman prompt。
 - 落盘 artifacts。
-- 复制 COCO session evidence。
+- 复制 traecli session evidence。
 - 生成 HTML artifact。
 - 提供 replay、doctor、export、validate。
 
 因此推荐方案是：
 
 ```text
-coco-llm-council CLI
+llm-council-for-trae CLI
   -> 调用 traecli
-  -> 读取 COCO 输出和 session log
+  -> 读取 Trae CLI 输出和 session log
   -> 写入本项目 artifact store
   -> 生成 HTML artifact
 ```
 
-不推荐把全部逻辑塞进一个 COCO subagent。subagent 适合作为 council member 或 chairman，不适合作为唯一编排器。
+不推荐把全部逻辑塞进一个 Trae CLI subagent。subagent 适合作为 council member 或 chairman，不适合作为唯一编排器。
 
 ## 命令面设计
 
@@ -118,27 +118,27 @@ coco-llm-council CLI
 暂定命令名：
 
 ```text
-coco-llm-council
+llm-council-for-trae
 ```
 
 最小命令面：
 
 ```bash
-coco-llm-council --help
-coco-llm-council doctor --json
-coco-llm-council models --recommend --json
-coco-llm-council run --input examples/question.md --json
-coco-llm-council run --input examples/question.md --default-models --json
-coco-llm-council show <run_id> --json
-coco-llm-council export <run_id> --format html
-coco-llm-council replay <run_id> --stage stage3
-coco-llm-council validate <run_id> --json
+llm-council-for-trae --help
+llm-council-for-trae doctor --json
+llm-council-for-trae models --recommend --json
+llm-council-for-trae run --input examples/question.md --json
+llm-council-for-trae run --input examples/question.md --default-models --json
+llm-council-for-trae show <run_id> --json
+llm-council-for-trae export <run_id> --format html
+llm-council-for-trae replay <run_id> --stage stage3
+llm-council-for-trae validate <run_id> --json
 ```
 
 命令原则：
 
-- `doctor` 先确认 `traecli` 是否存在、COCO 是否登录、模型是否可用、插件是否加载。
-- `models --recommend` 读取 COCO 当前可用模型，并基于当前列表推荐 council 成员和主席，不维护第二套过期模型清单。
+- `doctor` 先确认 `traecli` 是否存在、Trae CLI 是否登录、模型是否可用、插件是否加载。
+- `models --recommend` 读取 Trae CLI 当前可用模型，并基于当前列表推荐 council 成员和主席，不维护第二套过期模型清单。
 - `run` 在未传 `--members`、`--chairman`、`--profile` 或 `--default-models` 时，先在 CLI 终端中主动询问模型选择，再执行完整 Stage 1 -> Stage 2 -> Stage 3 -> HTML。
 - `run --default-models` 跳过询问，使用静态默认模型套。
 - `show` 只读 manifest，不调用模型。
@@ -172,11 +172,11 @@ traecli -p "<prompt>" \
 硬要求：
 
 - 每次调用必须记录期望模型和实际模型。
-- 如果 COCO fallback 到默认模型，run 必须失败。
+- 如果 Trae CLI fallback 到默认模型，run 必须失败。
 - session log 必须复制进 run artifacts。
 - 超时、非零退出、空响应、parse failure 必须结构化记录。
 
-### P2：COCO subagent provider
+### P2：Trae CLI subagent provider
 
 第二阶段实现 subagent provider。固定 council 成员写成项目级文件：
 
@@ -193,11 +193,11 @@ traecli -p "<prompt>" \
 ```yaml
 ---
 name: council-gpt54
-description: COCO-llm-council member using GPT-5.4
+description: LLM-Council-for-Trae member using GPT-5.4
 model: GPT-5.4
 tools: []
 ---
-你是 COCO-llm-council 的 council member。只回答当前阶段 prompt，不读取 workspace 外内容。
+你是 LLM-Council-for-Trae 的 council member。只回答当前阶段 prompt，不读取 workspace 外内容。
 ```
 
 subagent provider 的价值：
@@ -210,14 +210,14 @@ subagent provider 的价值：
 
 - 动态 roster 不适合全靠 subagent。
 - subagent 文件需要验证 frontmatter。
-- COCO 对无效模型可能 fallback，必须靠日志检查兜住。
+- Trae CLI 对无效模型可能 fallback，必须靠日志检查兜住。
 
 ## Artifact store
 
 默认 run 目录：
 
 ```text
-.coco-llm-council/runs/<run_id>/
+.llm-council-for-trae/runs/<run_id>/
 ├── input.md
 ├── config.json
 ├── manifest.json
@@ -251,7 +251,7 @@ subagent provider 的价值：
 artifact store 的成功标准：
 
 - 不依赖聊天窗口记忆。
-- 不依赖 COCO cache 仍然存在。
+- 不依赖 traecli cache 仍然存在。
 - 后续 Agent 只读 run 目录，就能回答“为什么得到这个最终答案”。
 - 每个模型调用都有 prompt、response、metadata、trace。
 - 每个失败都能定位到 stage、member、命令、退出码、日志片段。
@@ -306,11 +306,11 @@ input.md
 config/profile
 ```
 
-Codex、Trae-CN、COCO 都只是输入来源，不是 runtime 边界。
+Codex、Trae-CN、Trae CLI 都只是输入来源，不是 runtime 边界。
 
 - Codex 可以写 `input.md` 后调用 CLI。
 - Trae-CN 可以作为用户整理问题的工作台，但 runtime 不读取 Trae-CN DOM。
-- COCO 可以作为交互入口，但真正的 council 编排仍由 CLI 完成。
+- Trae CLI 可以作为交互入口，但真正的 council 编排仍由 CLI 完成。
 
 ## 开发节奏
 
@@ -320,7 +320,7 @@ Codex、Trae-CN、COCO 都只是输入来源，不是 runtime 边界。
 
 - 创建 workspace。
 - 放入本设计文档。
-- 放入 COCO 安装路径说明。
+- 放入 traecli 安装路径说明。
 - 克隆 `llm-council` 到 `references/llm-council/`。
 - 写 `docs/goal-prompt.md`。
 
@@ -332,17 +332,17 @@ Codex、Trae-CN、COCO 都只是输入来源，不是 runtime 边界。
 
 要做：
 
-- 使用 `cli-creator` 设计并创建 `coco-llm-council` CLI。
+- 使用 `cli-creator` 设计并创建 `llm-council-for-trae` CLI。
 - 实现 `--help`、`doctor --json`、`models --recommend --json`。
 - 确认从任意目录能调用命令。
 
 测试：
 
 ```bash
-command -v coco-llm-council
-coco-llm-council --help
-coco-llm-council doctor --json
-coco-llm-council models --recommend --json
+command -v llm-council-for-trae
+llm-council-for-trae --help
+llm-council-for-trae doctor --json
+llm-council-for-trae models --recommend --json
 ```
 
 ### Phase 2：llm-council parity core
@@ -357,13 +357,13 @@ coco-llm-council models --recommend --json
 测试：
 
 ```bash
-coco-llm-council run --input examples/question.md --json
-coco-llm-council run --input examples/question.md --default-models --json
-coco-llm-council show <run_id> --json
-coco-llm-council validate <run_id> --json
+llm-council-for-trae run --input examples/question.md --json
+llm-council-for-trae run --input examples/question.md --default-models --json
+llm-council-for-trae show <run_id> --json
+llm-council-for-trae validate <run_id> --json
 ```
 
-### Phase 3：COCO evidence hardening
+### Phase 3：Trae CLI evidence hardening
 
 要做：
 
@@ -375,7 +375,7 @@ coco-llm-council validate <run_id> --json
 测试：
 
 ```bash
-coco-llm-council run --input examples/question.md --members Invalid-Model,GPT-5.4 --chairman GPT-5.4 --json
+llm-council-for-trae run --input examples/question.md --members Invalid-Model,GPT-5.4 --chairman GPT-5.4 --json
 ```
 
 期望：失败，并明确指出模型不可用或发生 fallback。
@@ -391,8 +391,8 @@ coco-llm-council run --input examples/question.md --members Invalid-Model,GPT-5.
 测试：
 
 ```bash
-coco-llm-council export <run_id> --format html
-open .coco-llm-council/runs/<run_id>/html/index.html
+llm-council-for-trae export <run_id> --format html
+open .llm-council-for-trae/runs/<run_id>/html/index.html
 ```
 
 检查：
@@ -403,7 +403,7 @@ open .coco-llm-council/runs/<run_id>/html/index.html
 - copy buttons 可用。
 - warnings/failures 可见。
 
-### Phase 5：COCO subagent provider
+### Phase 5：Trae CLI subagent provider
 
 要做：
 
@@ -415,8 +415,8 @@ open .coco-llm-council/runs/<run_id>/html/index.html
 测试：
 
 ```bash
-coco-llm-council run --input examples/question.md --profile profiles/subagents.json --json
-coco-llm-council validate <run_id> --json
+llm-council-for-trae run --input examples/question.md --profile profiles/subagents.json --json
+llm-council-for-trae validate <run_id> --json
 ```
 
 ## 非目标
@@ -434,7 +434,7 @@ coco-llm-council validate <run_id> --json
 ## 新会话 `/goal` 提示词
 
 ```text
-/goal 在当前 workspace 中推进 COCO-llm-council。目标是创建一个独立 council CLI，命令名为 coco-llm-council，内部调用 traecli，一比一复刻 references/llm-council 的核心 council protocol，但排除原 Web UI 和 OpenRouter API。必须优先复用 llm-council 中不冲突的已有资产和函数边界；必须使用 Codex 的 cli-creator 方法论创建 CLI；COCO 是默认 runtime；后续支持 COCO 自定义 subagent 作为固定 council 成员。先阅读 README.md、docs/design.md、docs/COCO_INSTALLATION_AND_PATHS.md 和 references/llm-council/README.md，再给出实现计划。交付必须完整包含：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、验证命令和结果。开发可以分阶段推进，但每阶段必须有明确测试。不要依赖旧 TR，不要引入 Web app，不要把 HTML 生成和主席综合混成一步。
+/goal 在当前 workspace 中推进 LLM-Council-for-Trae。目标是创建一个独立 council CLI，命令名为 llm-council-for-trae，内部调用 traecli，一比一复刻 references/llm-council 的核心 council protocol，但排除原 Web UI 和 OpenRouter API。必须优先复用 llm-council 中不冲突的已有资产和函数边界；必须使用 Codex 的 cli-creator 方法论创建 CLI；Trae CLI 是默认 runtime；后续支持 Trae CLI 自定义 subagent 作为固定 council 成员。先阅读 README.md、docs/design.md、docs/TRAECLI_INSTALLATION_AND_PATHS.md 和 references/llm-council/README.md，再给出实现计划。交付必须完整包含：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、验证命令和结果。开发可以分阶段推进，但每阶段必须有明确测试。不要依赖旧 TR，不要引入 Web app，不要把 HTML 生成和主席综合混成一步。
 ```
 
 ## 追加记录：Reader-first HTML 与 CLI 模型选择
@@ -547,8 +547,8 @@ Evidence
 HTML 验收：
 
 ```bash
-coco-llm-council export <run_id> --format html --json
-open .coco-llm-council/runs/<run_id>/html/index.html
+llm-council-for-trae export <run_id> --format html --json
+open .llm-council-for-trae/runs/<run_id>/html/index.html
 ```
 
 必须检查：
@@ -592,9 +592,9 @@ CLI 行为：
 验收：
 
 ```bash
-coco-llm-council run --input examples/question-with-models.md --json
-coco-llm-council show <run_id> --json
-coco-llm-council validate <run_id> --json
+llm-council-for-trae run --input examples/question-with-models.md --json
+llm-council-for-trae show <run_id> --json
+llm-council-for-trae validate <run_id> --json
 ```
 
 必须满足：
@@ -616,7 +616,7 @@ coco-llm-council validate <run_id> --json
 当前事实源仍然是：
 
 ```bash
-coco-llm-council models --recommend --json
+llm-council-for-trae models --recommend --json
 ```
 
 2026-05-22 本机实测当前返回 23 个模型，包括：
@@ -678,9 +678,9 @@ AskUserQuestion 可以放在 Trae-CN wrapper flow 中使用，但不是 CLC 的�
 外层 Agent
   1. 整理用户问题为 input.md
   2. 如果支持交互式终端，直接调用：
-     coco-llm-council run --input input.md --json
+     llm-council-for-trae run --input input.md --json
   3. 如果不支持交互式终端，传：
-     coco-llm-council run --input input.md --default-models --json
+     llm-council-for-trae run --input input.md --default-models --json
      或显式传 --members / --chairman / --profile
   4. 返回 html/index.html 路径
 ```
@@ -690,7 +690,7 @@ AskUserQuestion 可以放在 Trae-CN wrapper flow 中使用，但不是 CLC 的�
 - CLC core 可以在 TTY 里主动问用户。
 - CLC core 不依赖 Trae-CN DOM、selector、UI 工具或 AskUserQuestion。
 - Trae-CN 的问题卡片只是更好的前置体验；没有它，CLI 也必须能用 `--default-models` 或显式参数 headless 跑。
-- 如果未来 COCO / traecli 提供稳定、可脚本化、非 UI 依赖的 ask-user primitive，并且能写进 artifact store，可以考虑作为 optional preflight；现在不做。
+- 如果未来 Trae CLI / traecli 提供稳定、可脚本化、非 UI 依赖的 ask-user primitive，并且能写进 artifact store，可以考虑作为 optional preflight；现在不做。
 
 ### 下一轮实现节奏
 
@@ -714,5 +714,5 @@ HTML reader-first 和基础模型选择已经完成；后续优先级应转向 i
 ### 给执行会话的提示词
 
 ```text
-/goal 在当前 workspace 推进 COCO-llm-council 的下一轮迭代。先阅读 README.md、docs/design.md 和 docs/director-brief-20260522.md。当前 HTML reader-first / Archival Paper 与基础 CLI 模型选择已经完成；本轮不要重复实现。建议优先做 input frontmatter、task-mode 推荐策略、profile 管理或结构化 Stage 2 ranking 中的一项。必须保持：不引入 React/Vite/Web app；不接 OpenRouter；不依赖旧 TR；不重新调用模型生成 HTML；不改变 Stage 3 final answer；完成后必须运行单元测试和对应 CLI 验证，并明确说明 live COCO 是否可用。
+/goal 在当前 workspace 推进 LLM-Council-for-Trae 的下一轮迭代。先阅读 README.md、docs/design.md 和 docs/director-brief-20260522.md。当前 HTML reader-first / Archival Paper 与基础 CLI 模型选择已经完成；本轮不要重复实现。建议优先做 input frontmatter、task-mode 推荐策略、profile 管理或结构化 Stage 2 ranking 中的一项。必须保持：不引入 React/Vite/Web app；不接 OpenRouter；不依赖旧 TR；不重新调用模型生成 HTML；不改变 Stage 3 final answer；完成后必须运行单元测试和对应 CLI 验证，并明确说明 live Trae CLI 是否可用。
 ```

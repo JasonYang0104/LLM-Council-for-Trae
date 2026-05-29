@@ -1,12 +1,12 @@
-# COCO 安装、登录与核心路径记录
+# Trae CLI 安装、登录与核心路径记录
 
-本文记录本机 COCO 的安装依据、实际安装过程、SSO 登录方式、核心文件路径和后续研究时最值得看的官方文档入口。读者默认是后续要研究 COCO、做配套开发或排障的 Agent / 开发者。
+本文记录本机 Trae CLI 的安装依据、实际安装过程、SSO 登录方式、核心文件路径和后续研究时最值得看的官方文档入口。读者默认是后续要研究 Trae CLI、做配套开发或排障的 Agent / 开发者。
 
 ## 当前结论
 
 - 本文件记录 2026-05-22 安装与首次 smoke test 事实；不要把这里的历史成功直接当成当前可用性结论。
-- 2026-05-22 阶段收尾时，用户确认 COCO 当前暂不可用；CLC 本轮只复验了不依赖 live COCO 的测试。
-- COCO 安装曾成功，版本为 `0.120.32`。
+- 2026-05-22 阶段收尾时，用户确认 Trae CLI 当前暂不可用；CLC 本轮只复验了不依赖 live Trae CLI 的测试。
+- Trae CLI 安装曾成功，版本为 `0.120.32`。
 - `coco`、`traecli`、`trae-agent`、`ta` 是同一套内部二进制的不同入口。
 - 本机曾通过字节 SSO 完成鉴权，插件曾下载成功，模型列表曾可用。
 - 当前用户级配置文件是 `/Users/bytedance/.trae/traecli.yaml`。
@@ -15,10 +15,10 @@
 验证命令：
 
 ```bash
-coco --version
-coco doctor
-coco models --json
-coco -p "只回复 OK" --query-timeout 60s
+traecli --version
+traecli doctor
+traecli models --json
+traecli -p "只回复 OK" --query-timeout 60s
 ```
 
 2026-05-22 安装 smoke test 返回：
@@ -27,11 +27,11 @@ coco -p "只回复 OK" --query-timeout 60s
 OK
 ```
 
-如果这些命令当前失败，先按本文“本次踩坑记录”排查鉴权、插件和模型列表；在 COCO 恢复前，不要声称 `coco-llm-council` 完成了新的 live model run。
+如果这些命令当前失败，先按本文“本次踩坑记录”排查鉴权、插件和模型列表；在 Trae CLI 恢复前，不要声称 `llm-council-for-trae` 完成了新的 live model run。
 
 ## 安装参考
 
-安装命令来自 COCO 官方 wiki 及相关内部文档。原始入口是：
+安装命令来自 Trae CLI 官方 wiki 及相关内部文档。原始入口是：
 
 ```text
 https://cloud.bytedance.net/docs/wikiagent/wiki/Er28whaTUiRgMekHLvDcISWmnXc?x-resource-account=public&x-bc-region-id=bytedance
@@ -42,13 +42,13 @@ https://cloud.bytedance.net/docs/wikiagent/wiki/Er28whaTUiRgMekHLvDcISWmnXc?x-re
 - `Coco CLI + OpenSpec 快速起步（菜鸡入门版）`
 - `Coco 使用速记指南`
 - `如何在DCarClaw上安装使用coco`
-- COCO 内置文档：`coco doc`
-- COCO 内置 FAQ：`coco doc faq`
-- COCO 内置配置参考：`coco doc settings`
-- COCO 内置权限参考：`coco doc permissions`
-- COCO 内置模型配置参考：`coco doc model-config`
+- Trae CLI 内置文档：`traecli doc`
+- Trae CLI 内置 FAQ：`traecli doc faq`
+- Trae CLI 内置配置参考：`traecli doc settings`
+- Trae CLI 内置权限参考：`traecli doc permissions`
+- Trae CLI 内置模型配置参考：`traecli doc model-config`
 
-说明：原始 cloud wiki URL 在 Lark CLI 下没有直接读取权限；因此实际安装依据是通过 Lark CLI 搜索到的关联文档，以及安装后 COCO 自带的 `coco doc` 文档体系交叉确认。
+说明：原始 cloud wiki URL 在 Lark CLI 下没有直接读取权限；因此实际安装依据是通过 Lark CLI 搜索到的关联文档，以及安装后 Trae CLI 自带的 `traecli doc` 文档体系交叉确认。
 
 ## 安装过程
 
@@ -61,7 +61,7 @@ sh -c "$(curl -L https://code.byted.org/api/tos-proxy/download/adopt_coco.sh)" \
 
 安装脚本做的核心事情：
 
-- 下载内部版 COCO 二进制。
+- 下载内部版 Trae CLI 二进制。
 - 放置真实二进制到 `~/.local/share/coco/coco`。
 - 在 `~/.local/bin` 下创建多个入口 symlink。
 - 确保 `~/.local/bin` 在 shell PATH 中可用。
@@ -77,7 +77,7 @@ commit date: 2026-05-18T08:55:40Z
 
 ## 登录与 SSO 过程
 
-安装完成后，最初 `coco doctor` 报错：
+安装完成后，最初 `traecli doctor` 报错：
 
 ```text
 model: no effective model configured
@@ -87,7 +87,7 @@ model: no effective model configured
 
 ```text
 download failed with HTTP 401
-coco models --json => []
+traecli models --json => []
 ```
 
 根因不是二进制没装上，而是鉴权没有完成，导致内置插件 tar 拉不下来。插件没有拉下来时，模型定义也不会出现。
@@ -108,22 +108,22 @@ Cannot access ByteDance git credentials in the current environment.
 
 1. 执行 `coco` 进入交互界面。
 2. 在认证选择里选 `Login via SSO`。
-3. COCO 展示设备授权链接，形式类似：
+3. Trae CLI 展示设备授权链接，形式类似：
 
 ```text
 https://sso.bytedance.com/device?usercode=XXXX-XXXX
 ```
 
 4. 用浏览器打开链接，完成字节员工 SSO 授权。
-5. 授权完成后，COCO 回到主界面。
+5. 授权完成后，Trae CLI 回到主界面。
 6. 重新执行插件和模型验证。
 
 SSO 成功后的关键验证：
 
 ```bash
-coco plugin validate v2/api/2022-06-01/coco-plugin
-coco plugin validate v2/api/2022-06-01/coco-instance-plugin
-coco models --json
+traecli plugin validate v2/api/2022-06-01/coco-plugin
+traecli plugin validate v2/api/2022-06-01/coco-instance-plugin
+traecli models --json
 ```
 
 其中 `coco-instance-plugin` 提供了 23 个模型和 2 个 skills。
@@ -167,7 +167,7 @@ model:
 
 ### 项目级配置
 
-COCO / TraeCLI 会从当前目录向上查找项目级配置。主路径是：
+Trae CLI / TraeCLI 会从当前目录向上查找项目级配置。主路径是：
 
 ```text
 <project>/.trae/traecli.yaml
@@ -180,17 +180,17 @@ COCO / TraeCLI 会从当前目录向上查找项目级配置。主路径是：
 <project>/.agents/coco.yaml
 ```
 
-项目级配置优先级高于用户级配置。后续如果研究某个具体 repo 的 COCO 行为，必须先检查该 repo 下有没有这些文件。
+项目级配置优先级高于用户级配置。后续如果研究某个具体 repo 的 Trae CLI 行为，必须先检查该 repo 下有没有这些文件。
 
 ### 缓存、插件和日志
 
 | 路径 | 作用 |
 |---|---|
-| `/Users/bytedance/Library/Caches/coco/` | COCO 缓存根目录 |
+| `/Users/bytedance/Library/Caches/coco/` | Trae CLI 缓存根目录 |
 | `/Users/bytedance/Library/Caches/coco/plugins/` | 插件实际展开目录 |
 | `/Users/bytedance/Library/Caches/coco/log/root.log` | 主日志文件，排查鉴权、插件下载、模型问题最有用 |
 | `/Users/bytedance/Library/Caches/coco/sessions/` | 本机会话缓存 |
-| `/Users/bytedance/Library/Caches/coco/ripgrep/rg` | COCO 自带 ripgrep |
+| `/Users/bytedance/Library/Caches/coco/ripgrep/rg` | Trae CLI 自带 ripgrep |
 
 当前已下载插件：
 
@@ -209,21 +209,21 @@ COCO / TraeCLI 会从当前目录向上查找项目级配置。主路径是：
 基础检查：
 
 ```bash
-coco --version
-coco doctor
-coco models --json
-coco plugin list
+traecli --version
+traecli doctor
+traecli models --json
+traecli plugin list
 ```
 
 查看内置文档：
 
 ```bash
-coco doc
-coco doc faq
-coco doc settings
-coco doc permissions
-coco doc model-config
-coco doc search model
+traecli doc
+traecli doc faq
+traecli doc settings
+traecli doc permissions
+traecli doc model-config
+traecli doc search model
 ```
 
 启动交互模式：
@@ -235,14 +235,14 @@ coco
 非交互问答：
 
 ```bash
-coco -p "只回复 OK" --query-timeout 60s
+traecli -p "只回复 OK" --query-timeout 60s
 ```
 
 YOLO / Accept All 模式：
 
 ```bash
-coco -y
-coco --yolo
+traecli -y
+traecli --yolo
 ```
 
 在交互界面里可用 `shift+tab` 循环切换：
@@ -255,13 +255,13 @@ Default -> Accept All -> Plan -> Default
 
 ### 外部 / wiki 入口
 
-COCO 官方 wiki：
+Trae CLI 官方 wiki：
 
 ```text
 https://cloud.bytedance.net/docs/wikiagent/wiki/Er28whaTUiRgMekHLvDcISWmnXc?x-resource-account=public&x-bc-region-id=bytedance
 ```
 
-COCO WebUI 本地环境文档在 WebUI 报错页里出现过：
+Trae CLI WebUI 本地环境文档在 WebUI 报错页里出现过：
 
 ```text
 https://bytedance.larkoffice.com/docx/ZECMd2kAQoglGrxzsJ0cDbMrnSb
@@ -274,7 +274,7 @@ https://bytedance.larkoffice.com/docx/ZECMd2kAQoglGrxzsJ0cDbMrnSb
 安装后最稳定的官方文档入口是本机命令：
 
 ```bash
-coco doc
+traecli doc
 ```
 
 重点 topic：
@@ -296,26 +296,26 @@ coco doc
 示例：
 
 ```bash
-coco doc faq
-coco doc settings
-coco doc permissions
-coco doc plugins
+traecli doc faq
+traecli doc settings
+traecli doc permissions
+traecli doc plugins
 ```
 
 ## 本次踩坑记录
 
 ### 1. 原始 wiki 不等于当前账号可读
 
-原始 URL 可以在浏览器里打开，但 Lark CLI 直接读取时遇到权限问题。解决方式是用 Lark CLI 搜索相关文档，再结合 `coco doc` 内置文档确认安装和排障步骤。
+原始 URL 可以在浏览器里打开，但 Lark CLI 直接读取时遇到权限问题。解决方式是用 Lark CLI 搜索相关文档，再结合 `traecli doc` 内置文档确认安装和排障步骤。
 
 ### 2. 模型列表为空通常不是模型配置小问题
 
-本次 `coco models --json` 一开始返回 `[]`，`coco web` 也因为模型列表为空崩溃。根因是插件 tar 下载 401，模型定义没有加载进来。
+本次 `traecli models --json` 一开始返回 `[]`，`traecli web` 也因为模型列表为空崩溃。根因是插件 tar 下载 401，模型定义没有加载进来。
 
 判断命令：
 
 ```bash
-coco plugin validate v2/api/2022-06-01/coco-instance-plugin
+traecli plugin validate v2/api/2022-06-01/coco-instance-plugin
 ```
 
 如果提示插件文件未下载，就先解决鉴权，不要只改 `model.name`。
@@ -329,22 +329,22 @@ klist
 git ls-remote https://code.byted.org/<some/repo>
 ```
 
-如果 Git 路径不通，可以改走 COCO 交互界面里的 `Login via SSO`。
+如果 Git 路径不通，可以改走 Trae CLI 交互界面里的 `Login via SSO`。
 
 ### 4. SSO 成功后要复查插件和模型
 
-不要只看 COCO 进入主界面。真正的完成标准是：
+不要只看 traecli 进入主界面。真正的完成标准是：
 
 ```bash
-coco plugin validate v2/api/2022-06-01/coco-instance-plugin
-coco models --json
-coco doctor
-coco -p "只回复 OK" --query-timeout 60s
+traecli plugin validate v2/api/2022-06-01/coco-instance-plugin
+traecli models --json
+traecli doctor
+traecli -p "只回复 OK" --query-timeout 60s
 ```
 
 本次这四步都已跑通。
 
-### 5. `coco doctor` 的 MCP warning 可先区别看待
+### 5. `traecli doctor` 的 MCP warning 可先区别看待
 
 当前 `doctor` 仍可能出现：
 
@@ -364,9 +364,9 @@ mcp: 3 MCP server(s) still connecting (0 ok)
 
 优先从这几条线展开：
 
-1. 配置体系：先读 `coco doc settings`，搞清用户级、项目级、插件配置和合并优先级。
-2. 插件体系：读 `coco doc plugins`，重点看插件如何提供 models、skills、commands、MCP servers。
-3. 权限体系：读 `coco doc permissions`，研究 `permission_mode`、`allowed_tools`、`disallowed_tools`。
-4. 模型体系：读 `coco doc model-config`，理解内置模型、自定义 provider 和 failover。
-5. 项目扩展：读 `coco doc agents-md`、`coco doc skills`、`coco doc prompt-commands`。
-6. Web / Cloud：读 `coco doc cloud-web`，再结合有权限的 WebUI 文档补全。
+1. 配置体系：先读 `traecli doc settings`，搞清用户级、项目级、插件配置和合并优先级。
+2. 插件体系：读 `traecli doc plugins`，重点看插件如何提供 models、skills、commands、MCP servers。
+3. 权限体系：读 `traecli doc permissions`，研究 `permission_mode`、`allowed_tools`、`disallowed_tools`。
+4. 模型体系：读 `traecli doc model-config`，理解内置模型、自定义 provider 和 failover。
+5. 项目扩展：读 `traecli doc agents-md`、`traecli doc skills`、`traecli doc prompt-commands`。
+6. Web / Cloud：读 `traecli doc cloud-web`，再结合有权限的 WebUI 文档补全。

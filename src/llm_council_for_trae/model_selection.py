@@ -73,7 +73,7 @@ def select_model_choice_interactively(
 ) -> ModelChoice:
     names = available_model_names(models)
     if not names:
-        raise ValueError("当前 COCO 模型列表为空，无法进行模型选择。")
+        raise ValueError("当前 traecli 模型列表为空，无法进行模型选择。")
 
     recommendation = recommend_model_choice(models)
     write_model_menu(stderr, models, recommendation)
@@ -98,7 +98,7 @@ def select_model_choice_interactively(
 
 def write_model_menu(stderr: TextIO, models: list[dict[str, Any]], recommendation: ModelChoice) -> None:
     names = available_model_names(models)
-    stderr.write("\nCLC 检测到当前 COCO 可用模型：\n")
+    stderr.write("\nLCT 检测到当前 traecli 可用模型：\n")
     for index, model in enumerate(models, start=1):
         name = model.get("name") or "unknown"
         context_window = model.get("context_window")
@@ -145,7 +145,7 @@ def resolve_model_token(token: str, names: list[str]) -> str:
     lower_matches = [name for name in names if name.lower() == token.lower()]
     if lower_matches:
         return lower_matches[0]
-    raise ValueError(f"模型不在当前 COCO 模型列表中：{token}")
+    raise ValueError(f"模型不在当前 traecli 模型列表中：{token}")
 
 
 def read_answer(stdin: TextIO, stderr: TextIO, prompt: str) -> str:

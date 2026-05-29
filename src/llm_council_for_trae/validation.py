@@ -25,7 +25,7 @@ REQUIRED_FILES = [
     "manifest.json",
     "events.jsonl",
     "runtime/doctor.json",
-    "runtime/coco.models.json",
+    "runtime/traecli.models.json",
     "stage1/member.prompt.md",
     "stage2/review.prompt.md",
     "stage2/label_to_model.json",
@@ -69,7 +69,7 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
                 [
                     file_check(store.root, f"stage1/{label}.response.md"),
                     file_check(store.root, f"stage1/{label}.meta.json"),
-                    file_check(store.root, f"stage1/{label}.coco.stream.jsonl"),
+                    file_check(store.root, f"stage1/{label}.traecli.stream.jsonl"),
                 ]
             )
             _, meta_checks = validate_json_file(f"stage1.{label}.meta", store.root / f"stage1/{label}.meta.json", STAGE_META_SCHEMA, optional={"permission_mode", "tool_budget_status", "assistant_content_chars_total", "last_assistant_content_chars", "raw_partial_recoverable"})
@@ -88,7 +88,7 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
                     file_check(store.root, f"stage2/{label}.review.md"),
                     file_check(store.root, f"stage2/{label}.review.json"),
                     file_check(store.root, f"stage2/{label}.meta.json"),
-                    file_check(store.root, f"stage2/{label}.coco.stream.jsonl"),
+                    file_check(store.root, f"stage2/{label}.traecli.stream.jsonl"),
                 ]
             )
             _, meta_checks = validate_json_file(f"stage2.{label}.meta", store.root / f"stage2/{label}.meta.json", STAGE_META_SCHEMA, optional={"permission_mode", "tool_budget_status", "assistant_content_chars_total", "last_assistant_content_chars", "raw_partial_recoverable"})
@@ -117,7 +117,7 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
     checks.extend(
         [
             file_check(store.root, "stage3/final.meta.json"),
-            file_check(store.root, "stage3/final.coco.stream.jsonl"),
+            file_check(store.root, "stage3/final.traecli.stream.jsonl"),
         ]
     )
     _, final_meta_checks = validate_json_file("stage3.final.meta", store.root / "stage3/final.meta.json", STAGE_META_SCHEMA, optional={"permission_mode", "tool_budget_status", "assistant_content_chars_total", "last_assistant_content_chars", "raw_partial_recoverable"})
