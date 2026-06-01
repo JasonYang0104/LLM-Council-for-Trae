@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LCT 全局安装与用户级 Skill 迭代简报</title>
+  <style>
+    :root {
+      --paper: #f5f4ed;
+      --paper-2: #efeee5;
+      --ink: #1f1d18;
+      --muted: #6b665b;
+      --rule: #d4d1c5;
+      --accent: #1B365D;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper-2);
+      color: var(--ink);
+      font-family: "TsangerJinKai02 W04", "Noto Serif SC", "Songti SC", serif;
+      line-height: 1.52;
+    }
+    main {
+      max-width: 920px;
+      margin: 40px auto;
+      padding: 56px 64px;
+      background: var(--paper);
+      box-shadow: 0 0 0 1px var(--rule);
+    }
+    .kicker {
+      color: var(--accent);
+      letter-spacing: 0;
+      font-size: 14px;
+      margin-bottom: 18px;
+    }
+    h1 {
+      font-weight: 500;
+      font-size: 42px;
+      line-height: 1.18;
+      margin: 0 0 18px;
+    }
+    h2 {
+      font-weight: 500;
+      font-size: 24px;
+      line-height: 1.25;
+      margin: 34px 0 12px;
+      padding-top: 18px;
+      border-top: 1px solid var(--rule);
+    }
+    p { margin: 10px 0; }
+    .lede {
+      font-size: 19px;
+      color: var(--ink);
+      max-width: 760px;
+    }
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 24px 0 30px;
+    }
+    .tag {
+      border: 1px solid var(--rule);
+      background: var(--paper-2);
+      padding: 10px 12px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .tag strong {
+      display: block;
+      color: var(--accent);
+      font-weight: 500;
+      margin-bottom: 2px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 18px;
+      font-size: 15px;
+    }
+    th, td {
+      border-top: 1px solid var(--rule);
+      padding: 9px 8px;
+      vertical-align: top;
+      text-align: left;
+    }
+    th {
+      color: var(--accent);
+      font-weight: 500;
+      background: var(--paper-2);
+    }
+    code, pre {
+      font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+      font-size: 13px;
+    }
+    code { color: var(--accent); }
+    pre {
+      white-space: pre-wrap;
+      background: var(--paper-2);
+      border: 1px solid var(--rule);
+      padding: 12px 14px;
+      overflow-wrap: anywhere;
+    }
+    ul { padding-left: 22px; }
+    li { margin: 6px 0; }
+    .callout {
+      border-left: 3px solid var(--accent);
+      padding: 10px 0 10px 16px;
+      margin: 16px 0;
+      color: var(--ink);
+      background: var(--paper-2);
+    }
+    .foot {
+      margin-top: 42px;
+      padding-top: 16px;
+      border-top: 1px solid var(--rule);
+      color: var(--muted);
+      font-size: 13px;
+    }
+    @media (max-width: 760px) {
+      main { margin: 0; padding: 32px 22px; }
+      h1 { font-size: 31px; }
+      .meta { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <div class="kicker">PM director brief · 2026-06-01</div>
+  <h1>LCT 全局安装与用户级 Skill 迭代</h1>
+  <p class="lede">本轮把 LCT 的默认使用方式从“把仓库 clone 到问题 workspace”收敛为“全局安装到 <code>~/.LCT</code>，安装用户级 Skill，然后在干净问题 workspace 运行”。实现与验证已完成；live smoke 是 <code>degraded_ok</code>，不是 full <code>ok</code>。</p>
+
+  <section class="meta">
+    <div class="tag"><strong>Branch</strong><code>codex/lct-global-install-skill-docs-20260601</code></div>
+    <div class="tag"><strong>Confidence</strong>高</div>
+    <div class="tag"><strong>Live Result</strong><code>degraded_ok</code>, validate pass</div>
+  </section>
+
+  <h2>结论</h2>
+  <ul>
+    <li>README 默认入口已改为 <code>~/.LCT</code> 全局安装、wrapper、用户级 Skill、干净问题 workspace。</li>
+    <li>新增 canonical Skill：<code>skills/llm-council-for-trae/SKILL.md</code>。</li>
+    <li>新增部署指南、设计方案、测试方案和 repository contract tests。</li>
+    <li>Makefile 新增 <code>install-global</code> / <code>install-skill</code>，保留 <code>install-local</code> 作为开发者路径。</li>
+    <li>没有改 runtime、模型阵容、<code>validate</code> 语义或 HTML 报告结构。</li>
+  </ul>
+
+  <h2>为什么要做</h2>
+  <p>旧路径会把 LCT 源码、设计文档、<code>.trae/agents/</code>、<code>profiles/subagents.json</code> 和历史 artifacts 暴露给用户问题 run。这个上下文污染会让 council 回答偏向 LCT 自身，而不是用户问题。</p>
+
+  <table>
+    <thead><tr><th>目录</th><th>职责</th><th>是否运行用户问题</th></tr></thead>
+    <tbody>
+      <tr><td>开发仓库</td><td>代码、文档、测试、review</td><td>否</td></tr>
+      <tr><td><code>~/.LCT</code></td><td>全局安装根目录</td><td>否</td></tr>
+      <tr><td>干净问题 workspace</td><td>用户问题、run artifacts、最终答案索引</td><td>是</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Subagent Review</h2>
+  <table>
+    <thead><tr><th>Reviewer</th><th>初始结论</th><th>关键发现</th><th>收口</th></tr></thead>
+    <tbody>
+      <tr><td>Fresh Install</td><td>fail</td><td>live smoke 示例使用 <code>examples/question.md</code></td><td>已修复</td></tr>
+      <tr><td>Workspace Isolation</td><td>pass</td><td>README guard 与 final/index 输出不够显式</td><td>已修复</td></tr>
+      <tr><td>Operational Consistency</td><td>fail</td><td>clean workspace 示例混入 source-repo 输入；<code>install-global</code> 半安装风险</td><td>已修复</td></tr>
+    </tbody>
+  </table>
+  <p>Targeted re-check 已通过：之前的 P1/P2 均关闭，无新增问题。</p>
+
+  <h2>验证证据</h2>
+  <pre>PYTHONPATH=src python3 -m compileall src  -> pass
+make test                                  -> pass, 120 tests
+git diff --check                           -> pass</pre>
+  <p>全局安装验证：wrapper 指向 <code>/Users/bytedance/.LCT/src</code>，用户级 Skill symlink 指向 <code>/Users/bytedance/.LCT/skills/llm-council-for-trae</code>。<code>doctor</code> ok with warnings only；模型推荐返回 24 个模型。</p>
+
+  <h2>Live Smoke</h2>
+  <pre>workspace: /tmp/lct-live-smoke
+run_id: lct-global-smoke-20260601-201808
+run status: degraded_ok
+validate status: degraded_ok
+HTML: /tmp/lct-live-smoke/.llm-council-for-trae/runs/lct-global-smoke-20260601-201808/html/index.html
+final: /tmp/lct-live-smoke/.llm-council-for-trae/runs/lct-global-smoke-20260601-201808/stage3/final.md</pre>
+  <div class="callout">这个 smoke 是真实 <code>traecli</code>，不是 fake runtime，也不是 fixture。</div>
+
+  <h2>坏消息</h2>
+  <p>live run 不是 full <code>ok</code>。失败点如下：</p>
+  <pre>stage_record: B
+expected_model: GLM-5.1
+actual_model: Seed-Dogfooding-2.0
+error: traecli result error</pre>
+  <p>影响边界：Stage 1 六个成员完成；Stage 2 的 GLM-5.1 reviewer 失败；其余 reviewer 与 Stage 3 主席 Kimi-K2.6 成功；<code>validate</code> 对该降级 run 通过。</p>
+
+  <h2>剩余风险</h2>
+  <ul>
+    <li>本分支尚未合入 <code>main</code>；<code>~/.LCT</code> 当前 checkout 在本分支，用于验证。</li>
+    <li>GLM-5.1 Stage 2 / actual model mismatch 是 runtime/provider 稳定性问题，不是安装文档问题。</li>
+    <li>用户级 Skill 是否自动触发还取决于外层 Agent runtime 是否加载 <code>/Users/bytedance/.agents/skills</code>。</li>
+  </ul>
+
+  <h2>下一步</h2>
+  <pre>git -C ~/.LCT checkout main
+git -C ~/.LCT pull --ff-only origin main
+make -C ~/.LCT install-global</pre>
+  <p>以上命令应在本分支合入 main 后执行。若要追求 full live <code>ok</code>，另开 runtime/provider 稳定性任务。</p>
+
+  <div class="foot">Generated from <code>docs/lct-global-install-skill-director-brief-20260601.md</code>.</div>
+</main>
+</body>
+</html>
