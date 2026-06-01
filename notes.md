@@ -6,3 +6,4 @@
 - Read the requested handoff, deployment guide draft, original `AGENTS.md`, README, and Makefile before editing. The clean worktree does not track `AGENTS.md`, so the original workspace copy is treated as an instruction source, not a file to change.
 - Scope is limited to global install, user-level Skill, documentation consistency, installer support, and tests. Runtime behavior and `validate` semantics are out of scope.
 - The Skill path is `/Users/bytedance/.agents/skills`; old `~/.trae/skills` wording is forbidden in this iteration's user-facing install docs.
+- Test plan uses repository contract tests because this iteration changes installation/documentation behavior more than runtime code. The tests will still run through `make test` so the contract stays in the normal verification path.
