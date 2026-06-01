@@ -84,7 +84,7 @@ git diff --check
 - `/Users/bytedance/.agents/skills/llm-council-for-trae` 指向 `/Users/bytedance/.LCT/skills/llm-council-for-trae`。
 - `llm-council-for-trae --help`：pass。
 - `llm-council-for-trae doctor --json`：ok，只有 warnings，无 errors。
-- `llm-council-for-trae models --recommend --json`：pass，返回 24 个模型。
+- `llm-council-for-trae models --recommend --json`：pass，返回非空模型列表。模型列表是当前环境态；live smoke 前观测为 24 个，最终复验观测为 21 个。
 
 live smoke：
 
@@ -139,4 +139,3 @@ make -C ~/.LCT install-global
 ```
 
 - 如需追求 full live `ok`，另开 runtime/provider 稳定性任务，不要把它塞回本轮安装文档 PR。
-
