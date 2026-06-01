@@ -23,6 +23,8 @@ which traecli && traecli --version
 ## 工作流概览
 
 ```
+Step 0: 定位或自举 LCT CLI
+  ↓
 Step 1: 环境检查 (doctor)
   ↓
 Step 2: 准备问题文件
@@ -34,10 +36,29 @@ Step 4: 验证结果 (validate)
 Step 5: 交付 HTML 报告
 ```
 
+## Step 0: 定位或自举 LCT CLI
+
+在仓库根目录执行。新 clone 的 workspace 可能还没有安装 `llm-council-for-trae` wrapper，先选择可用命令：
+
+```bash
+if command -v llm-council-for-trae >/dev/null 2>&1; then
+  LCT="llm-council-for-trae"
+else
+  make install-local
+  if command -v llm-council-for-trae >/dev/null 2>&1; then
+    LCT="llm-council-for-trae"
+  else
+    LCT="env PYTHONPATH=src python3 -m llm_council_for_trae.cli"
+  fi
+fi
+```
+
+后续命令优先使用 `$LCT`。如果当前 shell 不保留变量，就把 `$LCT` 替换成上面选中的实际命令。
+
 ## Step 1: 环境检查
 
 ```bash
-llm-council-for-trae doctor --json
+$LCT doctor --json
 ```
 
 检查输出中 `ok: true`、`models.count > 0`。如果 doctor 失败：
@@ -47,7 +68,7 @@ llm-council-for-trae doctor --json
 确认可用模型：
 
 ```bash
-llm-council-for-trae models --recommend --json
+$LCT models --recommend --json
 ```
 
 记录 `recommendation.members` 和 `recommendation.chairman`。
@@ -71,7 +92,7 @@ EOF
 必须使用 `--default-models`。这是最常用的模式：
 
 ```bash
-llm-council-for-trae run \
+$LCT run \
   --input /tmp/council-question.md \
   --default-models \
   --timeout 180 \
@@ -83,7 +104,7 @@ llm-council-for-trae run \
 如果在真实终端中，省略 `--default-models` 会弹出模型选择菜单：
 
 ```bash
-llm-council-for-trae run \
+$LCT run \
   --input /tmp/council-question.md \
   --timeout 180 \
   --json
@@ -92,7 +113,7 @@ llm-council-for-trae run \
 ### 3c. 自定义模型
 
 ```bash
-llm-council-for-trae run \
+$LCT run \
   --input /tmp/council-question.md \
   --members "GPT-5.4,GLM-5.1,Kimi-K2.6" \
   --chairman "Kimi-K2.6" \
@@ -123,7 +144,7 @@ llm-council-for-trae run \
 ## Step 4: 验证结果
 
 ```bash
-llm-council-for-trae validate <run_id> --json
+$LCT validate <run_id> --json
 ```
 
 确认 `status: "ok"` 或 `status: "degraded_ok"`。
@@ -143,7 +164,7 @@ open <html_path>
 如果某些模型超时（常见于 GPT-5.4），但 ≥3 个成员成功，系统返回 `degraded_ok`。这是正常降级，不影响最终答案质量。如需提高成功率：
 
 ```bash
-llm-council-for-trae run \
+$LCT run \
   --input /tmp/council-question.md \
   --default-models \
   --timeout 300 \

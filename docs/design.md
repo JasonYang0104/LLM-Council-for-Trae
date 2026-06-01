@@ -36,7 +36,7 @@
 - `docs/traecli-subagents.md`：后续补 Trae CLI subagent 配置、模型指定、fallback 风险和验证方式。
 - `docs/llm-council-parity.md`：逐项对照 `llm-council` 的复刻清单。
 - `docs/goal-prompt.md`：发给新会话的 `/goal` 启动提示词。
-- `references/llm-council/`：克隆 `karpathy/llm-council`，固定 commit，当作可读参考资产。
+- 上游 `karpathy/llm-council`：历史协议参考；当前仓库不再依赖本地 `references/` 目录。
 - `.trae/agents/`：后续放 Trae CLI 自定义智能体，例如 council member 和 chairman。
 
 文档中的本地路径一律使用相对路径。绝对路径只出现在最终交付说明里，不写进 workspace 内部文档。
@@ -321,7 +321,7 @@ Codex、Trae-CN、Trae CLI 都只是输入来源，不是 runtime 边界。
 - 创建 workspace。
 - 放入本设计文档。
 - 放入 traecli 安装路径说明。
-- 克隆 `llm-council` 到 `references/llm-council/`。
+- 记录上游 `llm-council` 作为历史协议参考。
 - 写 `docs/goal-prompt.md`。
 
 验收：
@@ -434,7 +434,7 @@ llm-council-for-trae validate <run_id> --json
 ## 新会话 `/goal` 提示词
 
 ```text
-/goal 在当前 workspace 中推进 LLM-Council-for-Trae。目标是创建一个独立 council CLI，命令名为 llm-council-for-trae，内部调用 traecli，一比一复刻 references/llm-council 的核心 council protocol，但排除原 Web UI 和 OpenRouter API。必须优先复用 llm-council 中不冲突的已有资产和函数边界；必须使用 Codex 的 cli-creator 方法论创建 CLI；Trae CLI 是默认 runtime；后续支持 Trae CLI 自定义 subagent 作为固定 council 成员。先阅读 README.md、docs/design.md、docs/TRAECLI_INSTALLATION_AND_PATHS.md 和 references/llm-council/README.md，再给出实现计划。交付必须完整包含：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、验证命令和结果。开发可以分阶段推进，但每阶段必须有明确测试。不要依赖旧 TR，不要引入 Web app，不要把 HTML 生成和主席综合混成一步。
+/goal 在当前 workspace 中推进 LLM-Council-for-Trae。目标是创建一个独立 council CLI，命令名为 llm-council-for-trae，内部调用 traecli，一比一复刻上游 llm-council 的核心 council protocol，但排除原 Web UI 和 OpenRouter API。必须优先复用 llm-council 中不冲突的协议边界；必须使用 Codex 的 cli-creator 方法论创建 CLI；Trae CLI 是默认 runtime；后续支持 Trae CLI 自定义 subagent 作为固定 council 成员。先阅读 README.md、docs/design.md 和 docs/traecli-installation-and-paths.md，再给出实现计划。交付必须完整包含：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、验证命令和结果。开发可以分阶段推进，但每阶段必须有明确测试。不要依赖旧 TR，不要引入 Web app，不要把 HTML 生成和主席综合混成一步。
 ```
 
 ## 追加记录：Reader-first HTML 与 CLI 模型选择

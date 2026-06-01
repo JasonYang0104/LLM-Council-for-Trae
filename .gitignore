@@ -10,6 +10,7 @@ venv/
 build/
 dist/
 .llm-council-for-trae/
+references/llm-council/
 .trae/rules/
 *.png
 findings.md

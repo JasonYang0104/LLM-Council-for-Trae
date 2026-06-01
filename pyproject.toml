@@ -1,6 +1,6 @@
 [project]
 name = "llm-council-for-trae"
-version = "1.1.0"
+version = "1.1.2"
 description = "A traecli-backed LLM council CLI — multi-model deliberation with HTML export."
 requires-python = ">=3.10"
 dependencies = []

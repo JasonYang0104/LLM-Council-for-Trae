@@ -26,10 +26,14 @@ llm-council-for-trae validate <run_id> --json
 
 ```text
 .trae/agents/
-  council-gpt54.md
-  council-glm51.md
-  council-gemini31.md
   council-chairman-gpt54.md
+  council-chairman-kimi26.md
+  council-deepseek-v4.md
+  council-gemini31.md
+  council-glm51.md
+  council-gpt54.md
+  council-kimi26.md
+  council-qwen36.md
 ```
 
 示例：
@@ -37,20 +41,34 @@ llm-council-for-trae validate <run_id> --json
 ```yaml
 ---
 name: council-gpt54
-description: LLM-Council-for-Trae member using GPT-5.4
+description: Fixed LLM-Council-for-Trae member using GPT-5.4. Use only when a council stage prompt explicitly asks this member to answer.
 model: GPT-5.4
-tools: []
 ---
-你是 LLM-Council-for-Trae 的 council member。只回答当前阶段 prompt，不读取 workspace 外内容。
+
+You are a fixed LLM-Council-for-Trae member.
+
+Answer only the current council stage prompt. Do not browse the workspace, do not call tools, and do not add process commentary. Preserve the requested output format exactly, especially FINAL RANKING sections.
 ```
 
 ## 当前已验证文件
 
 ```text
-.trae/agents/council-gpt54.md
-.trae/agents/council-glm51.md
 .trae/agents/council-chairman-gpt54.md
+.trae/agents/council-chairman-kimi26.md
+.trae/agents/council-deepseek-v4.md
+.trae/agents/council-gemini31.md
+.trae/agents/council-glm51.md
+.trae/agents/council-gpt54.md
+.trae/agents/council-kimi26.md
+.trae/agents/council-qwen36.md
 profiles/subagents.json
+```
+
+`profiles/subagents.json` 当前与 direct 默认阵容对齐：
+
+```text
+members: GPT-5.4, GLM-5.1, Qwen3.6-Plus, Kimi-K2.6, DeepSeek-V4-Pro, Gemini-3.1-Pro-Preview
+chairman: Kimi-K2.6
 ```
 
 已验证 run：

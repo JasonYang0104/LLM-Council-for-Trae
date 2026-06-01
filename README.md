@@ -2,7 +2,7 @@
 
 `LLM-Council-for-Trae` 是一个本地 council CLI **（注释：Command Line Interface，命令行工具）**：它用 traecli 调用多个模型，让它们先独立回答、再匿名互评、最后由主席模型综合成一个最终答案。
 
-它复刻 `references/llm-council` 的核心三阶段 council protocol **（注释：议事协议，指模型按固定流程协作得出结论）**，但不引入原项目的 Web UI，不使用 OpenRouter API，也不依赖旧 TR。默认产物是可复盘的本地 artifact store **（注释：产物存储目录，保存每次运行的输入、输出、日志和校验证据）** 和单文件 HTML 报告。
+它复刻上游 `llm-council` 的核心三阶段 council protocol **（注释：议事协议，指模型按固定流程协作得出结论）**，但不引入原项目的 Web UI，不使用 OpenRouter API，也不依赖旧 TR。默认产物是可复盘的本地 artifact store **（注释：产物存储目录，保存每次运行的输入、输出、日志和校验证据）** 和单文件 HTML 报告。
 
 默认读者语言是简体中文：即使输入问题是英文，LCT（LLM-Council-for-Trae 的缩写）也会在 Stage 1 / 2 / 3 prompt 中要求模型默认面向中文读者回答；如果用户问题明确指定其他输出语言，则遵循用户指定语言。HTML export 只渲染 artifacts，不在导出阶段翻译或改写主席答案。
 
@@ -18,6 +18,16 @@
 - **结构化 validate**：`validate` 会检查文件完整性、模型一致性、subagent evidence 和 schema contract **（注释：数据结构契约，规定 JSON 文件必须包含哪些字段以及字段类型）**。
 
 ## Quickstart
+
+### Agent 一句话用法
+
+在另一个 workspace clone 本仓库后，可以直接对 Agent 说：
+
+```text
+用根目录中的能力，给我跑 LCT，输入的问题是："""<你的问题>"""
+```
+
+Agent 应按这条路径执行：确认 `traecli` 可用 → 安装或定位本地 CLI → 把问题写入临时 `.md` 文件 → 使用 `--default-models` 非交互运行 → `validate` 校验 → 返回 `stage3/final.md` 摘要和 HTML 报告路径。
 
 ### 1. 确认 traecli 可用
 
@@ -45,6 +55,12 @@ command -v llm-council-for-trae
 ```
 
 安装后会在 `~/.local/bin/llm-council-for-trae` 创建一个轻量 wrapper。它直接指向当前 workspace 的 `src/`，适合本地开发和验证。
+
+如果不想安装 wrapper，也可以在仓库根目录用零安装方式运行：
+
+```bash
+PYTHONPATH=src python3 -m llm_council_for_trae.cli --help
+```
 
 ### 3. 跑 doctor 和模型列表
 
@@ -128,7 +144,7 @@ llm-council-for-trae validate demo-direct --json
 
 ## Council Protocol
 
-`LLM-Council-for-Trae` 的核心流程来自 `references/llm-council`：
+`LLM-Council-for-Trae` 的核心流程已固化在本仓库实现和文档中，历史参考来自上游 `llm-council` protocol：
 
 | Stage | 目的 | 产物 |
 |---|---|---|
@@ -301,8 +317,7 @@ PYTHONPATH=src python3 -m llm_council_for_trae.cli run --input examples/question
 | `docs/design.md` | 接手开发者 / Agent | 初始设计、协议边界、provider 设计、artifact store 设计 |
 | `docs/traecli-installation-and-paths.md` | 本机排障者 | traecli 安装、登录、路径、插件、模型事实 |
 | `docs/traecli-subagents.md` | subagent 维护者 | 固定 council 成员、profile 和验证方式 |
-| `docs/llm-council-parity.md` | 复刻审查者 | 与 `references/llm-council` 的对齐关系 |
-| `references/llm-council/README.md` | 协议参考 | 原始 `llm-council` 行为和产品形态 |
+| `docs/llm-council-parity.md` | 复刻审查者 | 与上游 `llm-council` protocol 的对齐关系 |
 
 ## Non-goals
 
@@ -317,6 +332,6 @@ PYTHONPATH=src python3 -m llm_council_for_trae.cli run --input examples/question
 
 ## Current Status
 
-`LLM-Council-for-Trae` v1.1.0：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、subagent evidence validation、主动模型选择和中文默认输出全部落地。P0（failure 隐藏 + 主席综述 prompt）、P1（阵容代码落地）、P2（quorum 重试）、P3（E2E 验证）全部完成，78 个单元测试通过。HTML 报告 h1 动态标题和问题摘要已上线。
+`LLM-Council-for-Trae` v1.1.2：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、subagent evidence validation、主动模型选择和中文默认输出全部落地。P0（failure 隐藏 + 主席综述 prompt）、P1（阵容代码落地）、P2（quorum 重试）、P3（E2E 验证）全部完成，78 个单元测试通过。HTML 报告 h1 动态标题和问题摘要已上线，subagent profile 已对齐 6 成员全阵容。
 
 模型阵容：6 成员（GPT-5.4、GLM-5.1、Qwen3.6-Plus、Kimi-K2.6、DeepSeek-V4-Pro、Gemini-3.1-Pro-Preview）+ Kimi-K2.6 主席 + DeepSeek-V4-Pro/GPT-5.4 备选链。HTML 报告结构已稳定化。

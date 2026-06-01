@@ -1,12 +1,12 @@
 # llm-council Parity Checklist
 
-目标：一比一复刻 `references/llm-council` 的核心 council protocol，同时排除 Web UI 和 OpenRouter API。
+目标：一比一复刻上游 `llm-council` 的核心 council protocol，同时排除 Web UI 和 OpenRouter API。
 
 ## 必须对齐
 
 | llm-council 资产 | LLM-Council-for-Trae 对应物 | 状态 |
 | --- | --- | --- |
-| `backend/council.py` | `src/coco_llm_council/council.py` | 已实现 |
+| `backend/council.py` | `src/llm_council_for_trae/council.py` | 已实现 |
 | `stage1_collect_responses` | Stage 1 member calls | 已实现 |
 | `stage2_collect_rankings` | Stage 2 anonymous review | 已实现 |
 | `parse_ranking_from_text` | ranking parser / JSON parser fallback | 已实现 |
