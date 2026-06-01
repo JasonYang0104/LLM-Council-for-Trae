@@ -21,6 +21,21 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
         self.assertIn("干净问题 workspace", readme)
         self.assertRegex(readme, re.compile(r"make install-local[\s\S]{0,160}开发"))
 
+    def test_skill_template_has_required_workflow_contract(self):
+        skill_path = REPO_ROOT / "skills" / "llm-council-for-trae" / "SKILL.md"
+        self.assertTrue(skill_path.exists(), "missing canonical LCT Skill template")
+        skill = skill_path.read_text(encoding="utf-8")
+
+        self.assertRegex(skill, re.compile(r"^---\n[\s\S]*name:\s*llm-council-for-trae", re.MULTILINE))
+        self.assertIn("description:", skill)
+        self.assertIn("--default-models", skill)
+        self.assertIn("--json", skill)
+        self.assertIn("validate", skill)
+        self.assertIn("src/llm_council_for_trae/", skill)
+        self.assertIn(".trae/agents/", skill)
+        self.assertIn("profiles/subagents.json", skill)
+        self.assertIn("不要把 fake runtime 结果说成 live traecli 结果", skill)
+
 
 if __name__ == "__main__":
     unittest.main()
