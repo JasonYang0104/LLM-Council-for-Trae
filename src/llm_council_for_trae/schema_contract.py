@@ -40,6 +40,10 @@ def is_list_of_str(value: Any) -> bool:
     return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
 
+def is_list_of_dict(value: Any) -> bool:
+    return isinstance(value, list) and all(isinstance(item, dict) for item in value)
+
+
 MANIFEST_SCHEMA: dict[str, JsonTypeCheck] = {
     "schema_version": is_int,
     "run_id": is_str,
@@ -94,6 +98,10 @@ STAGE_META_SCHEMA: dict[str, JsonTypeCheck] = {
     "error": is_str_or_none,
     "captured_at": is_str,
     "permission_mode": is_str_or_none,
+    "member_tool_mode": is_str,
+    "allowed_tools": is_list_of_str,
+    "disallowed_tools": is_list_of_str,
+    "forbidden_tool_calls": is_list_of_dict,
     "tool_budget_status": is_str_or_none,
     "assistant_content_chars_total": is_int,
     "last_assistant_content_chars": is_int,

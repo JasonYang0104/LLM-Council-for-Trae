@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Runtime Capability Hardening Implementation Brief</title>
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #172033; background: #f6f7f9; }
+    main { max-width: 920px; margin: 0 auto; padding: 48px 24px 72px; }
+    h1 { font-size: 34px; line-height: 1.18; margin: 0 0 10px; }
+    h2 { font-size: 20px; margin: 34px 0 12px; }
+    p, li { font-size: 16px; line-height: 1.72; }
+    .date { color: #667085; margin-bottom: 28px; }
+    .lead { font-size: 19px; line-height: 1.65; background: #fff; border-left: 4px solid #2f6fed; padding: 18px 20px; }
+    section { background: #fff; border: 1px solid #e4e7ec; border-radius: 8px; padding: 20px 24px; margin-top: 18px; }
+    code { background: #eef2f7; padding: 2px 5px; border-radius: 4px; }
+    ul { padding-left: 22px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Runtime Capability Hardening Implementation Brief</h1>
+  <div class="date">2026-06-01</div>
+  <p class="lead">LCT 已从“成员模型可能进入完整 Agent runtime”推进到“成员模型有明确 capability policy”。默认 direct run 保留 <code>WebSearch</code> / <code>WebFetch</code>，默认不再 <code>--yolo</code>，默认隔离到系统临时 cwd，并且任何越权工具调用都会被 provider 标成 <code>tool_contaminated</code> 失败。</p>
+
+  <section>
+    <h2>这轮解决了什么</h2>
+    <ul>
+      <li>新增 <code>member_tool_mode</code>：<code>answer_only</code>、<code>search_enabled</code>、<code>workspace_enabled</code>。</li>
+      <li>direct 默认 <code>search_enabled</code>：允许 web 搜索，禁止 <code>Skill</code>、<code>Agent</code>、workspace、shell、task/todo。</li>
+      <li>direct 默认 runtime cwd 改为系统临时目录，并在 artifact 写入 <code>runtime/member-cwd.path</code>。</li>
+      <li>provider 从 <code>stream-json</code> 提取 tool call 明细，并将越权工具调用标为 failed。</li>
+      <li>stage records、stage meta、manifest config 都记录工具策略字段。</li>
+      <li><code>validate</code> 拒绝 <code>status=ok</code> 但包含 forbidden tool call 的 artifact。</li>
+      <li>subagent provider 使用内部 <code>subagent_invocation</code> policy，避免 direct policy 禁掉真实 <code>Agent</code> evidence。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>用户可感知变化</h2>
+    <p>以前成员模型可能读 workspace、调用 LCT skill、等待 nested council 或检查 run 目录，最后还被算作 <code>ok</code>。现在这类行为会变成结构化失败；如果 quorum 仍满足，run 可以 <code>degraded_ok</code> 交付，但不能伪装成全绿。</p>
+    <p>实现过程中有一个重要修正：最初把 isolated cwd 放在 repo 内 run 目录，live run <code>runtime-capability-smoke-20260601-1825</code> 失败，因为 TraeCLI 仍向上发现根 <code>AGENTS.md</code> 并诱导模型调用 <code>Read</code>。改成系统临时目录后，live run <code>runtime-capability-smoke-20260601-1835</code> 返回 <code>ok</code>，<code>validate</code> 也返回 <code>ok</code>。</p>
+    <p>默认允许搜索意味着事实核查能力没有被一刀切砍掉。真正禁止的是会污染 council member 角色边界的能力：<code>Skill</code>、<code>Agent</code>、文件系统、shell 和写操作。</p>
+  </section>
+
+  <section>
+    <h2>仍未解决的风险</h2>
+    <ul>
+      <li>TraeCLI 没有已证实的全局 <code>--no-workspace-context</code>，isolated cwd 只能降低项目级注入。</li>
+      <li><code>--allowed-tool</code> / <code>--disallowed-tool</code> 仍不能当成唯一隔离边界。</li>
+      <li>live smoke 仍取决于当前机器 TraeCLI 状态。</li>
+      <li><code>workspace_enabled</code> 目前是只读策略，不开放 shell 白名单。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>验证状态</h2>
+    <p><code>PYTHONPATH=src python3 -m compileall src</code> 通过；<code>make test</code> 112 tests 通过；<code>git diff --check</code> 通过。TraeCLI live smoke：doctor <code>ok=true</code>，models 返回 23 个模型，run <code>runtime-capability-smoke-20260601-1835</code> 为 <code>ok</code>，validate 为 <code>ok</code> 且无 failures。</p>
+  </section>
+</main>
+</body>
+</html>

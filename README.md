@@ -89,6 +89,16 @@ llm-council-for-trae run \
   --json
 ```
 
+默认 direct run 不再传 `--yolo`，并使用 `--member-tool-mode search_enabled`：成员模型可使用 `WebSearch` / `WebFetch`，但 `Skill`、`Agent`、workspace 读写和 shell 会被禁止并由 provider 做污染检测。只有明确需要绕过权限时才传 `--yolo`；普通 council 成员不应使用它。
+
+可选工具模式：
+
+```bash
+llm-council-for-trae run --input examples/question.md --default-models --member-tool-mode answer_only
+llm-council-for-trae run --input examples/question.md --default-models --member-tool-mode search_enabled
+llm-council-for-trae run --input examples/question.md --default-models --member-tool-mode workspace_enabled
+```
+
 如果没有传 `--members`、`--chairman`、`--profile` 或 `--default-models`，LCT 会先列出当前 traecli 可用模型，并给出推荐套装（仅限交互终端）。在 Agent 或脚本等非交互场景，必须显式指定 `--default-models`、`--members/--chairman` 或 `--profile`：
 
 ```text

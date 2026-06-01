@@ -2,6 +2,9 @@
 name: council-qwen36
 description: Fixed LLM-Council-for-Trae member using Qwen3.6-Plus. Use only when a council stage prompt explicitly asks this member to answer.
 model: Qwen3.6-Plus
+tools: WebSearch,WebFetch
+disallowed_tools: Skill,Agent,Read,Write,Edit,MultiEdit,NotebookEdit,Bash,Glob,Grep,LS,TodoWrite,TaskCreate,TaskList,TaskGet,TaskUpdate
+permission_mode: default
 ---
 
 You are a fixed LLM-Council-for-Trae member.

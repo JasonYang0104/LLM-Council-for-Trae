@@ -50,7 +50,20 @@ def stage_meta(expected_model="GPT-5.4", actual_model=None):
         "copied_session_files": {},
         "raw_model_markers": [actual_model or expected_model],
         "error": None,
+        "member_tool_mode": "search_enabled",
+        "allowed_tools": ["WebSearch", "WebFetch"],
+        "disallowed_tools": ["Skill", "Agent"],
+        "forbidden_tool_calls": [],
         "captured_at": "2026-05-22T00:00:00Z",
+    }
+
+
+def tool_policy_json():
+    return {
+        "member_tool_mode": "search_enabled",
+        "allowed_tools": ["WebSearch", "WebFetch"],
+        "disallowed_tools": ["Skill", "Agent"],
+        "forbidden_tool_calls": [],
     }
 
 
@@ -67,7 +80,7 @@ def review_json():
         "error": None,
         "review_path": "stage2/A.review.md",
         "json_path": "stage2/A.review.json",
-    }
+    } | tool_policy_json()
 
 
 def final_json():
@@ -81,7 +94,7 @@ def final_json():
         "prompt_path": "stage3/chairman.prompt.md",
         "response_path": "stage3/final.md",
         "json_path": "stage3/final.json",
-    }
+    } | tool_policy_json()
 
 
 def write_json_text(store, relative, data):
@@ -96,11 +109,21 @@ def write_minimal_valid_direct_run(store):
         "updated_at": "2026-05-22T00:00:00Z",
         "status": "ok",
         "input_chars": 4,
-        "config": {"members": ["GPT-5.4"], "chairman": "GPT-5.4", "provider_mode": "direct", "runtime_command": "fake", "query_timeout": 180, "export_html": True},
+        "config": {
+            "members": ["GPT-5.4"],
+            "chairman": "GPT-5.4",
+            "provider_mode": "direct",
+            "runtime_command": "fake",
+            "query_timeout": 180,
+            "export_html": True,
+            "use_yolo": False,
+            "member_tool_mode": "search_enabled",
+            "member_runtime_cwd_mode": "isolated_temp",
+        },
         "artifacts": {"html": "html/index.html"},
         "metadata": {"label_to_model": {"Response A": "GPT-5.4"}, "aggregate_rankings": []},
         "stages": {
-            "stage1": [{"label": "Response A", "file_label": "A", "model": "GPT-5.4", "expected_model": "GPT-5.4", "actual_model": "GPT-5.4", "response": "A", "status": "ok"}],
+            "stage1": [{"label": "Response A", "file_label": "A", "model": "GPT-5.4", "expected_model": "GPT-5.4", "actual_model": "GPT-5.4", "response": "A", "status": "ok"} | tool_policy_json()],
             "stage2": [review_json() | {"ranking": "FINAL RANKING:\n1. Response A", "parsed_ranking": ["Response A"]}],
             "stage3": final_json(),
         },
@@ -555,17 +578,77 @@ FINAL RANKING:
                     self.assertEqual(validation["status"], "failed")
                     self.assertTrue(any(check["name"] == expected_failure for check in validation["failures"]), validation["failures"])
 
-    def test_provider_includes_yolo_by_default(self):
-        from llm_council_for_trae.provider import TraeCliProvider
-        provider = TraeCliProvider(use_yolo=True)
-        self.assertIn("--yolo", provider._build_command("GPT-5.4", "test prompt", "run-1", "stage1", "A", "sess-1"))
+    def test_validate_rejects_ok_manifest_with_forbidden_tool_call(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-contaminated-ok")
+            write_minimal_valid_direct_run(store)
+            manifest = store.read_manifest()
+            manifest["stages"]["stage1"][0]["forbidden_tool_calls"] = [
+                {"id": "tc1", "name": "Skill", "arguments": "{}", "turn_index": 1}
+            ]
+            store.write_manifest(manifest)
 
-    def test_provider_omits_yolo_when_disabled(self):
+            validation = validate_run(store)
+
+            self.assertEqual(validation["status"], "failed")
+            self.assertTrue(
+                any(check["name"] == "tool_contamination_manifest_ok" for check in validation["failures"]),
+                validation["failures"],
+            )
+
+    def test_validate_accepts_legacy_meta_missing_tool_policy_fields(self):
+        legacy_missing_fields = ("member_tool_mode", "allowed_tools", "disallowed_tools", "forbidden_tool_calls")
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-legacy-meta")
+            write_minimal_valid_direct_run(store)
+            for relative in ("stage1/A.meta.json", "stage2/A.meta.json", "stage3/final.meta.json"):
+                path = store.root / relative
+                data = json.loads(path.read_text(encoding="utf-8"))
+                for field in legacy_missing_fields:
+                    data.pop(field, None)
+                path.write_text(json.dumps(data) + "\n", encoding="utf-8")
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["status"], "ok", validation["failures"])
+            self.assertFalse(
+                any(
+                    failure["name"].startswith("schema:stage")
+                    and any(field in failure["name"] for field in legacy_missing_fields)
+                    for failure in validation["failures"]
+                ),
+                validation["failures"],
+            )
+
+    def test_validate_rejects_meta_only_forbidden_tool_call(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-meta-contaminated-ok")
+            write_minimal_valid_direct_run(store)
+            path = store.root / "stage1/A.meta.json"
+            meta = json.loads(path.read_text(encoding="utf-8"))
+            meta["forbidden_tool_calls"] = [
+                {"id": "tc1", "name": "Skill", "arguments": "{}", "turn_index": 1}
+            ]
+            path.write_text(json.dumps(meta) + "\n", encoding="utf-8")
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["status"], "failed")
+            failure_names = {check["name"] for check in validation["failures"]}
+            self.assertIn("tool_contamination_manifest_ok", failure_names)
+            self.assertIn("stage1.A.meta_tool_contamination_status", failure_names)
+
+    def test_provider_omits_yolo_by_default(self):
         from llm_council_for_trae.provider import TraeCliProvider
-        provider = TraeCliProvider(use_yolo=False)
+        provider = TraeCliProvider()
         cmd = provider._build_command("GPT-5.4", "test prompt", "run-1", "stage1", "A", "sess-1")
         self.assertNotIn("--yolo", cmd)
         self.assertNotIn("-y", cmd)
+
+    def test_provider_includes_yolo_when_explicitly_enabled(self):
+        from llm_council_for_trae.provider import TraeCliProvider
+        provider = TraeCliProvider(use_yolo=True)
+        self.assertIn("--yolo", provider._build_command("GPT-5.4", "test prompt", "run-1", "stage1", "A", "sess-1"))
 
     def test_model_call_result_includes_permission_mode(self):
         from llm_council_for_trae.provider import ModelCallResult
@@ -685,6 +768,22 @@ FINAL RANKING:
         self.assertEqual(parsed["tool_calls_count"], 1)
         self.assertEqual(parsed["turns_count"], 2)
 
+    def test_parse_stream_json_extracts_tool_call_details(self):
+        stream = "\n".join([
+            json.dumps({"type": "system", "subtype": "init", "session_id": "s1", "model": "GPT-5.4"}),
+            json.dumps({"type": "assistant", "message": {"role": "assistant", "content": "Searching", "tool_calls": [{"id": "tc1", "type": "function", "function": {"name": "WebSearch", "arguments": "{\"query\":\"Trae CN\"}"}}]}}),
+            json.dumps({"type": "assistant", "message": {"role": "assistant", "content": "Calling skill", "tool_calls": [{"id": "tc2", "type": "function", "function": {"name": "Skill", "arguments": "{\"skill\":\"llm-council-for-trae\"}"}}]}}),
+            json.dumps({"type": "result", "result": "Done", "is_error": False}),
+        ])
+        parsed = parse_stream_json(stream)
+        self.assertEqual(
+            parsed["tool_calls"],
+            [
+                {"id": "tc1", "name": "WebSearch", "arguments": "{\"query\":\"Trae CN\"}", "turn_index": 1},
+                {"id": "tc2", "name": "Skill", "arguments": "{\"skill\":\"llm-council-for-trae\"}", "turn_index": 2},
+            ],
+        )
+
     def test_parse_stream_json_extracts_partial_output_metrics(self):
         stream = "\n".join([
             json.dumps({"type": "system", "subtype": "init", "session_id": "s1", "model": "GPT-5.4"}),
@@ -712,6 +811,30 @@ FINAL RANKING:
             tool_budget_status="ok",
         )
         self.assertEqual(result.to_json()["tool_budget_status"], "ok")
+
+    def test_model_call_result_includes_tool_policy_fields(self):
+        from llm_council_for_trae.provider import ModelCallResult
+        forbidden = [{"id": "tc1", "name": "Skill", "arguments": "{}", "turn_index": 1}]
+        result = ModelCallResult(
+            expected_model="GPT-5.4",
+            actual_model="GPT-5.4",
+            response="ok",
+            status="failed",
+            session_id="s1",
+            command=["traecli"],
+            exit_code=0,
+            stdout_path="out.jsonl",
+            stderr_path="err.log",
+            member_tool_mode="search_enabled",
+            allowed_tools=["WebSearch", "WebFetch"],
+            disallowed_tools=["Skill", "Agent"],
+            forbidden_tool_calls=forbidden,
+        )
+        j = result.to_json()
+        self.assertEqual(j["member_tool_mode"], "search_enabled")
+        self.assertEqual(j["allowed_tools"], ["WebSearch", "WebFetch"])
+        self.assertEqual(j["disallowed_tools"], ["Skill", "Agent"])
+        self.assertEqual(j["forbidden_tool_calls"], forbidden)
 
     def test_model_call_result_includes_partial_output_fields(self):
         from llm_council_for_trae.provider import ModelCallResult
@@ -754,6 +877,102 @@ FINAL RANKING:
     def test_target_valid_members_default_is_8(self):
         config = CouncilConfig(members=["A"], chairman="B")
         self.assertEqual(config.target_valid_members, 8)
+
+    def test_use_yolo_default_is_false(self):
+        config = CouncilConfig(members=["A"], chairman="B")
+        self.assertFalse(config.use_yolo)
+
+    def test_build_config_defaults_to_search_enabled_without_yolo(self):
+        from llm_council_for_trae.cli import build_config, build_parser
+
+        args = build_parser().parse_args(["run", "--input", "question.md", "--default-models"])
+        config = build_config(args)
+
+        self.assertFalse(config.use_yolo)
+        self.assertEqual(config.member_tool_mode, "search_enabled")
+        self.assertEqual(config.member_runtime_cwd_mode, "isolated_temp")
+
+    def test_build_config_yolo_is_explicit_opt_in(self):
+        from llm_council_for_trae.cli import build_config, build_parser
+
+        args = build_parser().parse_args(["run", "--input", "question.md", "--default-models", "--yolo", "--member-tool-mode", "answer_only"])
+        config = build_config(args)
+
+        self.assertTrue(config.use_yolo)
+        self.assertEqual(config.member_tool_mode, "answer_only")
+
+    def test_build_config_no_yolo_overrides_yolo_for_compatibility(self):
+        from llm_council_for_trae.cli import build_config, build_parser
+
+        args = build_parser().parse_args(["run", "--input", "question.md", "--default-models", "--yolo", "--no-yolo"])
+        config = build_config(args)
+
+        self.assertFalse(config.use_yolo)
+
+    def test_member_tool_mode_default_is_search_enabled(self):
+        config = CouncilConfig(members=["A"], chairman="B")
+        self.assertEqual(config.member_tool_mode, "search_enabled")
+
+    def test_provider_search_enabled_builds_tool_policy(self):
+        from llm_council_for_trae.provider import TraeCliProvider
+
+        provider = TraeCliProvider(member_tool_mode="search_enabled")
+        cmd = provider._build_command("GPT-5.4", "test prompt", "run-1", "stage1", "A", "sess-1")
+
+        self.assertIn("--allowed-tool", cmd)
+        self.assertIn("WebSearch", cmd)
+        self.assertIn("WebFetch", cmd)
+        self.assertIn("--disallowed-tool", cmd)
+        self.assertIn("Skill", cmd)
+        self.assertIn("Agent", cmd)
+
+    def test_provider_answer_only_disallows_web_and_workspace_tools(self):
+        from llm_council_for_trae.provider import TraeCliProvider
+
+        provider = TraeCliProvider(member_tool_mode="answer_only")
+        cmd = provider._build_command("GPT-5.4", "test prompt", "run-1", "stage1", "A", "sess-1")
+
+        self.assertNotIn("--allowed-tool", cmd)
+        for tool in ["WebSearch", "WebFetch", "Read", "Bash", "Skill", "Agent"]:
+            self.assertIn(tool, cmd)
+
+    def test_provider_workspace_enabled_allows_readonly_tools_only(self):
+        from llm_council_for_trae.provider import TraeCliProvider
+
+        provider = TraeCliProvider(member_tool_mode="workspace_enabled")
+        cmd = provider._build_command("GPT-5.4", "test prompt", "run-1", "stage1", "A", "sess-1")
+
+        for tool in ["Read", "Glob", "Grep", "LS", "WebSearch", "WebFetch"]:
+            allowed_index = cmd.index(tool)
+            self.assertEqual(cmd[allowed_index - 1], "--allowed-tool")
+        for tool in ["Skill", "Agent", "Write", "Edit", "Bash"]:
+            denied_index = cmd.index(tool)
+            self.assertEqual(cmd[denied_index - 1], "--disallowed-tool")
+
+    def test_provider_subagent_invocation_policy_allows_agent_tool(self):
+        from llm_council_for_trae.provider import TraeCliProvider, forbidden_tool_calls_for_mode
+
+        provider = TraeCliProvider(member_tool_mode="subagent_invocation")
+        cmd = provider._build_command("GPT-5.4", "@council test", "run-1", "stage1", "A", "sess-1")
+
+        agent_index = cmd.index("Agent")
+        self.assertEqual(cmd[agent_index - 1], "--allowed-tool")
+        self.assertNotEqual(cmd[agent_index - 1], "--disallowed-tool")
+        self.assertEqual(forbidden_tool_calls_for_mode([{"name": "Agent", "id": "tc1", "arguments": "{}", "turn_index": 1}], "subagent_invocation"), [])
+
+    def test_forbidden_tool_calls_respect_member_tool_mode(self):
+        from llm_council_for_trae.provider import forbidden_tool_calls_for_mode
+
+        calls = [
+            {"id": "tc1", "name": "WebSearch", "arguments": "{}", "turn_index": 1},
+            {"id": "tc2", "name": "Skill", "arguments": "{\"skill\":\"llm-council-for-trae\"}", "turn_index": 2},
+            {"id": "tc3", "name": "Read", "arguments": "{\"file_path\":\"notes.md\"}", "turn_index": 3},
+            {"id": "tc4", "name": "Bash", "arguments": "{\"command\":\"ls\"}", "turn_index": 4},
+        ]
+
+        self.assertEqual([c["name"] for c in forbidden_tool_calls_for_mode(calls, "search_enabled")], ["Skill", "Read", "Bash"])
+        self.assertEqual([c["name"] for c in forbidden_tool_calls_for_mode(calls, "answer_only")], ["WebSearch", "Skill", "Read", "Bash"])
+        self.assertEqual([c["name"] for c in forbidden_tool_calls_for_mode(calls, "workspace_enabled")], ["Skill", "Bash"])
 
     def test_chairman_excluded_from_quorum_count(self):
         results = [

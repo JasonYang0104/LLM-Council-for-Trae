@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import re
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from .models import doctor as runtime_doctor
 from .models import get_models, require_models_available
-from .provider import ModelCallResult, TraeCliProvider
+from .provider import ModelCallResult, TraeCliProvider, tool_policy_for_mode
 from .store import ArtifactStore
 from .utils import utc_now, write_json
 
@@ -29,7 +30,7 @@ class CouncilConfig:
     export_html: bool = True
     member_agents: list[str | None] | None = None
     chairman_agent: str | None = None
-    use_yolo: bool = True
+    use_yolo: bool = False
     min_valid_members: int = 3
     target_valid_members: int = 8
     chairman_fallback: list[str] | None = None
@@ -39,6 +40,8 @@ class CouncilConfig:
     stage2_timeout: float | None = None
     chairman_timeout: int = 720
     member_mode: str = "normal"
+    member_tool_mode: str = "search_enabled"
+    member_runtime_cwd_mode: str = "isolated_temp"
     stage1_max_retries: int = 1
 
     def agent_for_member(self, index: int) -> str | None:
@@ -105,30 +108,18 @@ async def stage1_collect_responses(
             try:
                 call_results[idx] = task.result()
             except (asyncio.CancelledError, Exception) as exc:
-                call_results[idx] = ModelCallResult(
-                    expected_model=model, actual_model=None, response="",
-                    status="failed", session_id="", command=[], exit_code=-1,
-                    stdout_path="", stderr_path="", error=f"cancelled_by_stage_timeout: {exc}",
-                )
+                call_results[idx] = synthetic_failed_call(model, f"cancelled_by_stage_timeout: {exc}", config)
 
     for task in task_map:
         idx, model, label = task_map[task]
         if call_results[idx] is None:
-            call_results[idx] = ModelCallResult(
-                expected_model=model, actual_model=None, response="",
-                status="failed", session_id="", command=[], exit_code=-1,
-                stdout_path="", stderr_path="", error="cancelled_by_stage_timeout",
-            )
+            call_results[idx] = synthetic_failed_call(model, "cancelled_by_stage_timeout", config)
 
     stage1_results: list[dict[str, Any]] = []
     for index, (model, call) in enumerate(zip(config.members, call_results)):
         label = chr(65 + index)
         if call is None:
-            call = ModelCallResult(
-                expected_model=model, actual_model=None, response="",
-                status="failed", session_id="", command=[], exit_code=-1,
-                stdout_path="", stderr_path="", error="cancelled_by_stage_timeout",
-            )
+            call = synthetic_failed_call(model, "cancelled_by_stage_timeout", config)
         store.write_text(f"stage1/{label}.response.md", call.response + "\n")
         stage1_results.append(
             {
@@ -150,7 +141,7 @@ async def stage1_collect_responses(
                 "raw_partial_recoverable": call.raw_partial_recoverable,
                 "retried": call.retried,
                 "retry_error": call.retry_error,
-            }
+            } | tool_policy_record(call)
         )
     return stage1_results
 
@@ -208,11 +199,7 @@ async def stage2_collect_rankings(
             try:
                 call_results[idx] = task.result()
             except (asyncio.CancelledError, Exception) as exc:
-                call_results[idx] = ModelCallResult(
-                    expected_model=model, actual_model=None, response="",
-                    status="failed", session_id="", command=[], exit_code=-1,
-                    stdout_path="", stderr_path="", error=f"cancelled_by_stage_timeout: {exc}",
-                )
+                call_results[idx] = synthetic_failed_call(model, f"cancelled_by_stage_timeout: {exc}", config)
 
     if pending:
         for task in pending:
@@ -221,11 +208,12 @@ async def stage2_collect_rankings(
 
     for task, (idx, model, label) in task_map.items():
         if call_results[idx] is None:
-            call_results[idx] = ModelCallResult(
-                expected_model=model, actual_model=None, response="",
-                status="failed", session_id="", command=[], exit_code=-1,
-                stdout_path=f"{label}.traecli.stream.jsonl", stderr_path=f"{label}.traecli.stderr.log",
-                error="cancelled_by_stage_timeout",
+            call_results[idx] = synthetic_failed_call(
+                model,
+                "cancelled_by_stage_timeout",
+                config,
+                stdout_path=f"{label}.traecli.stream.jsonl",
+                stderr_path=f"{label}.traecli.stderr.log",
             )
 
     stage2_results: list[dict[str, Any]] = []
@@ -233,11 +221,12 @@ async def stage2_collect_rankings(
     for index, (model, call) in enumerate(zip(config.members, call_results)):
         label = chr(65 + index)
         if call is None:
-            call = ModelCallResult(
-                expected_model=model, actual_model=None, response="",
-                status="failed", session_id="", command=[], exit_code=-1,
-                stdout_path=f"{label}.traecli.stream.jsonl", stderr_path=f"{label}.traecli.stderr.log",
-                error="cancelled_by_stage_timeout",
+            call = synthetic_failed_call(
+                model,
+                "cancelled_by_stage_timeout",
+                config,
+                stdout_path=f"{label}.traecli.stream.jsonl",
+                stderr_path=f"{label}.traecli.stderr.log",
             )
         parsed = parse_ranking_from_text(call.response)
         parse_status = "ok" if ranking_is_complete(parsed, valid_labels) else "incomplete"
@@ -261,7 +250,7 @@ async def stage2_collect_rankings(
             "raw_partial_recoverable": call.raw_partial_recoverable,
             "retried": call.retried,
             "retry_error": call.retry_error,
-        }
+        } | tool_policy_record(call)
         store.write_text(f"stage2/{label}.review.md", call.response + "\n")
         store.write_json(f"stage2/{label}.review.json", review)
         store.write_json(f"stage2/{label}.meta.json", call.to_json() | {"captured_at": utc_now()})
@@ -359,7 +348,7 @@ async def stage3_synthesize_final(
         "raw_partial_recoverable": call.raw_partial_recoverable,
         "retried": call.retried,
         "retry_error": call.retry_error,
-    }
+    } | tool_policy_record(call)
     store.write_text("stage3/final.md", call.response + "\n")
     store.write_json("stage3/final.json", final)
     return final, chairman_meta
@@ -405,6 +394,10 @@ def degraded_final_from_stage2(
             "raw_partial_recoverable": source.get("raw_partial_recoverable", False),
             "retried": source.get("retried", False),
             "retry_error": source.get("retry_error"),
+            "member_tool_mode": source.get("member_tool_mode"),
+            "allowed_tools": source.get("allowed_tools", []),
+            "disallowed_tools": source.get("disallowed_tools", []),
+            "forbidden_tool_calls": source.get("forbidden_tool_calls", []),
         }
     return None
 
@@ -590,11 +583,20 @@ async def run_full_council(
         store.write_manifest(manifest)
         return manifest
 
+    provider_runtime_cwd = Path(config.runtime_cwd) if config.runtime_cwd else None
+    if config.provider_mode == "direct" and provider_runtime_cwd is None and config.member_runtime_cwd_mode == "isolated_temp":
+        provider_runtime_cwd = Path(tempfile.mkdtemp(prefix=f"lct-{store.root.name}-member-cwd-"))
+        provider_runtime_cwd.mkdir(parents=True, exist_ok=True)
+        store.write_text("runtime/member-cwd.path", str(provider_runtime_cwd) + "\n")
+        store.event("member_runtime_cwd_ready", {"mode": config.member_runtime_cwd_mode, "path": str(provider_runtime_cwd)})
+
+    provider_member_tool_mode = "subagent_invocation" if config.provider_mode == "subagent" else config.member_tool_mode
     provider = TraeCliProvider(
         config.runtime_command,
         config.query_timeout,
-        runtime_cwd=Path(config.runtime_cwd) if config.runtime_cwd else None,
+        runtime_cwd=provider_runtime_cwd,
         use_yolo=config.use_yolo,
+        member_tool_mode=provider_member_tool_mode,
     )
 
     store.event("stage1_start", {"members": config.members})
@@ -643,7 +645,7 @@ async def run_full_council(
                 "raw_partial_recoverable": retry_call.raw_partial_recoverable,
                 "retried": True,
                 "retry_error": retry_call.retry_error or retry_call.error,
-            }
+            } | tool_policy_record(retry_call)
             store.write_text(f"stage1/{label}.response.md", retry_call.response + "\n")
             store.write_json(f"stage1/{label}.meta.json", retry_call.to_json() | {"captured_at": utc_now()})
 
@@ -740,8 +742,44 @@ def config_to_json(config: CouncilConfig) -> dict[str, Any]:
         "stage2_timeout": config.stage2_timeout,
         "chairman_timeout": config.chairman_timeout,
         "member_mode": config.member_mode,
+        "member_tool_mode": config.member_tool_mode,
+        "member_runtime_cwd_mode": config.member_runtime_cwd_mode,
         "stage1_max_retries": config.stage1_max_retries,
     }
+
+
+def tool_policy_record(call: ModelCallResult) -> dict[str, Any]:
+    return {
+        "member_tool_mode": call.member_tool_mode,
+        "allowed_tools": call.allowed_tools,
+        "disallowed_tools": call.disallowed_tools,
+        "forbidden_tool_calls": call.forbidden_tool_calls,
+    }
+
+
+def synthetic_failed_call(
+    model: str,
+    error: str,
+    config: CouncilConfig,
+    stdout_path: str = "",
+    stderr_path: str = "",
+) -> ModelCallResult:
+    allowed_tools, disallowed_tools = tool_policy_for_mode(config.member_tool_mode)
+    return ModelCallResult(
+        expected_model=model,
+        actual_model=None,
+        response="",
+        status="failed",
+        session_id="",
+        command=[],
+        exit_code=-1,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+        error=error,
+        member_tool_mode=config.member_tool_mode,
+        allowed_tools=allowed_tools,
+        disallowed_tools=disallowed_tools,
+    )
 
 
 def classify_stage1_status(results: list[dict[str, Any]], min_valid_members: int = 6, chairman_model: str | None = None) -> str:
