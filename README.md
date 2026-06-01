@@ -34,20 +34,13 @@ git -C ~/.LCT pull --ff-only origin main
 安装 CLI wrapper：
 
 ```bash
-mkdir -p ~/.local/bin
-cat > ~/.local/bin/llm-council-for-trae << 'EOF'
-#!/bin/sh
-PYTHONPATH="$HOME/.LCT/src${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m llm_council_for_trae.cli "$@"
-EOF
-chmod +x ~/.local/bin/llm-council-for-trae
+make -C ~/.LCT install-global
 ```
 
-安装用户级 Skill：
+这个命令会安装两件事：
 
-```bash
-mkdir -p /Users/bytedance/.agents/skills
-ln -sfn ~/.LCT/skills/llm-council-for-trae /Users/bytedance/.agents/skills/llm-council-for-trae
-```
+- `~/.local/bin/llm-council-for-trae`：wrapper 指向 `~/.LCT/src`。
+- `/Users/bytedance/.agents/skills/llm-council-for-trae`：用户级 Skill 链接到 `~/.LCT/skills/llm-council-for-trae`。
 
 在干净问题 workspace 里对 Agent 说：
 

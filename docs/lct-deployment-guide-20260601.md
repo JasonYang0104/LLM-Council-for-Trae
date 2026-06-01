@@ -89,7 +89,17 @@ git -C ~/.LCT log --oneline -3
 
 Keep `~/.LCT` clean. Do development work in a separate development repo or worktree.
 
-## 6. Install The CLI Wrapper
+## 6. Install The CLI Wrapper And Skill
+
+Use the Makefile target from the global checkout:
+
+```bash
+make -C ~/.LCT install-global
+```
+
+This writes `~/.local/bin/llm-council-for-trae` with `PYTHONPATH` pointing at `~/.LCT/src`, then installs the Skill link at `/Users/bytedance/.agents/skills/llm-council-for-trae`.
+
+Equivalent manual wrapper command:
 
 ```bash
 mkdir -p ~/.local/bin
@@ -111,7 +121,7 @@ llm-council-for-trae --help
 
 `make install-local` is development-only. It writes a wrapper that points at the current checkout's `src/`, which is exactly what a developer wants and exactly what daily users should avoid.
 
-## 7. Install The User-Level Skill
+## 7. Verify The User-Level Skill
 
 The canonical Skill template lives in:
 
@@ -119,7 +129,7 @@ The canonical Skill template lives in:
 ~/.LCT/skills/llm-council-for-trae/SKILL.md
 ```
 
-Install it into the user-level Agent Skill directory:
+`make install-global` links it into the user-level Agent Skill directory. Manual equivalent:
 
 ```bash
 mkdir -p /Users/bytedance/.agents/skills

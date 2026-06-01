@@ -14,3 +14,4 @@
 - TDD slice 3 starts with a cross-doc path consistency test. Expected RED state: `docs/lct-deployment-guide-20260601.md` is missing from the clean `origin/main` branch.
 - TDD slice 3 GREEN adds a deployment guide that separates development repo, `~/.LCT`, and clean problem workspace. It explicitly separates local tests, validate, user install smoke, live smoke, and fake runtime.
 - TDD slice 4 starts with a Makefile contract test for `install-global`. Expected RED state: current Makefile only has `install-local`.
+- TDD slice 4 GREEN adds `install-global` and `install-skill`. `install-global` writes a wrapper pointing at `LCT_DIR/src` and links the user Skill; `install-local` remains a development checkout wrapper.
