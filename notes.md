@@ -11,3 +11,4 @@
 - TDD slice 1 GREEN changed only the README quickstart: default use is now `~/.LCT` + global wrapper + `/Users/bytedance/.agents/skills` + clean problem workspace. `make install-local` is now explicitly documented as development-only.
 - TDD slice 2 starts with a Skill template contract test. Expected RED state: `skills/llm-council-for-trae/SKILL.md` is missing.
 - TDD slice 2 GREEN adds the canonical user-level Skill template under `skills/llm-council-for-trae/`. It intentionally does not live under `.codex/skills/`, because this is for LCT users, not Codex development helpers.
+- TDD slice 3 starts with a cross-doc path consistency test. Expected RED state: `docs/lct-deployment-guide-20260601.md` is missing from the clean `origin/main` branch.

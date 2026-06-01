@@ -36,6 +36,27 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
         self.assertIn("profiles/subagents.json", skill)
         self.assertIn("不要把 fake runtime 结果说成 live traecli 结果", skill)
 
+    def test_docs_use_current_user_skill_path_and_no_stale_skill_path(self):
+        doc_paths = [
+            "README.md",
+            "docs/lct-deployment-guide-20260601.md",
+            "skills/llm-council-for-trae/SKILL.md",
+        ]
+
+        for relative in doc_paths:
+            path = REPO_ROOT / relative
+            self.assertTrue(path.exists(), f"missing {relative}")
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("/Users/bytedance/.agents/skills", text, relative)
+            self.assertNotIn("~/.trae/skills", text, relative)
+
+        guide = self.read_text("docs/lct-deployment-guide-20260601.md")
+        self.assertIn("~/.LCT", guide)
+        self.assertIn("干净问题 workspace", guide)
+        self.assertIn("开发仓库", guide)
+        self.assertIn("不要把 fake runtime", guide)
+        self.assertIn("live smoke", guide)
+
 
 if __name__ == "__main__":
     unittest.main()
