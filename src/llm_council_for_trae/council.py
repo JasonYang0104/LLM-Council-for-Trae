@@ -36,6 +36,7 @@ class CouncilConfig:
     member_soft_checkpoint: int = 300
     member_quorum_checkpoint: int = 480
     member_hard_timeout: int = 660
+    stage2_timeout: float | None = None
     chairman_timeout: int = 720
     member_mode: str = "normal"
     stage1_max_retries: int = 1
@@ -168,10 +169,10 @@ async def stage2_collect_rankings(
     store.write_text("stage2/review.prompt.md", ranking_prompt + "\n")
 
     output_dir = store.path("stage2")
-    tasks = []
+    task_map: dict[asyncio.Task, tuple[int, str, str]] = {}
     for index, model in enumerate(config.members):
         label = chr(65 + index)
-        tasks.append(
+        task = asyncio.create_task(
             provider.query_model(
                 model=model,
                 prompt=ranking_prompt,
@@ -182,12 +183,62 @@ async def stage2_collect_rankings(
                 agent=config.agent_for_member(index),
             )
         )
-    call_results = await asyncio.gather(*tasks)
+        task_map[task] = (index, model, label)
+
+    call_results: list[ModelCallResult | None] = [None] * len(config.members)
+    stage2_timeout = config.stage2_timeout if config.stage2_timeout is not None else max(config.query_timeout + 30, 240)
+    loop = asyncio.get_running_loop()
+    stage_start = loop.time()
+    pending: set[asyncio.Task] = set(task_map.keys())
+
+    while pending:
+        elapsed = loop.time() - stage_start
+        remaining = stage2_timeout - elapsed
+        if remaining <= 0:
+            store.event("stage2_timeout", {"elapsed_seconds": round(elapsed, 2)})
+            break
+
+        done, pending = await asyncio.wait(
+            pending,
+            timeout=min(10, max(0.01, remaining)),
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in done:
+            idx, model, label = task_map[task]
+            try:
+                call_results[idx] = task.result()
+            except (asyncio.CancelledError, Exception) as exc:
+                call_results[idx] = ModelCallResult(
+                    expected_model=model, actual_model=None, response="",
+                    status="failed", session_id="", command=[], exit_code=-1,
+                    stdout_path="", stderr_path="", error=f"cancelled_by_stage_timeout: {exc}",
+                )
+
+    if pending:
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
+
+    for task, (idx, model, label) in task_map.items():
+        if call_results[idx] is None:
+            call_results[idx] = ModelCallResult(
+                expected_model=model, actual_model=None, response="",
+                status="failed", session_id="", command=[], exit_code=-1,
+                stdout_path=f"{label}.traecli.stream.jsonl", stderr_path=f"{label}.traecli.stderr.log",
+                error="cancelled_by_stage_timeout",
+            )
 
     stage2_results: list[dict[str, Any]] = []
     valid_labels = set(label_to_model)
     for index, (model, call) in enumerate(zip(config.members, call_results)):
         label = chr(65 + index)
+        if call is None:
+            call = ModelCallResult(
+                expected_model=model, actual_model=None, response="",
+                status="failed", session_id="", command=[], exit_code=-1,
+                stdout_path=f"{label}.traecli.stream.jsonl", stderr_path=f"{label}.traecli.stderr.log",
+                error="cancelled_by_stage_timeout",
+            )
         parsed = parse_ranking_from_text(call.response)
         parse_status = "ok" if ranking_is_complete(parsed, valid_labels) else "incomplete"
         review = {
@@ -213,9 +264,14 @@ async def stage2_collect_rankings(
         }
         store.write_text(f"stage2/{label}.review.md", call.response + "\n")
         store.write_json(f"stage2/{label}.review.json", review)
+        store.write_json(f"stage2/{label}.meta.json", call.to_json() | {"captured_at": utc_now()})
+        stream_path = output_dir / f"{label}.traecli.stream.jsonl"
+        if not stream_path.exists():
+            stream_text = call.response or call.error or call.status
+            store.write_text(f"stage2/{label}.traecli.stream.jsonl", stream_text + "\n")
         stage2_results.append(review)
 
-    aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+    aggregate_rankings = calculate_aggregate_rankings(valid_stage2_rankings(stage2_results), label_to_model)
     store.write_json("stage2/aggregate.json", aggregate_rankings)
     return stage2_results, label_to_model
 
@@ -235,6 +291,7 @@ async def stage3_synthesize_final(
     attempted = [config.chairman]
     used = config.chairman
     fallback_from = None
+    failed_attempts: list[dict[str, Any]] = []
 
     call = await provider.query_model(
         model=config.chairman,
@@ -244,7 +301,10 @@ async def stage3_synthesize_final(
         label="final",
         output_dir=store.path("stage3"),
         agent=config.chairman_agent,
+        query_timeout=config.chairman_timeout,
     )
+    if call.status != "ok":
+        failed_attempts.append(stage3_failure_record(config.chairman, call))
 
     if call.status != "ok" and fallback_chain:
         for fb_model in fallback_chain:
@@ -256,18 +316,30 @@ async def stage3_synthesize_final(
                 stage="stage3",
                 label=f"final-fb-{fb_model}",
                 output_dir=store.path("stage3"),
+                query_timeout=config.chairman_timeout,
             )
             if fb_call.status == "ok":
                 call = fb_call
                 used = fb_model
                 fallback_from = config.chairman
                 break
+            failed_attempts.append(stage3_failure_record(fb_model, fb_call))
 
     chairman_meta = {
         "attempted": attempted,
         "used": used,
         "fallback_from": fallback_from,
+        "failed_attempts": failed_attempts,
     }
+
+    if call.status != "ok":
+        degraded = degraded_final_from_stage2(stage1_results, stage2_results)
+        if degraded is not None:
+            chairman_meta["used"] = degraded["model"]
+            chairman_meta["degraded_from"] = attempted
+            store.write_text("stage3/final.md", degraded["response"] + "\n")
+            store.write_json("stage3/final.json", degraded)
+            return degraded, chairman_meta
 
     final = {
         "model": used,
@@ -291,6 +363,67 @@ async def stage3_synthesize_final(
     store.write_text("stage3/final.md", call.response + "\n")
     store.write_json("stage3/final.json", final)
     return final, chairman_meta
+
+
+def degraded_final_from_stage2(
+    stage1_results: list[dict[str, Any]],
+    stage2_results: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    label_to_model = {
+        result["label"]: result["model"]
+        for result in stage1_results
+        if result.get("label") and result.get("model")
+    }
+    aggregate = calculate_aggregate_rankings(valid_stage2_rankings(stage2_results), label_to_model)
+    by_model = {
+        result.get("model"): result
+        for result in stage1_results
+        if result.get("status") == "ok" and result.get("model") and result.get("response")
+    }
+    for item in aggregate:
+        model = item.get("model")
+        source = by_model.get(model)
+        if not source:
+            continue
+        return {
+            "model": model,
+            "expected_model": model,
+            "actual_model": source.get("actual_model") or model,
+            "agent": source.get("agent"),
+            "subagent_invocation": source.get("subagent_invocation"),
+            "response": source["response"],
+            "status": "degraded_ok",
+            "error": None,
+            "degraded_source": "stage2_best_stage1_response",
+            "source_stage1_label": source.get("label"),
+            "prompt_path": "stage3/chairman.prompt.md",
+            "response_path": "stage3/final.md",
+            "json_path": "stage3/final.json",
+            "tool_calls_count": source.get("tool_calls_count", 0),
+            "turns_count": source.get("turns_count", 0),
+            "tool_budget_status": source.get("tool_budget_status", "ok"),
+            "raw_partial_recoverable": source.get("raw_partial_recoverable", False),
+            "retried": source.get("retried", False),
+            "retry_error": source.get("retry_error"),
+        }
+    return None
+
+
+def valid_stage2_rankings(stage2_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        result for result in stage2_results
+        if result.get("status") == "ok" and result.get("parse_status") == "ok"
+    ]
+
+
+def stage3_failure_record(model: str, call: ModelCallResult) -> dict[str, Any]:
+    return {
+        "stage_record": model,
+        "status": call.status,
+        "error": call.error or f"non-ok status: {call.status}",
+        "expected_model": call.expected_model,
+        "actual_model": call.actual_model,
+    }
 
 
 def build_stage1_prompt(user_query: str) -> str:
@@ -526,7 +659,7 @@ async def run_full_council(
 
     store.event("stage2_start")
     stage2_results, label_to_model = await stage2_collect_rankings(user_query, valid_stage1, config, provider, store)
-    aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+    aggregate_rankings = calculate_aggregate_rankings(valid_stage2_rankings(stage2_results), label_to_model)
     manifest["metadata"]["label_to_model"] = label_to_model
     manifest["metadata"]["aggregate_rankings"] = aggregate_rankings
     manifest["stages"]["stage2"] = stage2_results
@@ -536,6 +669,8 @@ async def run_full_council(
         manifest["status"] = "failed"
         store.write_manifest(manifest)
         return manifest
+    if any(r.get("status") != "ok" for r in stage2_results):
+        manifest["status"] = "degraded_ok"
 
     fallback_chain = config.chairman_fallback
     if not fallback_chain:
@@ -550,7 +685,11 @@ async def run_full_council(
     manifest["stages"]["stage3"] = stage3_result
     manifest["metadata"]["chairman"] = chairman_meta
     record_stage_failures(manifest, [stage3_result])
-    if stage3_result.get("status") != "ok":
+    if stage3_result.get("status") == "degraded_ok":
+        manifest["status"] = "degraded_ok"
+        manifest["warnings"].append("stage3 degraded to the best ranked Stage 1 response")
+        manifest["failures"].extend(chairman_meta.get("failed_attempts") or [])
+    elif stage3_result.get("status") != "ok":
         manifest["status"] = "failed"
     store.write_manifest(manifest)
     return manifest
@@ -598,6 +737,7 @@ def config_to_json(config: CouncilConfig) -> dict[str, Any]:
         "member_soft_checkpoint": config.member_soft_checkpoint,
         "member_quorum_checkpoint": config.member_quorum_checkpoint,
         "member_hard_timeout": config.member_hard_timeout,
+        "stage2_timeout": config.stage2_timeout,
         "chairman_timeout": config.chairman_timeout,
         "member_mode": config.member_mode,
         "stage1_max_retries": config.stage1_max_retries,
@@ -637,7 +777,7 @@ def update_manifest_with_stage1_status(manifest: dict[str, Any], stage1_status: 
 
 def record_stage_failures(manifest: dict[str, Any], records: list[dict[str, Any]]) -> None:
     for record in records:
-        if record.get("status") not in ("ok",):
+        if record.get("status") not in ("ok", "degraded_ok"):
             failure = {
                 "stage_record": record.get("label") or record.get("reviewer_label") or record.get("model"),
                 "status": record.get("status"),

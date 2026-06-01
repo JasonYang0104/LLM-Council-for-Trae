@@ -1,0 +1,585 @@
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+from io import StringIO
+from unittest.mock import patch
+
+
+class RuntimeHardeningTests(unittest.TestCase):
+    def test_run_lease_acquire_and_release(self):
+        from llm_council_for_trae.runtime import RunLease
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store_base = Path(tmp)
+            with RunLease.acquire(store_base, "run-test") as lease:
+                self.assertTrue(lease.path.exists())
+                self.assertEqual(lease.payload["run_id"], "run-test")
+
+            self.assertFalse(lease.path.exists())
+
+    def test_run_lease_rejects_active_lock(self):
+        from llm_council_for_trae.runtime import RunLease, RunLeaseError
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store_base = Path(tmp)
+            with RunLease.acquire(store_base, "run-active"):
+                with patch("llm_council_for_trae.runtime.process_is_alive", return_value=True):
+                    with self.assertRaises(RunLeaseError) as ctx:
+                        RunLease.acquire(store_base, "run-next")
+
+            self.assertIn("another run is active", str(ctx.exception))
+
+    def test_run_lease_overwrites_stale_lock(self):
+        from llm_council_for_trae.runtime import RunLease
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store_base = Path(tmp)
+            runtime_dir = store_base / ".runtime"
+            runtime_dir.mkdir()
+            (runtime_dir / "run.lock").write_text('{"run_id":"old","pid":999999}\n', encoding="utf-8")
+
+            with patch("llm_council_for_trae.runtime.process_is_alive", return_value=False):
+                with RunLease.acquire(store_base, "run-next") as lease:
+                    self.assertEqual(lease.payload["run_id"], "run-next")
+                    self.assertTrue(lease.stale_replaced)
+
+    def test_run_lease_overwrites_malformed_lock_as_stale(self):
+        from llm_council_for_trae.runtime import RunLease
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store_base = Path(tmp)
+            runtime_dir = store_base / ".runtime"
+            runtime_dir.mkdir()
+            (runtime_dir / "run.lock").write_text("not json\n", encoding="utf-8")
+
+            with RunLease.acquire(store_base, "run-next") as lease:
+                self.assertEqual(lease.payload["run_id"], "run-next")
+                self.assertTrue(lease.stale_replaced)
+
+    def test_cli_run_fails_fast_when_run_lease_active(self):
+        from llm_council_for_trae.cli import main
+        from llm_council_for_trae.runtime import RunLeaseError
+
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = Path(tmp) / "question.md"
+            input_path.write_text("Question\n", encoding="utf-8")
+            store_base = Path(tmp) / "runs"
+
+            with patch("llm_council_for_trae.cli.RunLease.acquire", side_effect=RunLeaseError("another run is active: old")):
+                with patch("sys.stdout", new=StringIO()) as stdout:
+                    rc = main([
+                        "--json",
+                        "--store",
+                        str(store_base),
+                        "run",
+                        "--input",
+                        str(input_path),
+                        "--default-models",
+                    ])
+
+            self.assertEqual(rc, 1)
+            self.assertIn("another run is active", stdout.getvalue())
+
+    def test_stage2_timeout_keeps_completed_reviews_and_marks_pending_failed(self):
+        async def _run():
+            import asyncio
+            from llm_council_for_trae.council import CouncilConfig, stage2_collect_rankings
+            from llm_council_for_trae.provider import ModelCallResult, TraeCliProvider
+            from llm_council_for_trae.store import ArtifactStore
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s2-timeout")
+            config = CouncilConfig(
+                members=["M1", "M2"],
+                chairman="M1",
+                stage2_timeout=0.05,
+            )
+
+            async def query_model(**kwargs):
+                if kwargs["model"] == "M1":
+                    return ModelCallResult(
+                        expected_model="M1",
+                        actual_model="M1",
+                        response="FINAL RANKING:\n1. Response A",
+                        status="ok",
+                        session_id="s1",
+                        command=["traecli"],
+                        exit_code=0,
+                        stdout_path="out.jsonl",
+                        stderr_path="err.log",
+                    )
+                await asyncio.sleep(5)
+                return ModelCallResult(
+                    expected_model="M2",
+                    actual_model="M2",
+                    response="FINAL RANKING:\n1. Response A",
+                    status="ok",
+                    session_id="s2",
+                    command=["traecli"],
+                    exit_code=0,
+                    stdout_path="out.jsonl",
+                    stderr_path="err.log",
+                )
+
+            provider = TraeCliProvider.__new__(TraeCliProvider)
+            provider.query_model = query_model
+            stage1_results = [{"label": "Response A", "model": "M1", "response": "A", "status": "ok"}]
+
+            stage2_results, label_to_model = await stage2_collect_rankings("question", stage1_results, config, provider, store)
+
+            self.assertEqual(label_to_model, {"Response A": "M1"})
+            self.assertEqual([r["status"] for r in stage2_results], ["ok", "failed"])
+            self.assertIn("cancelled_by_stage_timeout", stage2_results[1]["error"])
+            self.assertTrue((store.root / "stage2" / "B.traecli.stream.jsonl").exists())
+            aggregate = (store.root / "stage2" / "aggregate.json").read_text(encoding="utf-8")
+            self.assertIn("M1", aggregate)
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_stage3_uses_chairman_timeout_for_primary_and_fallback(self):
+        async def _run():
+            from llm_council_for_trae.council import CouncilConfig, stage3_synthesize_final
+            from llm_council_for_trae.provider import ModelCallResult
+            from llm_council_for_trae.store import ArtifactStore
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-chair-timeout")
+            config = CouncilConfig(members=["M1"], chairman="M1", chairman_timeout=777)
+            seen_timeouts = []
+
+            class FakeProvider:
+                async def query_model(self, **kwargs):
+                    seen_timeouts.append(kwargs.get("query_timeout"))
+                    status = "failed" if kwargs["model"] == "M1" else "ok"
+                    return ModelCallResult(
+                        expected_model=kwargs["model"],
+                        actual_model=kwargs["model"] if status == "ok" else None,
+                        response="Final" if status == "ok" else "",
+                        status=status,
+                        session_id="s",
+                        command=["traecli"],
+                        exit_code=0 if status == "ok" else 1,
+                        stdout_path="out.jsonl",
+                        stderr_path="err.log",
+                        error=None if status == "ok" else "timeout",
+                    )
+
+            await stage3_synthesize_final(
+                "question",
+                [{"label": "Response A", "model": "M1", "response": "A", "status": "ok"}],
+                [{"model": "M1", "ranking": "FINAL RANKING:\n1. Response A", "parsed_ranking": ["Response A"], "status": "ok"}],
+                config,
+                FakeProvider(),
+                store,
+                fallback_chain=["M2"],
+            )
+
+            self.assertEqual(seen_timeouts, [777, 777])
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_provider_build_command_uses_call_timeout_override(self):
+        from llm_council_for_trae.provider import TraeCliProvider
+
+        provider = TraeCliProvider(query_timeout=180)
+        cmd = provider._build_command("M1", "prompt", "run", "stage3", "final", "session", query_timeout=777)
+        self.assertIn("--query-timeout", cmd)
+        self.assertIn("777s", cmd)
+
+    def test_stage3_degrades_to_best_stage1_response_when_all_chairmen_fail(self):
+        async def _run():
+            from llm_council_for_trae.council import CouncilConfig, stage3_synthesize_final
+            from llm_council_for_trae.provider import ModelCallResult
+            from llm_council_for_trae.store import ArtifactStore
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s3-degraded")
+            config = CouncilConfig(members=["M1", "M2"], chairman="Chair")
+
+            class FailingProvider:
+                async def query_model(self, **kwargs):
+                    return ModelCallResult(
+                        expected_model=kwargs["model"],
+                        actual_model=None,
+                        response="",
+                        status="failed",
+                        session_id="s",
+                        command=["traecli"],
+                        exit_code=1,
+                        stdout_path="out.jsonl",
+                        stderr_path="err.log",
+                        error="timeout",
+                    )
+
+            final, meta = await stage3_synthesize_final(
+                "question",
+                [
+                    {"label": "Response A", "model": "M1", "response": "weak answer", "status": "ok"},
+                    {"label": "Response B", "model": "M2", "response": "best answer", "status": "ok"},
+                ],
+                [
+                    {
+                        "model": "M1",
+                        "ranking": "FINAL RANKING:\n1. Response B\n2. Response A",
+                        "parsed_ranking": ["Response B", "Response A"],
+                        "status": "ok",
+                        "parse_status": "ok",
+                    }
+                ],
+                config,
+                FailingProvider(),
+                store,
+                fallback_chain=["Fallback"],
+            )
+
+            self.assertEqual(final["status"], "degraded_ok")
+            self.assertEqual(final["model"], "M2")
+            self.assertEqual(final["response"], "best answer")
+            self.assertEqual(final["degraded_source"], "stage2_best_stage1_response")
+            self.assertEqual(meta["attempted"], ["Chair", "Fallback"])
+            self.assertEqual((store.root / "stage3" / "final.md").read_text(encoding="utf-8").strip(), "best answer")
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_stage3_degraded_final_ignores_failed_stage2_rankings(self):
+        from llm_council_for_trae.council import degraded_final_from_stage2
+
+        final = degraded_final_from_stage2(
+            [
+                {"label": "Response A", "model": "M1", "response": "valid best", "status": "ok"},
+                {"label": "Response B", "model": "M2", "response": "failed reviewer favorite", "status": "ok"},
+            ],
+            [
+                {
+                    "model": "M2",
+                    "ranking": "FINAL RANKING:\n1. Response B\n2. Response A",
+                    "parsed_ranking": ["Response B", "Response A"],
+                    "status": "failed",
+                    "parse_status": "ok",
+                },
+                {
+                    "model": "M2",
+                    "ranking": "FINAL RANKING:\n1. Response B\n2. Response A",
+                    "parsed_ranking": ["Response B", "Response A"],
+                    "status": "failed",
+                    "parse_status": "ok",
+                },
+                {
+                    "model": "M1",
+                    "ranking": "FINAL RANKING:\n1. Response A\n2. Response B",
+                    "parsed_ranking": ["Response A", "Response B"],
+                    "status": "ok",
+                    "parse_status": "ok",
+                },
+            ],
+        )
+
+        self.assertIsNotNone(final)
+        self.assertEqual(final["model"], "M1")
+        self.assertEqual(final["response"], "valid best")
+
+    def test_run_full_council_preserves_degraded_ok_stage3_final(self):
+        async def _run():
+            from llm_council_for_trae.council import CouncilConfig, run_full_council
+            from llm_council_for_trae.provider import ModelCallResult
+            from llm_council_for_trae.store import ArtifactStore
+            import llm_council_for_trae.council as council_mod
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-full-s3-degraded")
+            config = CouncilConfig(
+                members=["M1", "M2"],
+                chairman="Chair",
+                min_valid_members=2,
+                stage1_max_retries=0,
+                stage2_timeout=1,
+            )
+
+            class MockProvider:
+                def __init__(self, *args, **kwargs):
+                    pass
+
+                async def query_model(self, **kwargs):
+                    stage = kwargs["stage"]
+                    model = kwargs["model"]
+                    if stage == "stage1":
+                        return ModelCallResult(
+                            expected_model=model,
+                            actual_model=model,
+                            response=f"answer {model}",
+                            status="ok",
+                            session_id="s",
+                            command=["traecli"],
+                            exit_code=0,
+                            stdout_path="out.jsonl",
+                            stderr_path="err.log",
+                        )
+                    if stage == "stage2":
+                        return ModelCallResult(
+                            expected_model=model,
+                            actual_model=model,
+                            response="FINAL RANKING:\n1. Response B\n2. Response A",
+                            status="ok",
+                            session_id="s",
+                            command=["traecli"],
+                            exit_code=0,
+                            stdout_path="out.jsonl",
+                            stderr_path="err.log",
+                        )
+                    return ModelCallResult(
+                        expected_model=model,
+                        actual_model=None,
+                        response="",
+                        status="failed",
+                        session_id="s",
+                        command=["traecli"],
+                        exit_code=1,
+                        stdout_path="out.jsonl",
+                        stderr_path="err.log",
+                        error="timeout",
+                    )
+
+            with patch.object(council_mod, "runtime_doctor") as mock_doctor:
+                mock_doctor.return_value = type("Health", (), {
+                    "ok": True,
+                    "command": "fake",
+                    "version": "1.0",
+                    "doctor_exit_code": 0,
+                    "doctor": {},
+                    "errors": [],
+                    "warnings": [],
+                    "ignored_errors": [],
+                    "models": [{"name": "M1"}, {"name": "M2"}, {"name": "Chair"}],
+                })()
+                with patch.object(council_mod, "require_models_available"):
+                    with patch.object(council_mod, "TraeCliProvider", MockProvider):
+                        manifest = await run_full_council("question", config, store)
+
+            self.assertEqual(manifest["status"], "degraded_ok")
+            self.assertEqual(manifest["stages"]["stage3"]["status"], "degraded_ok")
+            self.assertEqual(manifest["stages"]["stage3"]["response"], "answer M2")
+            self.assertTrue(any(f.get("stage_record") == "Chair" for f in manifest["failures"]))
+            self.assertTrue(any("stage3 degraded" in warning for warning in manifest["warnings"]))
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_terminate_process_tree_prefers_process_group(self):
+        async def _run():
+            import signal
+            from llm_council_for_trae.provider import terminate_process_tree
+
+            class FakeProc:
+                pid = 123
+                returncode = None
+                killed = False
+
+                async def wait(self):
+                    self.returncode = 0
+
+                def kill(self):
+                    self.killed = True
+
+            proc = FakeProc()
+            with patch("llm_council_for_trae.provider.os.name", "posix"):
+                with patch("llm_council_for_trae.provider.os.getpgid", return_value=456):
+                    with patch("llm_council_for_trae.provider.os.killpg") as killpg:
+                        await terminate_process_tree(proc)
+
+            killpg.assert_called_once_with(456, signal.SIGTERM)
+            self.assertFalse(proc.killed)
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_build_config_accepts_stage2_and_chairman_timeouts(self):
+        from llm_council_for_trae.cli import build_config, build_parser, resolve_run_model_choice
+
+        parser = build_parser()
+        args = parser.parse_args([
+            "run",
+            "--input",
+            "question.md",
+            "--default-models",
+            "--stage2-timeout",
+            "90",
+            "--chairman-timeout",
+            "777",
+        ])
+        args.selected_model_choice = resolve_run_model_choice(args)
+        config = build_config(args)
+        self.assertEqual(config.stage2_timeout, 90)
+        self.assertEqual(config.chairman_timeout, 777)
+
+    def test_validate_accepts_recorded_failed_stage2_in_degraded_run(self):
+        import json
+        from llm_council_for_trae.store import ArtifactStore
+        from llm_council_for_trae.validation import validate_run
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-degraded-stage2")
+            manifest = {
+                "schema_version": 1,
+                "run_id": "run-degraded-stage2",
+                "created_at": "2026-06-01T00:00:00Z",
+                "updated_at": "2026-06-01T00:00:00Z",
+                "status": "degraded_ok",
+                "input_chars": 8,
+                "config": {
+                    "members": ["M1", "M2"],
+                    "chairman": "Chair",
+                    "provider_mode": "direct",
+                    "runtime_command": "fake",
+                    "query_timeout": 180,
+                    "export_html": True,
+                },
+                "artifacts": {"html": "html/index.html"},
+                "metadata": {"label_to_model": {"Response A": "M1"}, "aggregate_rankings": [{"model": "M1", "average_rank": 1.0, "rankings_count": 1, "positions": [1]}]},
+                "stages": {
+                    "stage1": [{"label": "Response A", "file_label": "A", "model": "M1", "expected_model": "M1", "actual_model": "M1", "response": "A", "status": "ok"}],
+                    "stage2": [
+                        {
+                            "reviewer_label": "A", "model": "M1", "expected_model": "M1", "actual_model": "M1",
+                            "ranking": "FINAL RANKING:\n1. Response A", "parsed_ranking": ["Response A"],
+                            "parse_status": "ok", "status": "ok", "error": None,
+                            "review_path": "stage2/A.review.md", "json_path": "stage2/A.review.json",
+                        },
+                        {
+                            "reviewer_label": "B", "model": "M2", "expected_model": "M2", "actual_model": None,
+                            "ranking": "", "parsed_ranking": [],
+                            "parse_status": "incomplete", "status": "failed", "error": "cancelled_by_stage_timeout",
+                            "review_path": "stage2/B.review.md", "json_path": "stage2/B.review.json",
+                        },
+                    ],
+                    "stage3": {
+                        "model": "Chair", "expected_model": "Chair", "actual_model": "Chair",
+                        "response": "Final", "status": "ok", "error": None,
+                        "prompt_path": "stage3/chairman.prompt.md", "response_path": "stage3/final.md", "json_path": "stage3/final.json",
+                    },
+                },
+                "warnings": ["stage2 reviewer timed out"],
+                "failures": [{"stage_record": "B", "status": "failed", "error": "cancelled_by_stage_timeout", "expected_model": "M2", "actual_model": None}],
+            }
+            store.write_manifest(manifest)
+            for relative in [
+                "input.md", "config.json", "runtime/doctor.json", "runtime/traecli.models.json",
+                "stage1/member.prompt.md", "stage1/A.response.md", "stage1/A.traecli.stream.jsonl",
+                "stage2/review.prompt.md", "stage2/label_to_model.json", "stage2/aggregate.json",
+                "stage2/A.review.md", "stage2/A.traecli.stream.jsonl",
+                "stage2/B.review.md", "stage2/B.traecli.stream.jsonl",
+                "stage3/chairman.prompt.md", "stage3/final.md", "stage3/final.traecli.stream.jsonl",
+                "html/index.html",
+            ]:
+                store.write_text(relative, "{}\n")
+
+            def write_json(relative, data):
+                store.write_text(relative, json.dumps(data) + "\n")
+
+            base_meta = {
+                "response_chars": 1, "session_id": "s", "command": ["traecli"], "exit_code": 0,
+                "stdout_path": "out.jsonl", "stderr_path": "err.log", "copied_session_files": {},
+                "raw_model_markers": [], "error": None, "captured_at": "2026-06-01T00:00:00Z",
+            }
+            write_json("stage1/A.meta.json", base_meta | {"expected_model": "M1", "actual_model": "M1", "status": "ok"})
+            write_json("stage2/A.meta.json", base_meta | {"expected_model": "M1", "actual_model": "M1", "status": "ok"})
+            write_json("stage2/B.meta.json", base_meta | {"expected_model": "M2", "actual_model": None, "status": "failed", "error": "cancelled_by_stage_timeout"})
+            write_json("stage2/A.review.json", manifest["stages"]["stage2"][0])
+            write_json("stage2/B.review.json", manifest["stages"]["stage2"][1])
+            write_json("stage3/final.meta.json", base_meta | {"expected_model": "Chair", "actual_model": "Chair", "status": "ok"})
+            write_json("stage3/final.json", manifest["stages"]["stage3"])
+            write_json("html/export.json", {"run_id": "run-degraded-stage2", "generated_at": "2026-06-01T00:00:00Z", "format": "html", "path": "html/index.html", "source_manifest": "manifest.json"})
+
+            validation = validate_run(store)
+            self.assertEqual(validation["status"], "degraded_ok", validation["failures"])
+
+    def test_cli_validate_exits_zero_for_degraded_ok(self):
+        from argparse import Namespace
+        from llm_council_for_trae.cli import cmd_validate
+
+        args = Namespace(store=None, run_id="run-degraded", json_output=False)
+        with patch("llm_council_for_trae.cli.ArtifactStore.open", return_value=object()):
+            with patch("llm_council_for_trae.cli.resolve_store_base", return_value=Path("/tmp/runs")):
+                with patch("llm_council_for_trae.cli.validate_run", return_value={"status": "degraded_ok", "failures": []}):
+                    with patch("sys.stdout", new=StringIO()):
+                        rc = cmd_validate(args)
+
+        self.assertEqual(rc, 0)
+
+    def test_run_full_council_marks_partial_stage2_failure_as_degraded(self):
+        async def _run():
+            import asyncio
+            from llm_council_for_trae.council import CouncilConfig, run_full_council
+            from llm_council_for_trae.provider import ModelCallResult
+            from llm_council_for_trae.store import ArtifactStore
+            import llm_council_for_trae.council as council_mod
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-partial-s2-degraded")
+            config = CouncilConfig(
+                members=["M1", "M2"],
+                chairman="Chair",
+                min_valid_members=2,
+                stage1_max_retries=0,
+                stage2_timeout=0.05,
+            )
+
+            class MockProvider:
+                def __init__(self, *args, **kwargs):
+                    pass
+
+                async def query_model(self, **kwargs):
+                    stage = kwargs["stage"]
+                    model = kwargs["model"]
+                    if stage == "stage2":
+                        if model == "M2":
+                            return ModelCallResult(
+                                expected_model=model,
+                                actual_model=None,
+                                response="FINAL RANKING:\n1. Response B\n2. Response A",
+                                status="failed",
+                                session_id="s",
+                                command=["traecli"],
+                                exit_code=1,
+                                stdout_path="out.jsonl",
+                                stderr_path="err.log",
+                                error="cancelled_by_stage_timeout",
+                            )
+                        response = "FINAL RANKING:\n1. Response A\n2. Response B"
+                    elif stage == "stage3":
+                        response = "Final"
+                    else:
+                        response = f"answer {model}"
+                    return ModelCallResult(
+                        expected_model=model,
+                        actual_model=model,
+                        response=response,
+                        status="ok",
+                        session_id="s",
+                        command=["traecli"],
+                        exit_code=0,
+                        stdout_path="out.jsonl",
+                        stderr_path="err.log",
+                    )
+
+            with patch.object(council_mod, "runtime_doctor") as mock_doctor:
+                mock_doctor.return_value = type("Health", (), {
+                    "ok": True, "command": "fake", "version": "1.0",
+                    "doctor_exit_code": 0, "doctor": {}, "errors": [],
+                    "warnings": [], "ignored_errors": [],
+                    "models": [{"name": "M1"}, {"name": "M2"}, {"name": "Chair"}],
+                })()
+                with patch.object(council_mod, "require_models_available"):
+                    with patch.object(council_mod, "TraeCliProvider", MockProvider):
+                        manifest = await run_full_council("question", config, store)
+
+            self.assertEqual(manifest["status"], "degraded_ok")
+            self.assertTrue(any(f.get("stage_record") == "B" for f in manifest["failures"]))
+            self.assertEqual(manifest["metadata"]["aggregate_rankings"][0]["model"], "M1")
+            self.assertEqual(manifest["metadata"]["aggregate_rankings"][0]["positions"], [1])
+
+        import asyncio
+        asyncio.run(_run())
+
+
+if __name__ == "__main__":
+    unittest.main()

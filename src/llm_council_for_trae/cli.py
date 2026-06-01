@@ -14,6 +14,7 @@ from .html_export import export_html
 from .model_selection import ModelChoice, recommend_model_choice, select_model_choice_interactively
 from .models import doctor as runtime_doctor
 from .models import get_models
+from .runtime import RunLease
 from .store import ArtifactStore, resolve_store_base
 from .subagents import inspect_subagents
 from .utils import DEFAULT_TRAECLI, PROJECT_ROOT, read_text, run_command, utc_now
@@ -53,6 +54,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--default-models", action="store_true", help="Skip model selection and use LCT's default model suite.")
     run_p.add_argument("--run-id", help="Explicit run id. Default generated from UTC timestamp.")
     run_p.add_argument("--timeout", type=int, default=180, help="Per-model query timeout seconds.")
+    run_p.add_argument("--stage2-timeout", type=float, help="Stage 2 total timeout seconds. Default: max(timeout+30, 240).")
+    run_p.add_argument("--chairman-timeout", type=int, default=720, help="Per-chairman Stage 3 timeout seconds, including fallback attempts.")
     run_p.add_argument("--no-yolo", action="store_true", help="Do not pass --yolo to traecli.")
     run_p.add_argument("--min-valid-members", type=int, default=3, help="Minimum valid members for quorum.")
     run_p.add_argument("--target-valid-members", type=int, default=8, help="Target valid members for quorum.")
@@ -142,10 +145,14 @@ def cmd_run(args: argparse.Namespace) -> int:
     user_query = read_text(input_path)
     store_base = resolve_store_base(args.store)
     run_id = args.run_id or f"run-{utc_now().replace(':', '').replace('-', '').replace('Z', '')}"
-    args.selected_model_choice = resolve_run_model_choice(args)
-    config = build_config(args)
-    store = ArtifactStore.create(store_base, run_id)
-    manifest = asyncio.run(run_full_council(user_query, config, store))
+    with RunLease.acquire(store_base, run_id) as lease:
+        args.selected_model_choice = resolve_run_model_choice(args)
+        config = build_config(args)
+        store = ArtifactStore.create(store_base, run_id)
+        manifest = asyncio.run(run_full_council(user_query, config, store))
+        if lease.stale_replaced:
+            manifest["warnings"].append("stale runtime run lease was replaced")
+            store.write_manifest(manifest)
     export_record = None
     if manifest.get("status") in ("ok", "degraded_ok") and config.export_html:
         export_record = export_html(store)
@@ -173,7 +180,7 @@ def cmd_show(args: argparse.Namespace) -> int:
 def cmd_validate(args: argparse.Namespace) -> int:
     store = ArtifactStore.open(resolve_store_base(args.store), args.run_id)
     result = validate_run(store)
-    return emit(result, args.json_output, ok=result["status"] == "ok", text=json.dumps(result, ensure_ascii=False, indent=2))
+    return emit(result, args.json_output, ok=result["status"] in ("ok", "degraded_ok"), text=json.dumps(result, ensure_ascii=False, indent=2))
 
 
 def cmd_export(args: argparse.Namespace) -> int:
@@ -254,6 +261,8 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
         min_valid_members=getattr(args, "min_valid_members", 3),
         target_valid_members=getattr(args, "target_valid_members", 8),
         chairman_fallback=chairman_fallback,
+        stage2_timeout=getattr(args, "stage2_timeout", None),
+        chairman_timeout=getattr(args, "chairman_timeout", 720),
         member_mode=getattr(args, "member_mode", "normal"),
     )
 

@@ -1,0 +1,110 @@
+<style>
+  :root {
+    --bg: #f7f2e8;
+    --paper: #fffaf0;
+    --ink: #1f1a17;
+    --muted: #6e6258;
+    --accent: #27496d;
+    --line: #dccfbe;
+  }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.65 Charter, "Times New Roman", serif;
+  }
+  main {
+    max-width: 920px;
+    margin: 40px auto;
+    padding: 40px 48px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    box-shadow: 0 10px 30px rgba(40, 30, 20, 0.08);
+  }
+  h1, h2 {
+    color: var(--accent);
+    line-height: 1.2;
+  }
+  h1 {
+    margin: 0 0 12px;
+    font-size: 34px;
+  }
+  h2 {
+    margin-top: 30px;
+    font-size: 22px;
+  }
+  p, li {
+    max-width: 72ch;
+  }
+  .lede {
+    font-size: 18px;
+    color: var(--muted);
+  }
+  .callout {
+    margin: 18px 0;
+    padding: 14px 18px;
+    border-left: 4px solid var(--accent);
+    background: #f0e7d8;
+  }
+  code {
+    padding: 1px 5px;
+    background: #efe6d5;
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.92em;
+  }
+  ul {
+    padding-left: 20px;
+  }
+  .meta {
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+</style>
+
+<main>
+  <h1>Runtime Hardening Director Brief</h1>
+  <p class="lede">LCT 已经从“做出一个可运行的本地 council CLI”进入“把 runtime 打磨到可靠可用”的阶段。现在最值得投入的，不是继续堆新能力，而是把运行期的并发、超时、退出、降级和状态语义治理清楚。</p>
+  <p class="meta">日期：2026-06-01</p>
+
+  <h2>为什么现在做</h2>
+  <p>入口问题已经基本解决。另一个 workspace 的效果测试说明，用户能够从根目录能力直接触发 LCT；真正暴露出来的短板，已经不是“不会用”，而是“运行时在复杂场景下不够稳”。</p>
+  <div class="callout">
+    这轮迭代的触发证据不在当前 repo，而在测试 workspace：
+    <br>
+    <code>/Users/bytedance/Documents/AI Coder/test/LLM-Council-for-Trae/.trae/postmortem/2026-06-01-lct-run-failure.md</code>
+  </div>
+  <p>那份复盘的价值不在某次 run 失败本身，而在于它明确指出了运行期的系统性问题：多个 run 并发争抢同一批模型资源、Stage 2 缺少超时闭环、<code>chairman_timeout</code> 暴露给用户却未真实生效、中断退出后的清理不够稳，以及 Stage 3 失败后缺少足够体面的降级收场。</p>
+
+  <h2>阶段判断</h2>
+  <p>这条线现在最合理的节奏不是补丁式修 bug，而是分层治理 runtime。顺序应该保持简单而稳定：</p>
+  <ul>
+    <li><strong>P0 防自爆</strong>：并发互斥、Stage 2 超时、进程清理。</li>
+    <li><strong>P1 说真话</strong>：timeout 真值源、错误分类、状态机一致性。</li>
+    <li><strong>P2 可收场</strong>：Stage 3 降级输出、更可信的恢复与收尾。</li>
+    <li><strong>P3 数据化优化</strong>：重试退避、回归套件、运行画像与后续调参。</li>
+  </ul>
+
+  <h2>策略主线</h2>
+  <p>并发控制不建议用一个粗暴的大锁一把梭。更合适的方向是三层控制：<code>run lease</code> 负责标识某个 run 的生命周期，<code>global slot lease</code> 限制同时活跃的 live 模型查询数，<code>model lease</code> 则限制同一模型在同一时刻只被一个 live query 占用。</p>
+  <p>这样一来，LCT 不是简单地“禁止并发”，而是在保留合理并行度的同时，把真正稀缺的资源约束起来，避免多个 run 同时争抢同一个模型，把成功率打穿。</p>
+
+  <h2>推进方式</h2>
+  <p>这条线适合用长线程推进，而不是短平快地修一两个点。推荐和 <code>subagent-lead</code> 一起工作，以 <code>tdd</code> 为主线；先把设计方案和测试方案沉淀清楚，再开始实现。实现责任以“测试最终都通过”为准，而不是以“功能先写出来”为准。</p>
+  <p>实现过程中持续维护 <code>notes.md</code>，记录那些规范里没写、但实现时不得不做出的判断、改动和权衡。这样下一会话接手时，看到的不只是 diff，还能理解背后的取舍。</p>
+
+  <h2>索引文档</h2>
+  <ul>
+    <li><code>README.md</code></li>
+    <li><code>docs/runtime-hardening-handoff-20260601.md</code></li>
+    <li><code>docs/runtime-hardening-director-brief-20260601.md</code></li>
+    <li><code>docs/design.md</code></li>
+    <li><code>docs/traecli-installation-and-paths.md</code></li>
+    <li><code>docs/traecli-subagents.md</code></li>
+    <li><code>docs/llm-council-parity.md</code></li>
+  </ul>
+
+  <h2>交付预期</h2>
+  <p>这轮完成之后，除了代码和测试，还应保留一份面向 PM director 的 md/html 简报。它应让一个很聪明、但已经忘了前因后果的人，在几分钟内重新理解当前状况、这轮为什么值得做、已经解决了什么，以及下一轮应继续看哪里。</p>
+</main>
