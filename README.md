@@ -23,15 +23,21 @@
 
 日常使用不要把 LCT 仓库 clone 到问题 workspace。默认路径是：从 GitHub `main` 安装到 `~/.LCT`，用 `~/.local/bin/llm-council-for-trae` wrapper 调用 `~/.LCT/src`，把 LCT Skill 安装到 `/Users/bytedance/.agents/skills/llm-council-for-trae`，然后在干净问题 workspace 中提问。
 
-安装或更新 LCT：
+首次安装：
 
 ```bash
 git clone https://github.com/JasonYang0104/LLM-Council-for-Trae.git ~/.LCT
+```
+
+已有 `~/.LCT` 时更新：
+
+```bash
+git -C ~/.LCT fetch origin --prune
 git -C ~/.LCT checkout main
 git -C ~/.LCT pull --ff-only origin main
 ```
 
-安装 CLI wrapper：
+安装 CLI wrapper 和用户级 Skill：
 
 ```bash
 make -C ~/.LCT install-global
@@ -48,7 +54,7 @@ make -C ~/.LCT install-global
 使用 LCT，回答："""<你的问题>"""
 ```
 
-Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo → 确认 `traecli` 和 `llm-council-for-trae` 可用 → 把问题写入临时 `.md` 文件 → 使用 `--default-models` 和 `--json` 非交互运行 → `validate` 校验 → 读取 `stage3/final.md` → 返回 run status、validate status、最终答案路径和 HTML 报告路径。
+Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo（出现 `src/llm_council_for_trae/`、`.trae/agents/` 或 `profiles/subagents.json` 时停止）→ 确认 `traecli` 和 `llm-council-for-trae` 可用 → 把问题写入 `_lct_question.md` → 使用 `--default-models` 和 `--json` 非交互运行 → `validate` 校验 → 读取 `stage3/final.md` → 在问题 workspace 根目录写出 `<run_id>-final.md` 和 `<run_id>-index.md` → 返回 run status、validate status、最终答案路径和 HTML 报告路径。
 
 ### 1. 确认 traecli 可用
 
@@ -115,9 +121,9 @@ llm-council-for-trae run \
 可选工具模式：
 
 ```bash
-llm-council-for-trae run --input examples/question.md --default-models --member-tool-mode answer_only
-llm-council-for-trae run --input examples/question.md --default-models --member-tool-mode search_enabled
-llm-council-for-trae run --input examples/question.md --default-models --member-tool-mode workspace_enabled
+llm-council-for-trae run --input _lct_question.md --default-models --member-tool-mode answer_only
+llm-council-for-trae run --input _lct_question.md --default-models --member-tool-mode search_enabled
+llm-council-for-trae run --input _lct_question.md --default-models --member-tool-mode workspace_enabled
 ```
 
 如果没有传 `--members`、`--chairman`、`--profile` 或 `--default-models`，LCT 会先列出当前 traecli 可用模型，并给出推荐套装（仅限交互终端）。在 Agent 或脚本等非交互场景，必须显式指定 `--default-models`、`--members/--chairman` 或 `--profile`：
@@ -138,7 +144,7 @@ LCT 检测到当前 traecli 可用模型：
 
 ```bash
 llm-council-for-trae run \
-  --input examples/question.md \
+  --input _lct_question.md \
   --default-models \
   --run-id demo-default \
   --json
@@ -157,6 +163,8 @@ LCT 的模型询问是 CLI 自己的终端输入，不依赖 Agent 的 AskUserQu
 
 ```text
 .llm-council-for-trae/runs/demo-direct/
+demo-direct-final.md
+demo-direct-index.md
 ```
 
 打开 HTML 报告：
@@ -345,6 +353,9 @@ PYTHONPATH=src python3 -m llm_council_for_trae.cli run --input examples/question
 
 | 文档 | 读者 | 内容 |
 |---|---|---|
+| `docs/lct-deployment-guide-20260601.md` | Agent / 用户安装者 | `~/.LCT` 全局安装、用户级 Skill、干净问题 workspace 和 live smoke 边界 |
+| `docs/lct-global-install-skill-design-20260601.md` | 接手开发者 / reviewer | 全局安装、Skill 模板、安装器和验证边界设计 |
+| `docs/lct-global-install-skill-test-plan-20260601.md` | 接手开发者 / reviewer | 全局安装与 Skill 的 TDD 切片和验收计划 |
 | `docs/runtime-hardening-handoff-20260601.md` | 新会话 Agent / 接手开发者 | 这轮 runtime hardening 的背景、问题归因、索引文档、推进方式和交接口径 |
 | `docs/runtime-hardening-director-brief-20260601.md` | PM / director | 为什么要做 runtime hardening、优先级、策略和阶段目标的简报版 |
 | `docs/design.md` | 接手开发者 / Agent | 初始设计、协议边界、provider 设计、artifact store 设计 |

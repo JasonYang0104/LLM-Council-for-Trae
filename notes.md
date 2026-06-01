@@ -17,3 +17,4 @@
 - TDD slice 4 GREEN adds `install-global` and `install-skill`. `install-global` writes a wrapper pointing at `LCT_DIR/src` and links the user Skill; `install-local` remains a development checkout wrapper.
 - Subagent review found one P1 repeated by two reviewers: clean workspace / live smoke examples still referenced `examples/question.md`. Review also found Makefile half-install risk when Skill source is missing, and README guard markers were not explicit enough.
 - Review-fix RED adds tests for clean workspace examples, README guard markers, root-level final/index outputs, and `install-global` failing without leaving a wrapper when the Skill source is missing.
+- Review-fix GREEN changes clean workspace examples to `_lct_question.md`, splits README fresh install vs update commands, adds Project Docs links for the new install docs, strengthens install verification, and makes `install-global` validate Skill inputs before writing the wrapper.

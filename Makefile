@@ -16,6 +16,11 @@ install-local:
 	@echo "installed $(BIN)"
 
 install-global:
+	@test -f "$(LCT_SKILL_SRC)/SKILL.md" || (echo "missing $(LCT_SKILL_SRC)/SKILL.md" >&2; exit 1)
+	@if [ -e "$(LCT_SKILL_DEST)" ] && [ ! -L "$(LCT_SKILL_DEST)" ]; then \
+		echo "refusing to overwrite non-symlink $(LCT_SKILL_DEST)" >&2; \
+		exit 1; \
+	fi
 	@mkdir -p "$(BIN_DIR)"
 	@printf '%s\n' '#!/bin/sh' 'PYTHONPATH="$(LCT_DIR)/src$${PYTHONPATH:+:$$PYTHONPATH}" exec $(PYTHON) -m llm_council_for_trae.cli "$$@"' > "$(BIN)"
 	@chmod +x "$(BIN)"

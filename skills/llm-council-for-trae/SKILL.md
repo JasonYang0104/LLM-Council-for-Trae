@@ -18,7 +18,8 @@ description: 当用户要求使用 LCT、跑 LCT、council run、用委员会回
 2. 确认 `traecli --version` 可用。
 3. 确认 `traecli models --json` 返回非空模型列表。
 4. 确认 `command -v llm-council-for-trae` 可找到全局 CLI。
-5. 如果 CLI 不可用，提示用户先完成 `~/.LCT` 全局安装，并把本 Skill 安装到 `/Users/bytedance/.agents/skills/llm-council-for-trae`。
+5. 尽量确认 wrapper 内容指向 `~/.LCT/src`，而不是旧开发 checkout。
+6. 如果 CLI 不可用，提示用户先完成 `~/.LCT` 全局安装，并把本 Skill 安装到 `/Users/bytedance/.agents/skills/llm-council-for-trae`。
 
 ## Run
 

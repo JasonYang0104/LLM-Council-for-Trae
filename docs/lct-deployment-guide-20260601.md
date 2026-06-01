@@ -116,6 +116,7 @@ Verification:
 
 ```bash
 command -v llm-council-for-trae
+grep -F 'PYTHONPATH="$HOME/.LCT/src' ~/.local/bin/llm-council-for-trae
 llm-council-for-trae --help
 ```
 
@@ -140,6 +141,7 @@ Verification:
 
 ```bash
 test -f /Users/bytedance/.agents/skills/llm-council-for-trae/SKILL.md
+test "$(readlink /Users/bytedance/.agents/skills/llm-council-for-trae)" = "$HOME/.LCT/skills/llm-council-for-trae"
 ```
 
 The Skill tells the outer Agent to reject LCT source repositories as problem workspaces, require `--default-models`, require `--json`, run `validate`, and report live `traecli` status separately from fake or non-live checks.
@@ -199,9 +201,13 @@ git diff --check
 If live `traecli` is available, run:
 
 ```bash
+rm -rf /tmp/lct-live-smoke
+mkdir -p /tmp/lct-live-smoke
+cd /tmp/lct-live-smoke
+cp ~/.LCT/examples/question.md _lct_question.md
 llm-council-for-trae doctor --json
 llm-council-for-trae models --recommend --json
-llm-council-for-trae run --input examples/question.md --default-models --json
+llm-council-for-trae run --input _lct_question.md --default-models --json
 llm-council-for-trae validate <run_id> --json
 ```
 
