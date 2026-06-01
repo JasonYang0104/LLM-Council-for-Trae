@@ -19,15 +19,43 @@
 
 ## Quickstart
 
-### Agent 一句话用法
+### 日常使用：全局安装后在干净问题 workspace 提问
 
-在另一个 workspace clone 本仓库后，可以直接对 Agent 说：
+日常使用不要把 LCT 仓库 clone 到问题 workspace。默认路径是：从 GitHub `main` 安装到 `~/.LCT`，用 `~/.local/bin/llm-council-for-trae` wrapper 调用 `~/.LCT/src`，把 LCT Skill 安装到 `/Users/bytedance/.agents/skills/llm-council-for-trae`，然后在干净问题 workspace 中提问。
 
-```text
-用根目录中的能力，给我跑 LCT，输入的问题是："""<你的问题>"""
+安装或更新 LCT：
+
+```bash
+git clone https://github.com/JasonYang0104/LLM-Council-for-Trae.git ~/.LCT
+git -C ~/.LCT checkout main
+git -C ~/.LCT pull --ff-only origin main
 ```
 
-Agent 应按这条路径执行：确认 `traecli` 可用 → 安装或定位本地 CLI → 把问题写入临时 `.md` 文件 → 使用 `--default-models` 非交互运行 → `validate` 校验 → 返回 `stage3/final.md` 摘要和 HTML 报告路径。
+安装 CLI wrapper：
+
+```bash
+mkdir -p ~/.local/bin
+cat > ~/.local/bin/llm-council-for-trae << 'EOF'
+#!/bin/sh
+PYTHONPATH="$HOME/.LCT/src${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m llm_council_for_trae.cli "$@"
+EOF
+chmod +x ~/.local/bin/llm-council-for-trae
+```
+
+安装用户级 Skill：
+
+```bash
+mkdir -p /Users/bytedance/.agents/skills
+ln -sfn ~/.LCT/skills/llm-council-for-trae /Users/bytedance/.agents/skills/llm-council-for-trae
+```
+
+在干净问题 workspace 里对 Agent 说：
+
+```text
+使用 LCT，回答："""<你的问题>"""
+```
+
+Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo → 确认 `traecli` 和 `llm-council-for-trae` 可用 → 把问题写入临时 `.md` 文件 → 使用 `--default-models` 和 `--json` 非交互运行 → `validate` 校验 → 读取 `stage3/final.md` → 返回 run status、validate status、最终答案路径和 HTML 报告路径。
 
 ### 1. 确认 traecli 可用
 
@@ -47,14 +75,14 @@ traecli models --json
 docs/traecli-installation-and-paths.md
 ```
 
-### 2. 安装本地 CLI
+### 2. 开发者路径：本地 checkout 验证
 
 ```bash
 make install-local
 command -v llm-council-for-trae
 ```
 
-安装后会在 `~/.local/bin/llm-council-for-trae` 创建一个轻量 wrapper。它直接指向当前 workspace 的 `src/`，适合本地开发和验证。
+`make install-local` 是开发者路径。安装后会在 `~/.local/bin/llm-council-for-trae` 创建一个轻量 wrapper，直接指向当前 checkout 的 `src/`，适合本地开发和验证；它不是日常用户全局安装路径。
 
 如果不想安装 wrapper，也可以在仓库根目录用零安装方式运行：
 
@@ -78,11 +106,11 @@ llm-council-for-trae models --recommend --json
 
 LCT 的 direct council run 不依赖外部 MCP server。如果 `traecli doctor --json` 只报告 MCP 初始化失败，但 `traecli --version` 和 `traecli models --json` 正常，LCT 会把这类 MCP-only error 记录到 `runtime/doctor.json` 的 `ignored_errors` 和 `manifest.warnings`，但不会阻断 run。非 MCP 的 doctor error、模型列表为空或模型缺失仍会失败。
 
-### 4. 运行一次 direct council
+### 4. 在干净问题 workspace 运行 direct council
 
 ```bash
 llm-council-for-trae run \
-  --input examples/question.md \
+  --input _lct_question.md \
   --default-models \
   --run-id demo-direct \
   --timeout 180 \
@@ -132,7 +160,7 @@ chairman: Kimi-K2.6
 
 LCT 的模型询问是 CLI 自己的终端输入，不依赖 Agent 的 AskUserQuestion **（注释：Agent 用来向用户发起澄清问题的工具能力）**。如果外层 Agent 不能交互式输入，使用 `--default-models`、`--members/--chairman` 或 `--profile`。
 
-成功后会生成：
+成功后会在当前问题 workspace 生成：
 
 ```text
 .llm-council-for-trae/runs/demo-direct/

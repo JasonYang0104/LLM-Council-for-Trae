@@ -8,3 +8,4 @@
 - The Skill path is `/Users/bytedance/.agents/skills`; old `~/.trae/skills` wording is forbidden in this iteration's user-facing install docs.
 - Test plan uses repository contract tests because this iteration changes installation/documentation behavior more than runtime code. The tests will still run through `make test` so the contract stays in the normal verification path.
 - TDD slice 1 starts with a README contract test. The expected RED state is the old quickstart phrase that tells users to clone the repository into another workspace.
+- TDD slice 1 GREEN changed only the README quickstart: default use is now `~/.LCT` + global wrapper + `/Users/bytedance/.agents/skills` + clean problem workspace. `make install-local` is now explicitly documented as development-only.
