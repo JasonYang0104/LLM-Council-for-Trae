@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import signal
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -125,7 +126,9 @@ class TraeCliProvider:
         stage: str,
         label: str,
         session_id: str,
+        query_timeout: int | float | None = None,
     ) -> list[str]:
+        timeout_seconds = query_timeout if query_timeout is not None else self.query_timeout
         cmd = [
             self.runtime_command,
             "-p",
@@ -135,7 +138,7 @@ class TraeCliProvider:
             "--output-format",
             "stream-json",
             "--query-timeout",
-            f"{self.query_timeout}s",
+            f"{timeout_seconds}s",
             "--session-id",
             session_id,
         ]
@@ -153,10 +156,12 @@ class TraeCliProvider:
         label: str,
         output_dir: Path,
         agent: str | None = None,
+        query_timeout: int | float | None = None,
     ) -> ModelCallResult:
         result = await self._query_model_once(
             model=model, prompt=prompt, run_id=run_id,
             stage=stage, label=label, output_dir=output_dir, agent=agent,
+            query_timeout=query_timeout,
         )
         is_runtime_error = (
             result.status == "failed"
@@ -171,6 +176,7 @@ class TraeCliProvider:
             result = await self._query_model_once(
                 model=model, prompt=prompt, run_id=run_id,
                 stage=stage, label=label, output_dir=output_dir, agent=agent,
+                query_timeout=query_timeout,
             )
             result.retried = True
             result.retry_error = first_error
@@ -187,13 +193,15 @@ class TraeCliProvider:
         label: str,
         output_dir: Path,
         agent: str | None = None,
+        query_timeout: int | float | None = None,
     ) -> ModelCallResult:
         output_dir.mkdir(parents=True, exist_ok=True)
         session_id = slugify(f"{run_id}-{stage}-{label}")
         stream_path = output_dir / f"{label}.traecli.stream.jsonl"
         stderr_path = output_dir / f"{label}.traecli.stderr.log"
         runtime_prompt = f"@{agent} {prompt}" if agent else prompt
-        cmd = self._build_command(model, runtime_prompt, run_id, stage, label, session_id)
+        effective_timeout = query_timeout if query_timeout is not None else self.query_timeout
+        cmd = self._build_command(model, runtime_prompt, run_id, stage, label, session_id, query_timeout=effective_timeout)
         permission_mode = "bypass_permissions" if self.use_yolo else "default"
 
         proc = await asyncio.create_subprocess_exec(
@@ -202,19 +210,17 @@ class TraeCliProvider:
             stderr=asyncio.subprocess.PIPE,
             cwd=str(self.runtime_cwd) if self.runtime_cwd else None,
             limit=10 * 1024 * 1024,
+            start_new_session=os.name != "nt",
         )
         budget_killed = False
         try:
             collected, _stream_tool_calls, budget_exceeded = await asyncio.wait_for(
                 monitor_stream_for_budget(proc.stdout, self.deliver_tool_limit),
-                timeout=self.query_timeout + 30,
+                timeout=effective_timeout + 30,
             )
             if budget_exceeded:
                 budget_killed = True
-                try:
-                    proc.kill()
-                except ProcessLookupError:
-                    pass
+                await terminate_process_tree(proc)
             try:
                 await proc.wait()
             except ProcessLookupError:
@@ -222,11 +228,7 @@ class TraeCliProvider:
             stdout_b = b"".join(collected)
             stderr_b = await proc.stderr.read()
         except asyncio.TimeoutError:
-            proc.kill()
-            try:
-                await proc.wait()
-            except ProcessLookupError:
-                pass
+            await terminate_process_tree(proc)
             stdout_b = b""
             stderr_b = b""
             stdout = stdout_b.decode("utf-8", errors="replace")
@@ -250,10 +252,7 @@ class TraeCliProvider:
                 permission_mode=permission_mode,
             )
         except asyncio.CancelledError:
-            try:
-                proc.kill()
-            except ProcessLookupError:
-                pass
+            await terminate_process_tree(proc)
             raise
 
         stdout = stdout_b.decode("utf-8", errors="replace")
@@ -325,6 +324,39 @@ def safe_command(cmd: list[str]) -> list[str]:
     if len(safe) > 2:
         safe[2] = f"<prompt {len(cmd[2])} chars>"
     return safe
+
+
+async def terminate_process_tree(proc: Any, grace_seconds: float = 2.0) -> None:
+    if getattr(proc, "returncode", None) is not None:
+        return
+    if os.name != "nt" and getattr(proc, "pid", None):
+        try:
+            pgid = os.getpgid(proc.pid)
+            os.killpg(pgid, signal.SIGTERM)
+            await asyncio.wait_for(proc.wait(), timeout=grace_seconds)
+            return
+        except ProcessLookupError:
+            return
+        except asyncio.TimeoutError:
+            try:
+                os.killpg(pgid, signal.SIGKILL)
+            except ProcessLookupError:
+                return
+            try:
+                await proc.wait()
+            except ProcessLookupError:
+                pass
+            return
+        except Exception:
+            pass
+    try:
+        proc.kill()
+    except ProcessLookupError:
+        return
+    try:
+        await proc.wait()
+    except ProcessLookupError:
+        pass
 
 
 def parse_stream_json(stdout: str, expected_agent: str | None = None) -> dict[str, Any]:

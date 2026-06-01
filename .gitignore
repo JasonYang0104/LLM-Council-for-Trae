@@ -10,8 +10,10 @@ venv/
 build/
 dist/
 .llm-council-for-trae/
+.coco-llm-council/
 references/llm-council/
 .trae/rules/
+.trae/.ignore
 *.png
 findings.md
 progress.md
@@ -20,12 +22,12 @@ notes.md
 question.md
 .gitmodules
 AGENTS.md
-docs/execution-plan-*/
+docs/execution-plan-*
 docs/goal-prompt.md
 docs/html-export-archival-brief-*.md
 docs/roster-runtime-followups.md
-docs/retrospective-*/
-docs/session-brief-*/
+docs/retrospective-*
+docs/session-brief-*
 docs/model-benchmark-*/
 docs/notes-*.md
 docs/director-brief-*.md

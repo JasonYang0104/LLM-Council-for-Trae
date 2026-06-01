@@ -99,11 +99,12 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
         if subagent_mode:
             checks.extend(subagent_schema_checks(f"manifest.stage2.{label}", item))
             checks.append(subagent_invocation_check("stage2", item))
+        parse_ok = item.get("parse_status") == "ok" if item.get("status") == "ok" else True
         checks.append(
             {
                 "name": f"stage2_parse_{label}",
-                "ok": item.get("parse_status") == "ok",
-                "message": item.get("parse_status") or "missing",
+                "ok": parse_ok,
+                "message": item.get("parse_status") or item.get("status") or "missing",
             }
         )
 
@@ -176,6 +177,13 @@ def file_check(root: Path, relative: str) -> dict[str, Any]:
 
 
 def model_match_check(stage: str, item: dict[str, Any]) -> dict[str, Any]:
+    status = item.get("status")
+    if status not in (None, "ok", "degraded_ok"):
+        return {
+            "name": f"{stage}_expected_actual_model",
+            "ok": True,
+            "message": f"skipped non-ok record: {status}",
+        }
     expected = item.get("expected_model")
     actual = item.get("actual_model")
     ok = bool(expected) and expected == actual

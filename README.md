@@ -314,6 +314,8 @@ PYTHONPATH=src python3 -m llm_council_for_trae.cli run --input examples/question
 
 | 文档 | 读者 | 内容 |
 |---|---|---|
+| `docs/runtime-hardening-handoff-20260601.md` | 新会话 Agent / 接手开发者 | 这轮 runtime hardening 的背景、问题归因、索引文档、推进方式和交接口径 |
+| `docs/runtime-hardening-director-brief-20260601.md` | PM / director | 为什么要做 runtime hardening、优先级、策略和阶段目标的简报版 |
 | `docs/design.md` | 接手开发者 / Agent | 初始设计、协议边界、provider 设计、artifact store 设计 |
 | `docs/traecli-installation-and-paths.md` | 本机排障者 | traecli 安装、登录、路径、插件、模型事实 |
 | `docs/traecli-subagents.md` | subagent 维护者 | 固定 council 成员、profile 和验证方式 |
@@ -332,6 +334,6 @@ PYTHONPATH=src python3 -m llm_council_for_trae.cli run --input examples/question
 
 ## Current Status
 
-`LLM-Council-for-Trae` v1.1.2：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、subagent evidence validation、主动模型选择和中文默认输出全部落地。P0（failure 隐藏 + 主席综述 prompt）、P1（阵容代码落地）、P2（quorum 重试）、P3（E2E 验证）全部完成，78 个单元测试通过。HTML 报告 h1 动态标题和问题摘要已上线，subagent profile 已对齐 6 成员全阵容。
+`LLM-Council-for-Trae` v1.1.2：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、subagent evidence validation、主动模型选择和中文默认输出全部落地。P0（failure 隐藏 + 主席综述 prompt）、P1（阵容代码落地）、P2（quorum 重试）、P3（E2E 验证）全部完成，78 个单元测试通过。HTML 报告 h1 动态标题和问题摘要已上线，subagent profile 已对齐 6 成员全阵容。当前下一阶段是 runtime hardening：重点解决并发互斥、Stage 2 超时、timeout 真值源、优雅退出和降级收场。
 
 模型阵容：6 成员（GPT-5.4、GLM-5.1、Qwen3.6-Plus、Kimi-K2.6、DeepSeek-V4-Pro、Gemini-3.1-Pro-Preview）+ Kimi-K2.6 主席 + DeepSeek-V4-Pro/GPT-5.4 备选链。HTML 报告结构已稳定化。

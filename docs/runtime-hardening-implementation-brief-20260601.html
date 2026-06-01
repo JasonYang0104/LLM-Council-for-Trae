@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Runtime Hardening Implementation Brief</title>
+  <style>
+    :root {
+      --paper: #f5f4ed;
+      --paper-2: #efeee5;
+      --ink: #1f1d18;
+      --muted: #6b665b;
+      --accent: #1B365D;
+      --rule: #d4d1c5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper-2);
+      color: var(--ink);
+      font-family: "Noto Serif SC", "Songti SC", "Iowan Old Style", serif;
+      line-height: 1.52;
+    }
+    main {
+      width: min(920px, calc(100% - 36px));
+      margin: 32px auto;
+      padding: 56px 64px;
+      background: var(--paper);
+      box-shadow: 0 0 0 1px var(--rule);
+    }
+    .kicker {
+      color: var(--accent);
+      font-size: 13px;
+      letter-spacing: 0;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+      font-family: Charter, "Iowan Old Style", serif;
+      font-style: italic;
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: 38px;
+      line-height: 1.18;
+      font-weight: 500;
+      letter-spacing: 0;
+    }
+    .lede {
+      font-size: 19px;
+      line-height: 1.48;
+      color: var(--ink);
+      margin: 0 0 28px;
+      padding-left: 18px;
+      border-left: 3px solid var(--accent);
+    }
+    .meta {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 0 0 36px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .tag {
+      border: 1px solid var(--rule);
+      padding: 4px 8px;
+      background: var(--paper-2);
+    }
+    h2 {
+      margin: 34px 0 12px;
+      padding-top: 18px;
+      border-top: 1px solid var(--rule);
+      font-size: 22px;
+      line-height: 1.25;
+      font-weight: 500;
+      letter-spacing: 0;
+    }
+    h3 {
+      margin: 22px 0 8px;
+      font-size: 17px;
+      font-weight: 500;
+      color: var(--accent);
+      letter-spacing: 0;
+    }
+    p { margin: 0 0 12px; }
+    ul, ol { margin: 8px 0 16px 22px; padding: 0; }
+    li { margin: 5px 0; }
+    code {
+      font-family: "SF Mono", Menlo, Consolas, monospace;
+      font-size: 0.92em;
+      background: var(--paper-2);
+      padding: 1px 4px;
+      border: 1px solid var(--rule);
+    }
+    pre {
+      margin: 14px 0 18px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      background: var(--paper-2);
+      border: 1px solid var(--rule);
+      color: var(--ink);
+      line-height: 1.42;
+    }
+    pre code {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      font-size: 13px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin: 18px 0 8px;
+    }
+    .cell {
+      border: 1px solid var(--rule);
+      padding: 12px;
+      background: var(--paper-2);
+      min-height: 96px;
+    }
+    .cell strong {
+      display: block;
+      color: var(--accent);
+      font-weight: 500;
+      margin-bottom: 6px;
+    }
+    footer {
+      margin-top: 38px;
+      padding-top: 14px;
+      border-top: 1px solid var(--rule);
+      color: var(--muted);
+      font-size: 13px;
+    }
+    @media (max-width: 760px) {
+      main { width: calc(100% - 20px); padding: 34px 24px; margin: 10px auto; }
+      h1 { font-size: 30px; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="kicker">Runtime Hardening · 2026-06-01</div>
+    <h1>LCT 运行期加固实现简报</h1>
+    <p class="lede">这轮把 LCT runtime 从“能跑但容易在真实使用中误判或卡住”，推进到“有互斥、有超时、有降级、有清理、有可验证状态”。它仍不是最终成熟 runtime，但已经解决外部复盘中最容易导致误操作和假失败的主链路问题。</p>
+    <div class="meta">
+      <span class="tag">对象：产品负责人 / PM director</span>
+      <span class="tag">状态：实现完成</span>
+      <span class="tag">验证：94 tests + live smoke</span>
+    </div>
+
+    <h2>为什么要做</h2>
+    <p>外部测试证明，LCT 的入口和基本 council 流程已经成立；失败点不再是“不会启动”，而是运行期治理不足。</p>
+    <ul>
+      <li>多个 run 被重复启动，争抢同一批模型资源。</li>
+      <li>Stage 2 reviewer 可能挂住整个 run。</li>
+      <li><code>chairman_timeout</code> 写进 config，却没有真实控制主席阶段。</li>
+      <li>Stage 3 全失败时，已有 Stage 1/2 证据却不能生成可交付降级结果。</li>
+      <li>超时或取消时，traecli 子进程清理不够稳。</li>
+    </ul>
+
+    <h2>这轮解决了什么</h2>
+    <div class="grid">
+      <div class="cell"><strong>P0 防自爆</strong>新增 run lease；active lock 快速失败；stale / malformed lock 可替换；创建改为原子 <code>O_EXCL</code>。</div>
+      <div class="cell"><strong>P0 防卡死</strong>Stage 2 增加总 timeout；超时 reviewer 写入失败记录和 sidecar；有效 review 足够时继续。</div>
+      <div class="cell"><strong>P1 说真话</strong><code>chairman_timeout</code> 接入 Stage 3；新增 <code>--stage2-timeout</code> 和 <code>--chairman-timeout</code>。</div>
+      <div class="cell"><strong>P2 可收场</strong>主席和 fallback 全失败时，基于 Stage 2 排名选择最佳 Stage 1 回答作为 degraded final。</div>
+      <div class="cell"><strong>P2 可恢复</strong>provider timeout、cancel、budget kill 统一走进程树清理；POSIX 优先进程组。</div>
+      <div class="cell"><strong>状态贯通</strong><code>degraded_ok</code> 贯通 manifest、CLI exit、HTML gate 和 validate。</div>
+    </div>
+
+    <h2>验证证据</h2>
+    <p>非 live 验证全部通过：</p>
+    <pre><code>PYTHONPATH=src python3 -m compileall src
+make test
+git diff --check</code></pre>
+    <ul>
+      <li><code>compileall</code>：pass</li>
+      <li><code>make test</code>：pass，94 tests</li>
+      <li><code>git diff --check</code>：pass</li>
+    </ul>
+    <p>live smoke 也跑过，run id 为 <code>runtime-hardening-smoke-20260601</code>。结果为 <code>degraded_ok</code>，validate 也是 <code>degraded_ok</code> 且 failure count 为 0，HTML 已生成。</p>
+
+    <h2>没有解决什么</h2>
+    <p>本轮没有做 P3，这是刻意收窄 scope。</p>
+    <ul>
+      <li>没有实现 global slot lease / model lease。</li>
+      <li>没有做长期 telemetry 或模型稳定性画像。</li>
+      <li>没有合并 provider retry 和 council retry。</li>
+      <li>没有重新设计默认模型 roster。</li>
+    </ul>
+
+    <h2>交付文件索引</h2>
+    <ul>
+      <li>设计方案：<code>docs/runtime-hardening-design-20260601.md</code></li>
+      <li>测试方案：<code>docs/runtime-hardening-test-plan-20260601.md</code></li>
+      <li>运行记录：<code>notes.md</code></li>
+      <li>简报 Markdown：<code>docs/runtime-hardening-implementation-brief-20260601.md</code></li>
+      <li>简报 HTML：<code>docs/runtime-hardening-implementation-brief-20260601.html</code></li>
+      <li>新增测试：<code>tests/test_runtime_hardening.py</code></li>
+    </ul>
+
+    <h2>下一步建议</h2>
+    <ol>
+      <li>引入 model lease，限制同一模型被多个 run 或多个阶段同时争抢。</li>
+      <li>用真实 run artifacts 建立模型稳定性和时延画像。</li>
+      <li>清理双重 retry，避免资源拥塞时重试放大问题。</li>
+      <li>基于 live 数据重新校准默认 roster 和 timeout。</li>
+    </ol>
+
+    <footer>Generated as a single-file management brief from the 2026-06-01 runtime hardening implementation.</footer>
+  </main>
+</body>
+</html>
