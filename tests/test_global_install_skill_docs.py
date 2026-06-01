@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -56,6 +58,42 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
         self.assertIn("开发仓库", guide)
         self.assertIn("不要把 fake runtime", guide)
         self.assertIn("live smoke", guide)
+
+    def test_make_install_global_writes_global_wrapper_and_skill_link(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            lct_dir = tmp_path / "LCT"
+            bin_dir = tmp_path / "bin"
+            skills_dir = tmp_path / "agent-skills"
+            skill_src = lct_dir / "skills" / "llm-council-for-trae"
+            skill_src.mkdir(parents=True)
+            (skill_src / "SKILL.md").write_text("---\nname: llm-council-for-trae\n---\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    "make",
+                    "install-global",
+                    f"LCT_DIR={lct_dir}",
+                    f"BIN_DIR={bin_dir}",
+                    f"SKILLS_DIR={skills_dir}",
+                ],
+                cwd=REPO_ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            wrapper = bin_dir / "llm-council-for-trae"
+            self.assertTrue(wrapper.exists())
+            wrapper_text = wrapper.read_text(encoding="utf-8")
+            self.assertIn(f'PYTHONPATH="{lct_dir}/src${{PYTHONPATH:+:$PYTHONPATH}}"', wrapper_text)
+            self.assertNotIn(str(REPO_ROOT / "src"), wrapper_text)
+
+            skill_link = skills_dir / "llm-council-for-trae"
+            self.assertTrue(skill_link.is_symlink())
+            self.assertEqual(skill_link.resolve(), skill_src.resolve())
 
 
 if __name__ == "__main__":
