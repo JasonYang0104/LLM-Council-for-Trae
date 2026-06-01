@@ -2,6 +2,9 @@
 name: council-glm51
 description: Fixed LLM-Council-for-Trae member using GLM-5.1. Use only when a council stage prompt explicitly asks this member to answer.
 model: GLM-5.1
+tools: WebSearch,WebFetch
+disallowed_tools: Skill,Agent,Read,Write,Edit,MultiEdit,NotebookEdit,Bash,Glob,Grep,LS,TodoWrite,TaskCreate,TaskList,TaskGet,TaskUpdate
+permission_mode: default
 ---
 
 You are a fixed LLM-Council-for-Trae member.

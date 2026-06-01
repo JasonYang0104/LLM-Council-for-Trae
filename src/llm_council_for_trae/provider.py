@@ -12,6 +12,59 @@ from typing import Any
 from .utils import DEFAULT_TRAECLI, slugify, utc_now, write_json, write_text
 
 
+ALWAYS_FORBIDDEN_TOOLS = [
+    "Skill",
+    "Agent",
+    "TaskCreate",
+    "TaskList",
+    "TaskGet",
+    "TaskUpdate",
+    "TodoWrite",
+]
+
+WORKSPACE_WRITE_TOOLS = ["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"]
+WORKSPACE_READ_TOOLS = ["Read", "Glob", "Grep", "LS"]
+WEB_TOOLS = ["WebSearch", "WebFetch"]
+
+TOOL_MODE_ALLOWED: dict[str, list[str]] = {
+    "answer_only": [],
+    "search_enabled": WEB_TOOLS,
+    "workspace_enabled": WORKSPACE_READ_TOOLS + WEB_TOOLS,
+    "subagent_invocation": ["Agent"],
+}
+
+
+def tool_policy_for_mode(member_tool_mode: str) -> tuple[list[str], list[str]]:
+    if member_tool_mode not in TOOL_MODE_ALLOWED:
+        raise ValueError(f"unknown member_tool_mode: {member_tool_mode}")
+    allowed = list(TOOL_MODE_ALLOWED[member_tool_mode])
+    if member_tool_mode == "subagent_invocation":
+        denied = [tool for tool in ALWAYS_FORBIDDEN_TOOLS if tool != "Agent"]
+        denied += WORKSPACE_WRITE_TOOLS + WORKSPACE_READ_TOOLS + WEB_TOOLS
+    else:
+        denied = ALWAYS_FORBIDDEN_TOOLS + WORKSPACE_WRITE_TOOLS
+    if member_tool_mode == "answer_only":
+        denied += WORKSPACE_READ_TOOLS + WEB_TOOLS
+    elif member_tool_mode == "search_enabled":
+        denied += WORKSPACE_READ_TOOLS
+    return allowed, list(dict.fromkeys(denied))
+
+
+def forbidden_tool_calls_for_mode(tool_calls: list[dict[str, Any]], member_tool_mode: str) -> list[dict[str, Any]]:
+    allowed, disallowed = tool_policy_for_mode(member_tool_mode)
+    allowed_set = set(allowed)
+    disallowed_set = set(disallowed)
+    forbidden: list[dict[str, Any]] = []
+    for call in tool_calls:
+        name = call.get("name")
+        if not isinstance(name, str) or not name:
+            forbidden.append(call)
+            continue
+        if name in disallowed_set or name not in allowed_set:
+            forbidden.append(call)
+    return forbidden
+
+
 @dataclass
 class ModelCallResult:
     expected_model: str
@@ -30,6 +83,10 @@ class ModelCallResult:
     raw_model_markers: list[str] = field(default_factory=list)
     error: str | None = None
     permission_mode: str | None = None
+    member_tool_mode: str | None = None
+    allowed_tools: list[str] = field(default_factory=list)
+    disallowed_tools: list[str] = field(default_factory=list)
+    forbidden_tool_calls: list[dict[str, Any]] = field(default_factory=list)
     tool_budget_status: str = "ok"
     assistant_content_chars_total: int = 0
     last_assistant_content_chars: int = 0
@@ -57,6 +114,10 @@ class ModelCallResult:
             "raw_model_markers": self.raw_model_markers,
             "error": self.error,
             "permission_mode": self.permission_mode,
+            "member_tool_mode": self.member_tool_mode,
+            "allowed_tools": self.allowed_tools,
+            "disallowed_tools": self.disallowed_tools,
+            "forbidden_tool_calls": self.forbidden_tool_calls,
             "tool_budget_status": self.tool_budget_status,
             "assistant_content_chars_total": self.assistant_content_chars_total,
             "last_assistant_content_chars": self.last_assistant_content_chars,
@@ -107,12 +168,15 @@ class TraeCliProvider:
         runtime_command: str = DEFAULT_TRAECLI,
         query_timeout: int = 180,
         runtime_cwd: Path | None = None,
-        use_yolo: bool = True,
+        use_yolo: bool = False,
+        member_tool_mode: str = "search_enabled",
     ):
         self.runtime_command = os.environ.get("LLM_COUNCIL_FOR_TRAE_TRAECLI", runtime_command)
         self.query_timeout = query_timeout
         self.runtime_cwd = runtime_cwd
         self.use_yolo = use_yolo
+        self.member_tool_mode = member_tool_mode
+        self.allowed_tools, self.disallowed_tools = tool_policy_for_mode(member_tool_mode)
         self.explore_tool_limit: int = 16
         self.explore_turn_limit: int = 12
         self.deliver_tool_limit: int = 45
@@ -142,6 +206,10 @@ class TraeCliProvider:
             "--session-id",
             session_id,
         ]
+        for tool in self.allowed_tools:
+            cmd.extend(["--allowed-tool", tool])
+        for tool in self.disallowed_tools:
+            cmd.extend(["--disallowed-tool", tool])
         if self.use_yolo:
             cmd.append("--yolo")
         return cmd
@@ -250,6 +318,9 @@ class TraeCliProvider:
                 subagent_invocation=missing_subagent_invocation(agent),
                 error="timeout",
                 permission_mode=permission_mode,
+                member_tool_mode=self.member_tool_mode,
+                allowed_tools=self.allowed_tools,
+                disallowed_tools=self.disallowed_tools,
             )
         except asyncio.CancelledError:
             await terminate_process_tree(proc)
@@ -267,6 +338,7 @@ class TraeCliProvider:
         subagent_invocation = parsed["subagent_invocation"]
         tool_calls_count = parsed.get("tool_calls_count", 0)
         turns_count = parsed.get("turns_count", 0)
+        forbidden_tool_calls = forbidden_tool_calls_for_mode(parsed.get("tool_calls", []), self.member_tool_mode)
         status = "ok"
         error = None
         if proc.returncode != 0:
@@ -281,6 +353,10 @@ class TraeCliProvider:
         elif agent and not subagent_invocation.get("ok"):
             status = "failed"
             error = f"expected subagent {agent} invocation evidence, got {subagent_invocation}"
+        if forbidden_tool_calls:
+            status = "failed"
+            names = ", ".join(call.get("name", "unknown") for call in forbidden_tool_calls)
+            error = f"tool_contaminated: forbidden tool call(s): {names}"
 
         copied = copy_traecli_session_files(session_id, output_dir, label)
         tool_budget_status = "ok"
@@ -308,6 +384,10 @@ class TraeCliProvider:
             raw_model_markers=raw_model_markers,
             error=error,
             permission_mode=permission_mode,
+            member_tool_mode=self.member_tool_mode,
+            allowed_tools=self.allowed_tools,
+            disallowed_tools=self.disallowed_tools,
+            forbidden_tool_calls=forbidden_tool_calls,
             tool_budget_status=tool_budget_status,
             assistant_content_chars_total=parsed.get("assistant_content_chars_total", 0),
             last_assistant_content_chars=parsed.get("last_assistant_content_chars", 0),
@@ -374,6 +454,7 @@ def parse_stream_json(stdout: str, expected_agent: str | None = None) -> dict[st
     error: str | None = None
     tool_calls_count: int = 0
     turns_count: int = 0
+    tool_calls: list[dict[str, Any]] = []
 
     for line in stdout.splitlines():
         if not line.strip():
@@ -402,6 +483,18 @@ def parse_stream_json(stdout: str, expected_agent: str | None = None) -> dict[st
                 for tool_call in message.get("tool_calls") or []:
                     tool_calls_count += 1
                     function = tool_call.get("function") if isinstance(tool_call, dict) else None
+                    if isinstance(function, dict):
+                        tool_id = tool_call.get("id") if isinstance(tool_call, dict) else None
+                        tool_name = function.get("name")
+                        arguments = function.get("arguments")
+                        tool_calls.append(
+                            {
+                                "id": tool_id if isinstance(tool_id, str) else "",
+                                "name": tool_name if isinstance(tool_name, str) else "",
+                                "arguments": arguments[:500] if isinstance(arguments, str) else "",
+                                "turn_index": turns_count,
+                            }
+                        )
                     if not isinstance(function, dict) or function.get("name") != "Agent":
                         continue
                     tool_id = tool_call.get("id")
@@ -475,6 +568,7 @@ def parse_stream_json(stdout: str, expected_agent: str | None = None) -> dict[st
         "error": error,
         "tool_calls_count": tool_calls_count,
         "turns_count": turns_count,
+        "tool_calls": tool_calls,
         "assistant_content_chars_total": assistant_content_chars_total,
         "last_assistant_content_chars": last_assistant_content_chars,
         "raw_partial_recoverable": raw_partial_recoverable,

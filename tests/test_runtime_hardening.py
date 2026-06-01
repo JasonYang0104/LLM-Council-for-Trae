@@ -138,6 +138,47 @@ class RuntimeHardeningTests(unittest.TestCase):
         import asyncio
         asyncio.run(_run())
 
+    def test_stage1_records_tool_policy_fields(self):
+        async def _run():
+            from llm_council_for_trae.council import CouncilConfig, stage1_collect_responses
+            from llm_council_for_trae.provider import ModelCallResult, TraeCliProvider
+            from llm_council_for_trae.store import ArtifactStore
+
+            forbidden = [{"id": "tc1", "name": "Skill", "arguments": "{}", "turn_index": 1}]
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-stage1-policy")
+            config = CouncilConfig(members=["M1"], chairman="M1", member_tool_mode="search_enabled")
+
+            async def query_model(**kwargs):
+                return ModelCallResult(
+                    expected_model="M1",
+                    actual_model="M1",
+                    response="A",
+                    status="failed",
+                    session_id="s1",
+                    command=["traecli"],
+                    exit_code=0,
+                    stdout_path="out.jsonl",
+                    stderr_path="err.log",
+                    error="tool_contaminated: forbidden tool call(s): Skill",
+                    member_tool_mode="search_enabled",
+                    allowed_tools=["WebSearch", "WebFetch"],
+                    disallowed_tools=["Skill", "Agent"],
+                    forbidden_tool_calls=forbidden,
+                )
+
+            provider = TraeCliProvider.__new__(TraeCliProvider)
+            provider.query_model = query_model
+
+            results = await stage1_collect_responses("question", config, provider, store)
+
+            self.assertEqual(results[0]["member_tool_mode"], "search_enabled")
+            self.assertEqual(results[0]["allowed_tools"], ["WebSearch", "WebFetch"])
+            self.assertEqual(results[0]["disallowed_tools"], ["Skill", "Agent"])
+            self.assertEqual(results[0]["forbidden_tool_calls"], forbidden)
+
+        import asyncio
+        asyncio.run(_run())
+
     def test_stage3_uses_chairman_timeout_for_primary_and_fallback(self):
         async def _run():
             from llm_council_for_trae.council import CouncilConfig, stage3_synthesize_final
@@ -187,6 +228,65 @@ class RuntimeHardeningTests(unittest.TestCase):
         cmd = provider._build_command("M1", "prompt", "run", "stage3", "final", "session", query_timeout=777)
         self.assertIn("--query-timeout", cmd)
         self.assertIn("777s", cmd)
+
+    def test_provider_marks_forbidden_tool_call_as_failed(self):
+        async def _run():
+            import json
+            from llm_council_for_trae.provider import TraeCliProvider
+
+            class FakeStdout:
+                def __init__(self, lines):
+                    self.lines = [(line + "\n").encode("utf-8") for line in lines]
+
+                def __aiter__(self):
+                    self._iter = iter(self.lines)
+                    return self
+
+                async def __anext__(self):
+                    try:
+                        return next(self._iter)
+                    except StopIteration:
+                        raise StopAsyncIteration
+
+            class FakeStderr:
+                async def read(self):
+                    return b""
+
+            class FakeProc:
+                pid = 12345
+                returncode = 0
+
+                def __init__(self, lines):
+                    self.stdout = FakeStdout(lines)
+                    self.stderr = FakeStderr()
+
+                async def wait(self):
+                    return 0
+
+            stream = [
+                json.dumps({"type": "system", "subtype": "init", "session_id": "s1", "model": "M1"}),
+                json.dumps({"type": "assistant", "message": {"role": "assistant", "content": "OK", "tool_calls": [{"id": "tc1", "type": "function", "function": {"name": "Skill", "arguments": "{\"skill\":\"llm-council-for-trae\"}"}}]}}),
+                json.dumps({"type": "result", "result": "OK", "is_error": False}),
+            ]
+
+            provider = TraeCliProvider(member_tool_mode="search_enabled")
+            with tempfile.TemporaryDirectory() as tmp:
+                with patch("llm_council_for_trae.provider.asyncio.create_subprocess_exec", return_value=FakeProc(stream)):
+                    result = await provider.query_model(
+                        model="M1",
+                        prompt="prompt",
+                        run_id="run-contaminated",
+                        stage="stage1",
+                        label="A",
+                        output_dir=Path(tmp),
+                    )
+
+            self.assertEqual(result.status, "failed")
+            self.assertTrue(result.error.startswith("tool_contaminated:"))
+            self.assertEqual([call["name"] for call in result.forbidden_tool_calls], ["Skill"])
+
+        import asyncio
+        asyncio.run(_run())
 
     def test_stage3_degrades_to_best_stage1_response_when_all_chairmen_fail(self):
         async def _run():
@@ -365,6 +465,141 @@ class RuntimeHardeningTests(unittest.TestCase):
         import asyncio
         asyncio.run(_run())
 
+    def test_direct_provider_defaults_to_isolated_member_cwd(self):
+        async def _run():
+            from llm_council_for_trae.council import CouncilConfig, run_full_council
+            from llm_council_for_trae.provider import ModelCallResult
+            from llm_council_for_trae.store import ArtifactStore
+            import llm_council_for_trae.council as council_mod
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-isolated-cwd")
+            config = CouncilConfig(
+                members=["M1"],
+                chairman="M1",
+                min_valid_members=1,
+                stage1_max_retries=0,
+                stage2_timeout=1,
+            )
+            seen = {}
+
+            class MockProvider:
+                def __init__(self, runtime_command, query_timeout, runtime_cwd=None, use_yolo=False, member_tool_mode="search_enabled"):
+                    seen["runtime_cwd"] = runtime_cwd
+
+                async def query_model(self, **kwargs):
+                    stage = kwargs["stage"]
+                    response = "FINAL RANKING:\n1. Response A" if stage == "stage2" else "answer"
+                    return ModelCallResult(
+                        expected_model=kwargs["model"],
+                        actual_model=kwargs["model"],
+                        response=response,
+                        status="ok",
+                        session_id="s",
+                        command=["traecli"],
+                        exit_code=0,
+                        stdout_path="out.jsonl",
+                        stderr_path="err.log",
+                    )
+
+            with patch.object(council_mod, "runtime_doctor") as mock_doctor:
+                mock_doctor.return_value = type("Health", (), {
+                    "ok": True,
+                    "command": "fake",
+                    "version": "1.0",
+                    "doctor_exit_code": 0,
+                    "doctor": {},
+                    "errors": [],
+                    "warnings": [],
+                    "ignored_errors": [],
+                    "models": [{"name": "M1"}],
+                })()
+                with patch.object(council_mod, "require_models_available"):
+                    with patch.object(council_mod, "TraeCliProvider", MockProvider):
+                        await run_full_council("question", config, store)
+
+            self.assertIsNotNone(seen["runtime_cwd"])
+            self.assertNotEqual(seen["runtime_cwd"], store.root / "runtime" / "member-cwd")
+            self.assertIn("lct-run-isolated-cwd-member-cwd-", str(seen["runtime_cwd"]))
+            self.assertTrue(seen["runtime_cwd"].exists())
+            self.assertEqual((store.root / "runtime" / "member-cwd.path").read_text(encoding="utf-8").strip(), str(seen["runtime_cwd"]))
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_subagent_provider_uses_agent_invocation_tool_policy(self):
+        async def _run():
+            from llm_council_for_trae.council import CouncilConfig, run_full_council
+            from llm_council_for_trae.provider import ModelCallResult
+            from llm_council_for_trae.store import ArtifactStore
+            import llm_council_for_trae.council as council_mod
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-subagent-policy")
+            config = CouncilConfig(
+                members=["M1"],
+                chairman="M1",
+                provider_mode="subagent",
+                runtime_cwd=str(Path(tempfile.mkdtemp())),
+                member_agents=["council-m1"],
+                chairman_agent="council-m1",
+                min_valid_members=1,
+                stage1_max_retries=0,
+                stage2_timeout=1,
+            )
+            seen = {}
+
+            class MockProvider:
+                def __init__(self, runtime_command, query_timeout, runtime_cwd=None, use_yolo=False, member_tool_mode="search_enabled"):
+                    seen["member_tool_mode"] = member_tool_mode
+
+                async def query_model(self, **kwargs):
+                    response = "FINAL RANKING:\n1. Response A" if kwargs["stage"] == "stage2" else "answer"
+                    return ModelCallResult(
+                        expected_model=kwargs["model"],
+                        actual_model=kwargs["model"],
+                        response=response,
+                        status="ok",
+                        session_id="s",
+                        command=["traecli"],
+                        exit_code=0,
+                        stdout_path="out.jsonl",
+                        stderr_path="err.log",
+                    )
+
+            with patch.object(council_mod, "runtime_doctor") as mock_doctor:
+                mock_doctor.return_value = type("Health", (), {
+                    "ok": True,
+                    "command": "fake",
+                    "version": "1.0",
+                    "doctor_exit_code": 0,
+                    "doctor": {},
+                    "errors": [],
+                    "warnings": [],
+                    "ignored_errors": [],
+                    "models": [{"name": "M1"}],
+                })()
+                with patch.object(council_mod, "require_models_available"):
+                    with patch.object(council_mod, "TraeCliProvider", MockProvider):
+                        await run_full_council("question", config, store)
+
+            self.assertEqual(seen["member_tool_mode"], "subagent_invocation")
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_subagent_agent_frontmatter_declares_tool_policy(self):
+        from llm_council_for_trae.utils import PROJECT_ROOT
+
+        agent_paths = sorted((PROJECT_ROOT / ".trae" / "agents").glob("council-*.md"))
+        self.assertTrue(agent_paths)
+        for path in agent_paths:
+            text = path.read_text(encoding="utf-8")
+            with self.subTest(path=path.name):
+                self.assertIn("tools: WebSearch,WebFetch", text)
+                self.assertIn("disallowed_tools:", text)
+                self.assertIn("Skill", text)
+                self.assertIn("Agent", text)
+                self.assertIn("Bash", text)
+
     def test_terminate_process_tree_prefers_process_group(self):
         async def _run():
             import signal
@@ -462,6 +697,18 @@ class RuntimeHardeningTests(unittest.TestCase):
                 "failures": [{"stage_record": "B", "status": "failed", "error": "cancelled_by_stage_timeout", "expected_model": "M2", "actual_model": None}],
             }
             store.write_manifest(manifest)
+            tool_policy = {
+                "member_tool_mode": "search_enabled",
+                "allowed_tools": ["WebSearch", "WebFetch"],
+                "disallowed_tools": ["Skill", "Agent"],
+                "forbidden_tool_calls": [],
+            }
+            manifest["config"] |= {"use_yolo": False, "member_tool_mode": "search_enabled", "member_runtime_cwd_mode": "isolated_temp"}
+            manifest["stages"]["stage1"][0] |= tool_policy
+            manifest["stages"]["stage2"][0] |= tool_policy
+            manifest["stages"]["stage2"][1] |= tool_policy
+            manifest["stages"]["stage3"] |= tool_policy
+            store.write_manifest(manifest)
             for relative in [
                 "input.md", "config.json", "runtime/doctor.json", "runtime/traecli.models.json",
                 "stage1/member.prompt.md", "stage1/A.response.md", "stage1/A.traecli.stream.jsonl",
@@ -480,7 +727,7 @@ class RuntimeHardeningTests(unittest.TestCase):
                 "response_chars": 1, "session_id": "s", "command": ["traecli"], "exit_code": 0,
                 "stdout_path": "out.jsonl", "stderr_path": "err.log", "copied_session_files": {},
                 "raw_model_markers": [], "error": None, "captured_at": "2026-06-01T00:00:00Z",
-            }
+            } | tool_policy
             write_json("stage1/A.meta.json", base_meta | {"expected_model": "M1", "actual_model": "M1", "status": "ok"})
             write_json("stage2/A.meta.json", base_meta | {"expected_model": "M1", "actual_model": "M1", "status": "ok"})
             write_json("stage2/B.meta.json", base_meta | {"expected_model": "M2", "actual_model": None, "status": "failed", "error": "cancelled_by_stage_timeout"})

@@ -56,11 +56,14 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--timeout", type=int, default=180, help="Per-model query timeout seconds.")
     run_p.add_argument("--stage2-timeout", type=float, help="Stage 2 total timeout seconds. Default: max(timeout+30, 240).")
     run_p.add_argument("--chairman-timeout", type=int, default=720, help="Per-chairman Stage 3 timeout seconds, including fallback attempts.")
-    run_p.add_argument("--no-yolo", action="store_true", help="Do not pass --yolo to traecli.")
+    run_p.add_argument("--yolo", action="store_true", help="Pass --yolo to traecli. Default member runs do not bypass permissions.")
+    run_p.add_argument("--no-yolo", action="store_true", help="Compatibility no-op: default member runs already omit --yolo.")
     run_p.add_argument("--min-valid-members", type=int, default=3, help="Minimum valid members for quorum.")
     run_p.add_argument("--target-valid-members", type=int, default=8, help="Target valid members for quorum.")
     run_p.add_argument("--chairman-fallback", help="Comma-separated fallback chairman models.")
     run_p.add_argument("--member-mode", choices=["normal", "deep_research"], default="normal", help="Member execution mode.")
+    run_p.add_argument("--member-tool-mode", choices=["answer_only", "search_enabled", "workspace_enabled"], default="search_enabled", help="Tool capability policy for direct member runtime.")
+    run_p.add_argument("--member-runtime-cwd-mode", choices=["isolated_temp", "inherit"], default="isolated_temp", help="Working-directory isolation mode for direct member runtime when --runtime-cwd is omitted.")
     run_p.add_argument("--skip-html", action="store_true", help="Skip automatic HTML export after Stage 3.")
     run_p.add_argument("--json", dest="json_output", action="store_true", default=argparse.SUPPRESS)
     run_p.set_defaults(func=cmd_run)
@@ -257,13 +260,15 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
         export_html=not args.skip_html,
         member_agents=member_agents,
         chairman_agent=chairman_agent,
-        use_yolo=not getattr(args, "no_yolo", False),
+        use_yolo=bool(getattr(args, "yolo", False)) and not bool(getattr(args, "no_yolo", False)),
         min_valid_members=getattr(args, "min_valid_members", 3),
         target_valid_members=getattr(args, "target_valid_members", 8),
         chairman_fallback=chairman_fallback,
         stage2_timeout=getattr(args, "stage2_timeout", None),
         chairman_timeout=getattr(args, "chairman_timeout", 720),
         member_mode=getattr(args, "member_mode", "normal"),
+        member_tool_mode=getattr(args, "member_tool_mode", "search_enabled"),
+        member_runtime_cwd_mode=getattr(args, "member_runtime_cwd_mode", "isolated_temp"),
     )
 
 
