@@ -617,8 +617,8 @@ def render_summary_cards(manifest: dict[str, Any], aggregate: list[dict[str, Any
     config = manifest.get("config") if isinstance(manifest.get("config"), dict) else {}
     top_model = aggregate[0].get("model") if aggregate and isinstance(aggregate[0], dict) else "暂无聚合排序"
     search = summarize_search_usage(manifest)
-    search_text = f"允许：{yes_no(search['search_allowed'])} · 实际使用：{yes_no(search['search_used'])}"
-    search_meta = f"Web 工具调用：{search['web_tool_calls_count']} · 总工具调用：{search['tool_calls_count']}"
+    search_text = f"允许：{yes_no(search['lct_search_allowed'])} · 实际使用：{yes_no(search['lct_search_used'])}"
+    search_meta = f"Web 工具调用：{search['lct_web_tool_calls']} · 总工具调用：{search['tool_calls_count']}"
     return (
         f"<div class='summary-card'><h3>最高排序成员</h3><p>{esc(top_model)}</p></div>"
         f"<div class='summary-card'><h3>成员模型</h3><p>{esc(', '.join(config.get('members') or []))}</p></div>"
@@ -669,6 +669,9 @@ def summarize_search_usage(manifest: dict[str, Any]) -> dict[str, Any]:
                     record_web_tool_call(call)
 
     return {
+        "lct_search_allowed": search_allowed,
+        "lct_search_used": web_tool_calls_count > 0,
+        "lct_web_tool_calls": web_tool_calls_count,
         "search_allowed": search_allowed,
         "search_used": web_tool_calls_count > 0,
         "web_tool_calls_count": web_tool_calls_count,
