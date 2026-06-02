@@ -19,15 +19,42 @@
 
 ## Quickstart
 
-### Agent 一句话用法
+### 日常使用：全局安装后在干净问题 workspace 提问
 
-在另一个 workspace clone 本仓库后，可以直接对 Agent 说：
+日常使用不要把 LCT 仓库 clone 到问题 workspace。默认路径是：从 GitHub `main` 安装到 `~/.LCT`，用 `~/.local/bin/llm-council-for-trae` wrapper 调用 `~/.LCT/src`，把 LCT Skill 安装到 `/Users/bytedance/.agents/skills/llm-council-for-trae`，然后在干净问题 workspace 中提问。
 
-```text
-用根目录中的能力，给我跑 LCT，输入的问题是："""<你的问题>"""
+首次安装：
+
+```bash
+git clone https://github.com/JasonYang0104/LLM-Council-for-Trae.git ~/.LCT
 ```
 
-Agent 应按这条路径执行：确认 `traecli` 可用 → 安装或定位本地 CLI → 把问题写入临时 `.md` 文件 → 使用 `--default-models` 非交互运行 → `validate` 校验 → 返回 `stage3/final.md` 摘要和 HTML 报告路径。
+已有 `~/.LCT` 时更新：
+
+```bash
+git -C ~/.LCT fetch origin --prune
+git -C ~/.LCT checkout main
+git -C ~/.LCT pull --ff-only origin main
+```
+
+安装 CLI wrapper 和用户级 Skill：
+
+```bash
+make -C ~/.LCT install-global
+```
+
+这个命令会安装两件事：
+
+- `~/.local/bin/llm-council-for-trae`：wrapper 指向 `~/.LCT/src`。
+- `/Users/bytedance/.agents/skills/llm-council-for-trae`：用户级 Skill 链接到 `~/.LCT/skills/llm-council-for-trae`。
+
+在干净问题 workspace 里对 Agent 说：
+
+```text
+使用 LCT，回答："""<你的问题>"""
+```
+
+Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo（出现 `src/llm_council_for_trae/`、`.trae/agents/` 或 `profiles/subagents.json` 时停止）→ 确认 `traecli` 和 `llm-council-for-trae` 可用 → 把问题写入 `_lct_question.md` → 使用 `--default-models` 和 `--json` 非交互运行 → `validate` 校验 → 读取 `stage3/final.md` → 在问题 workspace 根目录写出 `<run_id>-final.md` 和 `<run_id>-index.md` → 返回 run status、validate status、最终答案路径和 HTML 报告路径。
 
 ### 1. 确认 traecli 可用
 
@@ -47,14 +74,14 @@ traecli models --json
 docs/traecli-installation-and-paths.md
 ```
 
-### 2. 安装本地 CLI
+### 2. 开发者路径：本地 checkout 验证
 
 ```bash
 make install-local
 command -v llm-council-for-trae
 ```
 
-安装后会在 `~/.local/bin/llm-council-for-trae` 创建一个轻量 wrapper。它直接指向当前 workspace 的 `src/`，适合本地开发和验证。
+`make install-local` 是开发者路径。安装后会在 `~/.local/bin/llm-council-for-trae` 创建一个轻量 wrapper，直接指向当前 checkout 的 `src/`，适合本地开发和验证；它不是日常用户全局安装路径。
 
 如果不想安装 wrapper，也可以在仓库根目录用零安装方式运行：
 
@@ -78,11 +105,11 @@ llm-council-for-trae models --recommend --json
 
 LCT 的 direct council run 不依赖外部 MCP server。如果 `traecli doctor --json` 只报告 MCP 初始化失败，但 `traecli --version` 和 `traecli models --json` 正常，LCT 会把这类 MCP-only error 记录到 `runtime/doctor.json` 的 `ignored_errors` 和 `manifest.warnings`，但不会阻断 run。非 MCP 的 doctor error、模型列表为空或模型缺失仍会失败。
 
-### 4. 运行一次 direct council
+### 4. 在干净问题 workspace 运行 direct council
 
 ```bash
 llm-council-for-trae run \
-  --input examples/question.md \
+  --input _lct_question.md \
   --default-models \
   --run-id demo-direct \
   --timeout 180 \
@@ -94,9 +121,9 @@ llm-council-for-trae run \
 可选工具模式：
 
 ```bash
-llm-council-for-trae run --input examples/question.md --default-models --member-tool-mode answer_only
-llm-council-for-trae run --input examples/question.md --default-models --member-tool-mode search_enabled
-llm-council-for-trae run --input examples/question.md --default-models --member-tool-mode workspace_enabled
+llm-council-for-trae run --input _lct_question.md --default-models --member-tool-mode answer_only
+llm-council-for-trae run --input _lct_question.md --default-models --member-tool-mode search_enabled
+llm-council-for-trae run --input _lct_question.md --default-models --member-tool-mode workspace_enabled
 ```
 
 如果没有传 `--members`、`--chairman`、`--profile` 或 `--default-models`，LCT 会先列出当前 traecli 可用模型，并给出推荐套装（仅限交互终端）。在 Agent 或脚本等非交互场景，必须显式指定 `--default-models`、`--members/--chairman` 或 `--profile`：
@@ -117,7 +144,7 @@ LCT 检测到当前 traecli 可用模型：
 
 ```bash
 llm-council-for-trae run \
-  --input examples/question.md \
+  --input _lct_question.md \
   --default-models \
   --run-id demo-default \
   --json
@@ -132,10 +159,19 @@ chairman: Kimi-K2.6
 
 LCT 的模型询问是 CLI 自己的终端输入，不依赖 Agent 的 AskUserQuestion **（注释：Agent 用来向用户发起澄清问题的工具能力）**。如果外层 Agent 不能交互式输入，使用 `--default-models`、`--members/--chairman` 或 `--profile`。
 
-成功后会生成：
+CLI 直接产物：
 
 ```text
 .llm-council-for-trae/runs/demo-direct/
+.llm-council-for-trae/runs/demo-direct/stage3/final.md
+.llm-council-for-trae/runs/demo-direct/html/index.html
+```
+
+如果是通过用户级 Skill 让外层 Agent 执行，Agent/Skill 额外落盘产物还包括：
+
+```text
+demo-direct-final.md
+demo-direct-index.md
 ```
 
 打开 HTML 报告：
@@ -305,12 +341,7 @@ PYTHONPATH=src python3 -m compileall src
 make test
 ```
 
-当前验证基线：
-
-```text
-unittest: 78 tests passed
-P0-P3 全部落地，3 个梯度 E2E 用例通过
-```
+当前验证基线以 `make test` 的最新输出为准。README 不记录固定测试数量，避免把历史数字误读成当前真值。
 
 常用开发命令：
 
@@ -324,6 +355,9 @@ PYTHONPATH=src python3 -m llm_council_for_trae.cli run --input examples/question
 
 | 文档 | 读者 | 内容 |
 |---|---|---|
+| `docs/lct-deployment-guide-20260601.md` | Agent / 用户安装者 | `~/.LCT` 全局安装、用户级 Skill、干净问题 workspace 和 live smoke 边界 |
+| `docs/lct-global-install-skill-design-20260601.md` | 接手开发者 / reviewer | 全局安装、Skill 模板、安装器和验证边界设计 |
+| `docs/lct-global-install-skill-test-plan-20260601.md` | 接手开发者 / reviewer | 全局安装与 Skill 的 TDD 切片和验收计划 |
 | `docs/runtime-hardening-handoff-20260601.md` | 新会话 Agent / 接手开发者 | 这轮 runtime hardening 的背景、问题归因、索引文档、推进方式和交接口径 |
 | `docs/runtime-hardening-director-brief-20260601.md` | PM / director | 为什么要做 runtime hardening、优先级、策略和阶段目标的简报版 |
 | `docs/design.md` | 接手开发者 / Agent | 初始设计、协议边界、provider 设计、artifact store 设计 |
@@ -344,6 +378,6 @@ PYTHONPATH=src python3 -m llm_council_for_trae.cli run --input examples/question
 
 ## Current Status
 
-`LLM-Council-for-Trae` v1.1.2：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、subagent evidence validation、主动模型选择和中文默认输出全部落地。P0（failure 隐藏 + 主席综述 prompt）、P1（阵容代码落地）、P2（quorum 重试）、P3（E2E 验证）全部完成，78 个单元测试通过。HTML 报告 h1 动态标题和问题摘要已上线，subagent profile 已对齐 6 成员全阵容。当前下一阶段是 runtime hardening：重点解决并发互斥、Stage 2 超时、timeout 真值源、优雅退出和降级收场。
+`LLM-Council-for-Trae` v1.1.2：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、subagent evidence validation、主动模型选择和中文默认输出全部落地。P0（failure 隐藏 + 主席综述 prompt）、P1（阵容代码落地）、P2（quorum 重试）、P3（E2E 验证）全部完成。测试数量以 `make test` 的当前输出为准。HTML 报告 h1 动态标题和问题摘要已上线，subagent profile 已对齐 6 成员全阵容。当前下一阶段是 runtime hardening：重点解决并发互斥、Stage 2 超时、timeout 真值源、优雅退出和降级收场。
 
 模型阵容：6 成员（GPT-5.4、GLM-5.1、Qwen3.6-Plus、Kimi-K2.6、DeepSeek-V4-Pro、Gemini-3.1-Pro-Preview）+ Kimi-K2.6 主席 + DeepSeek-V4-Pro/GPT-5.4 备选链。HTML 报告结构已稳定化。
