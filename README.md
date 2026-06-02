@@ -159,10 +159,17 @@ chairman: Kimi-K2.6
 
 LCT 的模型询问是 CLI 自己的终端输入，不依赖 Agent 的 AskUserQuestion **（注释：Agent 用来向用户发起澄清问题的工具能力）**。如果外层 Agent 不能交互式输入，使用 `--default-models`、`--members/--chairman` 或 `--profile`。
 
-成功后会在当前问题 workspace 生成：
+CLI 直接产物：
 
 ```text
 .llm-council-for-trae/runs/demo-direct/
+.llm-council-for-trae/runs/demo-direct/stage3/final.md
+.llm-council-for-trae/runs/demo-direct/html/index.html
+```
+
+如果是通过用户级 Skill 让外层 Agent 执行，Agent/Skill 额外落盘产物还包括：
+
+```text
 demo-direct-final.md
 demo-direct-index.md
 ```
@@ -334,12 +341,7 @@ PYTHONPATH=src python3 -m compileall src
 make test
 ```
 
-当前验证基线：
-
-```text
-unittest: 78 tests passed
-P0-P3 全部落地，3 个梯度 E2E 用例通过
-```
+当前验证基线以 `make test` 的最新输出为准。README 不记录固定测试数量，避免把历史数字误读成当前真值。
 
 常用开发命令：
 
@@ -376,6 +378,6 @@ PYTHONPATH=src python3 -m llm_council_for_trae.cli run --input examples/question
 
 ## Current Status
 
-`LLM-Council-for-Trae` v1.1.2：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、subagent evidence validation、主动模型选择和中文默认输出全部落地。P0（failure 隐藏 + 主席综述 prompt）、P1（阵容代码落地）、P2（quorum 重试）、P3（E2E 验证）全部完成，78 个单元测试通过。HTML 报告 h1 动态标题和问题摘要已上线，subagent profile 已对齐 6 成员全阵容。当前下一阶段是 runtime hardening：重点解决并发互斥、Stage 2 超时、timeout 真值源、优雅退出和降级收场。
+`LLM-Council-for-Trae` v1.1.2：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、subagent evidence validation、主动模型选择和中文默认输出全部落地。P0（failure 隐藏 + 主席综述 prompt）、P1（阵容代码落地）、P2（quorum 重试）、P3（E2E 验证）全部完成。测试数量以 `make test` 的当前输出为准。HTML 报告 h1 动态标题和问题摘要已上线，subagent profile 已对齐 6 成员全阵容。当前下一阶段是 runtime hardening：重点解决并发互斥、Stage 2 超时、timeout 真值源、优雅退出和降级收场。
 
 模型阵容：6 成员（GPT-5.4、GLM-5.1、Qwen3.6-Plus、Kimi-K2.6、DeepSeek-V4-Pro、Gemini-3.1-Pro-Preview）+ Kimi-K2.6 主席 + DeepSeek-V4-Pro/GPT-5.4 备选链。HTML 报告结构已稳定化。

@@ -117,9 +117,13 @@ git diff --check
 Optional live smoke, only if live `traecli` and global LCT command are available:
 
 ```bash
+rm -rf /tmp/lct-live-smoke
+mkdir -p /tmp/lct-live-smoke
+cd /tmp/lct-live-smoke
+cp ~/.LCT/examples/question.md _lct_question.md
 llm-council-for-trae doctor --json
 llm-council-for-trae models --recommend --json
-llm-council-for-trae run --input examples/question.md --default-models --json
+llm-council-for-trae run --input _lct_question.md --default-models --json
 llm-council-for-trae validate <run_id> --json
 ```
 
@@ -143,4 +147,3 @@ P1 findings:
 P2 findings:
 引用文件与行号:
 ```
-

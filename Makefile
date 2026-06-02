@@ -16,6 +16,7 @@ install-local:
 	@echo "installed $(BIN)"
 
 install-global:
+	@test -d "$(LCT_DIR)/src/llm_council_for_trae" || (echo "missing $(LCT_DIR)/src/llm_council_for_trae" >&2; exit 1)
 	@test -f "$(LCT_SKILL_SRC)/SKILL.md" || (echo "missing $(LCT_SKILL_SRC)/SKILL.md" >&2; exit 1)
 	@if [ -e "$(LCT_SKILL_DEST)" ] && [ ! -L "$(LCT_SKILL_DEST)" ]; then \
 		echo "refusing to overwrite non-symlink $(LCT_SKILL_DEST)" >&2; \

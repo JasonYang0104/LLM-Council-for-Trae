@@ -141,9 +141,13 @@ git diff --check
 When live `traecli` is available, additionally run:
 
 ```bash
+rm -rf /tmp/lct-live-smoke
+mkdir -p /tmp/lct-live-smoke
+cd /tmp/lct-live-smoke
+cp ~/.LCT/examples/question.md _lct_question.md
 llm-council-for-trae doctor --json
 llm-council-for-trae models --recommend --json
-llm-council-for-trae run --input examples/question.md --default-models --json
+llm-council-for-trae run --input _lct_question.md --default-models --json
 llm-council-for-trae validate <run_id> --json
 ```
 
@@ -164,4 +168,3 @@ Reviewer roles:
 1. Fresh Install Reviewer.
 2. Workspace Isolation Reviewer.
 3. Operational Consistency Reviewer.
-

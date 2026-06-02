@@ -18,9 +18,12 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
         readme = self.read_text("README.md")
 
         self.assertNotIn("在另一个 workspace clone 本仓库后", readme)
+        self.assertNotIn("unittest: 78 tests passed", readme)
         self.assertIn("~/.LCT", readme)
         self.assertIn("/Users/bytedance/.agents/skills", readme)
         self.assertIn("干净问题 workspace", readme)
+        self.assertIn("CLI 直接产物", readme)
+        self.assertIn("Agent/Skill 额外落盘产物", readme)
         self.assertRegex(readme, re.compile(r"make install-local[\s\S]{0,160}开发"))
 
     def test_skill_template_has_required_workflow_contract(self):
@@ -62,6 +65,8 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
     def test_clean_workspace_examples_do_not_use_repo_example_input(self):
         readme_quickstart = self.read_text("README.md").split("## Council Protocol", 1)[0]
         guide = self.read_text("docs/lct-deployment-guide-20260601.md")
+        design = self.read_text("docs/lct-global-install-skill-design-20260601.md")
+        test_plan = self.read_text("docs/lct-global-install-skill-test-plan-20260601.md")
 
         self.assertIn("_lct_question.md", readme_quickstart)
         self.assertNotIn("examples/question.md", readme_quickstart)
@@ -73,6 +78,13 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
 
         self.assertNotIn("llm-council-for-trae run --input examples/question.md", guide)
         self.assertIn("llm-council-for-trae run --input _lct_question.md --default-models --json", guide)
+        for relative, text in {
+            "docs/lct-global-install-skill-design-20260601.md": design,
+            "docs/lct-global-install-skill-test-plan-20260601.md": test_plan,
+        }.items():
+            self.assertNotIn("llm-council-for-trae run --input examples/question.md", text, relative)
+            self.assertIn("/tmp/lct-live-smoke", text, relative)
+            self.assertIn("_lct_question.md", text, relative)
 
     def test_make_install_global_writes_global_wrapper_and_skill_link(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -80,6 +92,7 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
             lct_dir = tmp_path / "LCT"
             bin_dir = tmp_path / "bin"
             skills_dir = tmp_path / "agent-skills"
+            (lct_dir / "src" / "llm_council_for_trae").mkdir(parents=True)
             skill_src = lct_dir / "skills" / "llm-council-for-trae"
             skill_src.mkdir(parents=True)
             (skill_src / "SKILL.md").write_text("---\nname: llm-council-for-trae\n---\n", encoding="utf-8")
@@ -135,6 +148,36 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
 
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("missing", result.stderr)
+            self.assertFalse((bin_dir / "llm-council-for-trae").exists())
+
+    def test_make_install_global_refuses_missing_src_without_writing_wrapper(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            lct_dir = tmp_path / "LCT"
+            bin_dir = tmp_path / "bin"
+            skills_dir = tmp_path / "agent-skills"
+            skill_src = lct_dir / "skills" / "llm-council-for-trae"
+            skill_src.mkdir(parents=True)
+            (skill_src / "SKILL.md").write_text("---\nname: llm-council-for-trae\n---\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    "make",
+                    "install-global",
+                    f"LCT_DIR={lct_dir}",
+                    f"BIN_DIR={bin_dir}",
+                    f"SKILLS_DIR={skills_dir}",
+                ],
+                cwd=REPO_ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("missing", result.stderr)
+            self.assertIn("src/llm_council_for_trae", result.stderr)
             self.assertFalse((bin_dir / "llm-council-for-trae").exists())
 
 
