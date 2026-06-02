@@ -630,8 +630,19 @@ def render_summary_cards(manifest: dict[str, Any], aggregate: list[dict[str, Any
 def summarize_search_usage(manifest: dict[str, Any]) -> dict[str, Any]:
     search_allowed = False
     web_tool_calls_count = 0
+    web_tool_call_keys: set[str] = set()
     tool_calls_count = 0
     forbidden_tool_calls_count = 0
+
+    def record_web_tool_call(call: dict[str, Any]) -> None:
+        nonlocal web_tool_calls_count
+        if call.get("name") not in WEB_SEARCH_TOOLS:
+            return
+        key = str(call.get("id") or (call.get("name"), call.get("arguments"), call.get("turn_index")))
+        if key in web_tool_call_keys:
+            return
+        web_tool_call_keys.add(key)
+        web_tool_calls_count += 1
 
     for item in iter_stage_records(manifest):
         allowed_tools = item.get("allowed_tools")
@@ -647,12 +658,15 @@ def summarize_search_usage(manifest: dict[str, Any]) -> dict[str, Any]:
             if not isinstance(raw_count, int):
                 tool_calls_count += len(tool_calls)
             for call in tool_calls:
-                if isinstance(call, dict) and call.get("name") in WEB_SEARCH_TOOLS:
-                    web_tool_calls_count += 1
+                if isinstance(call, dict):
+                    record_web_tool_call(call)
 
         forbidden_tool_calls = item.get("forbidden_tool_calls")
         if isinstance(forbidden_tool_calls, list):
             forbidden_tool_calls_count += len(forbidden_tool_calls)
+            for call in forbidden_tool_calls:
+                if isinstance(call, dict):
+                    record_web_tool_call(call)
 
     return {
         "search_allowed": search_allowed,

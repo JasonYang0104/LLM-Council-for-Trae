@@ -754,6 +754,7 @@ def tool_policy_record(call: ModelCallResult) -> dict[str, Any]:
         "allowed_tools": call.allowed_tools,
         "disallowed_tools": call.disallowed_tools,
         "forbidden_tool_calls": call.forbidden_tool_calls,
+        "tool_calls": call.tool_calls,
     }
 
 

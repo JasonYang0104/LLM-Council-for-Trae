@@ -53,7 +53,7 @@ make -C ~/.LCT install-global
 使用 LCT，回答："""<你的问题>"""
 ```
 
-Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo（出现 `src/llm_council_for_trae/`、`.trae/agents/` 或 `profiles/subagents.json` 时停止）→ 确认 `traecli` 和 `llm-council-for-trae` 可用 → 把问题写入 `_lct_question.md` → 使用 `--default-models` 和 `--json` 非交互运行 → `validate` 校验 → 读取 `stage3/final.md` → 在问题 workspace 根目录写出 `<run_id>-final.md` 和 `<run_id>-index.md` → 返回 run status、validate status、最终答案路径和 HTML 报告路径。
+Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo（出现 `src/llm_council_for_trae/`、`.trae/agents/` 或 `profiles/subagents.json` 时停止）→ 确认 `traecli` 和 `llm-council-for-trae` 可用 → 把问题写入 `_lct_question.md` → 使用 `--default-models` 和 `--json` 非交互运行 → `validate` 校验 → 读取 `stage3/final.md` → 在问题 workspace 根目录写出 `<run_id>-final.md` 和 `<run_id>-index.md`（必须包含 run status、validate status、HTML path、Input mode、search_allowed、search_used、failed models / timeout）→ 返回 run status、validate status、最终答案路径和 HTML 报告路径。
 
 ### 1. 确认 traecli 可用
 

@@ -124,7 +124,7 @@ Update `README.md` and `docs/traecli-subagents.md`:
 
 ### Slice F: Model recommendation guardrail
 
-Without running a large benchmark, add a deterministic recommendation rule that excludes Seed and Doubao model names from automatic recommended rosters unless the user explicitly specifies them. This protects the default recommendation from the current live roster drift observed in manual E2E.
+Without running a large benchmark, add a deterministic recommendation rule that excludes Seed and Doubao model names from automatic recommended rosters when safer usable models exist. If no safer usable model exists, recommendation may fall back to Seed / Doubao rather than returning an empty roster. Explicit user-provided `--members` / `--chairman` values are unaffected. This protects the default recommendation from the current live roster drift observed in manual E2E.
 
 ## 5. Subagent Review Contract
 

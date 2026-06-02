@@ -33,7 +33,7 @@ LCT CLI 只消费 `_lct_question.md`；是否做轻量意图理解和 prompt sha
 
 如果用户明确说 `按原始输入`、`不要改写`、`只用原文`、`我要评估 LCT 对原始问题的理解` 或类似表达，必须使用 `raw original input` 模式：`_lct_question.md` 只写用户原文，不加结构化增强。
 
-无论哪种模式，最终根目录 `$RUN_ID-index.md` 和对用户汇报都必须写明：
+无论哪种模式，最终根目录 `$RUN_ID-index.md` 和对用户汇报都必须写明 `Input mode`、`search_allowed`、`search_used`；输入模式取值为：
 
 ```text
 Input mode: raw original input

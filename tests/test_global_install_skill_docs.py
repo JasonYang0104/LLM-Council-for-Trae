@@ -51,6 +51,10 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
         self.assertIn("Input mode", skill)
         self.assertIn("search_allowed", skill)
         self.assertIn("search_used", skill)
+        index_line = next(line for line in skill.splitlines() if "$RUN_ID-index.md" in line)
+        self.assertIn("Input mode", index_line)
+        self.assertIn("search_allowed", index_line)
+        self.assertIn("search_used", index_line)
 
     def test_docs_use_current_user_skill_path_and_no_stale_skill_path(self):
         doc_paths = [
@@ -107,6 +111,14 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
         self.assertIn("legacy / experimental", subagents_doc)
         self.assertIn("direct provider 是日常主路径", subagents_doc)
         self.assertIn("模型漂移", subagents_doc)
+
+    def test_readme_quickstart_index_contract_includes_input_and_search_evidence(self):
+        readme = self.read_text("README.md")
+        quickstart_line = next(line for line in readme.splitlines() if "<run_id>-index.md" in line)
+
+        self.assertIn("Input mode", quickstart_line)
+        self.assertIn("search_allowed", quickstart_line)
+        self.assertIn("search_used", quickstart_line)
 
     def test_make_install_global_writes_global_wrapper_and_skill_link(self):
         with tempfile.TemporaryDirectory() as tmp:
