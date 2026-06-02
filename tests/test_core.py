@@ -445,6 +445,10 @@ FINAL RANKING:
             self.assertIn('lang="zh-CN"', html)
             self.assertIn("归档副本", html)
             self.assertIn('class="sheet"', html)
+            self.assertIn('<details id="input-prompt" class="question-context">', html)
+            self.assertIn("<summary>输入提示词</summary>", html)
+            self.assertNotIn('<details id="input-prompt" class="question-context" open>', html)
+            self.assertNotIn('<p class="question-context">', html)
             self.assertIn("附录 A · 阶段 1 候选回答", html)
             self.assertIn("已验证<br>阶段 3", html)
             self.assertIn("复制 Markdown", html)
@@ -466,6 +470,7 @@ FINAL RANKING:
             end = html.index("</script>", start)
             payloads = json.loads(html[start:end])
             self.assertIn('# Final with <tag> & "quotes"', payloads["markdown"])
+            self.assertIn("## 输入\n\n{}", payloads["markdown"])
             self.assertIn('Prompt with <tag> & "quotes"', payloads["prompt"])
 
     def test_subagent_validate_requires_invocation_evidence(self):

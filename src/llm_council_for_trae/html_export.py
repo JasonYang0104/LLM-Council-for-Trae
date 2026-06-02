@@ -192,6 +192,16 @@ h1 {{ margin:0; font-size:58px; line-height:1.05; font-weight:400; letter-spacin
   color:var(--body);
   font:15px/1.65 var(--serif);
   max-width:72ch;
+}}
+.question-context summary {{
+  cursor:pointer;
+  font-weight:600;
+  color:var(--ink);
+}}
+.question-context .details-body {{
+  margin-top:12px;
+  padding-top:12px;
+  border-top:1px solid rgba(123,45,38,.25);
   white-space:pre-line;
 }}
 .run-meta {{ margin:14px 0 0; color:var(--muted); font:13px/1.55 var(--mono); }}
@@ -336,7 +346,7 @@ svg {{ width:100%; max-width:760px; height:auto; display:block; }}
     <section class="archive-hero" aria-label="运行标题">
       <div>
       <h1>{esc(page_title)}</h1>
-      <p class="question-context">{esc(input_text.strip())}</p>
+      <details id="input-prompt" class="question-context"><summary>输入提示词</summary><div class="details-body">{esc(input_text.strip())}</div></details>
       <p class="run-meta">运行 {esc(manifest.get('run_id'))} · 状态 <strong class="status-{esc(manifest.get('status'))}">{esc(manifest.get('status'))}</strong> · 导出 {esc(generated_at)}</p>
     </div>
     <div class="toolbar" aria-label="导出操作">

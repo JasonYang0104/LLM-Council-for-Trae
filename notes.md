@@ -34,3 +34,4 @@
 - Decision: keep `profiles/subagents.json` and `.trae/agents/` for validation and historical evidence. Do not delete them in this iteration.
 - Decision: add deterministic Seed/Doubao exclusion to automatic recommendations, but do not block explicit user-provided model names.
 - Decision: do not ask the user for another design approval pause because the handoff already instructs this `/goal` thread to execute design-first, test-plan-first, then implement. The design and test plan are still committed as a separate phase before behavior edits.
+- TDD slice HTML prompt collapse: RED added assertions for `<details id="input-prompt" class="question-context">`, no `open` attribute, no old `<p class="question-context">`, and input preservation in the Markdown copy payload. GREEN changed only `html_export.py` rendering/CSS for the input prompt.
