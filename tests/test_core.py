@@ -14,6 +14,8 @@ from llm_council_for_trae.council import (
     calculate_aggregate_rankings,
     classify_stage1_status,
     CouncilConfig,
+    DEFAULT_CHAIRMAN,
+    DEFAULT_MEMBERS,
     initial_manifest,
     parse_ranking_from_text,
     record_stage_failures,
@@ -204,8 +206,12 @@ FINAL RANKING:
             {"name": "DeepSeek-V4-Pro", "context_window": 184000},
         ]
         choice = recommend_model_choice(models)
-        self.assertEqual(choice.members, ["GPT-5.4", "GLM-5.1", "DeepSeek-V4-Pro"])
+        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "GPT-5.4", "GLM-5.1", "openrouter-2o"])
         self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
+
+    def test_default_direct_roster_uses_productized_four_member_suite(self):
+        self.assertEqual(DEFAULT_MEMBERS, ["Kimi-K2.6", "MiniMax-M2.7", "GPT-5.2", "DeepSeek-V4-Pro"])
+        self.assertEqual(DEFAULT_CHAIRMAN, "Kimi-K2.6")
 
     def test_doctor_downgrades_mcp_only_errors_when_models_work(self):
         doctor_payload = {
@@ -323,7 +329,7 @@ FINAL RANKING:
         models = [{"name": "GPT-5.4"}, {"name": "GLM-5.1"}, {"name": "DeepSeek-V4-Pro"}]
         stderr = StringIO()
         choice = select_model_choice_interactively(models, stdin=StringIO("\n"), stderr=stderr)
-        self.assertEqual(choice.members, ["GPT-5.4", "GLM-5.1", "DeepSeek-V4-Pro"])
+        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "GPT-5.4", "GLM-5.1"])
         self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
         self.assertIn("LCT 检测到当前 traecli 可用模型", stderr.getvalue())
         self.assertIn("推荐 council 模型套", stderr.getvalue())
@@ -500,6 +506,9 @@ FINAL RANKING:
 
         summary = summarize_search_usage(manifest)
 
+        self.assertTrue(summary["lct_search_allowed"])
+        self.assertTrue(summary["lct_search_used"])
+        self.assertEqual(summary["lct_web_tool_calls"], 1)
         self.assertTrue(summary["search_allowed"])
         self.assertTrue(summary["search_used"])
         self.assertEqual(summary["web_tool_calls_count"], 1)
@@ -525,6 +534,9 @@ FINAL RANKING:
 
         summary = summarize_search_usage(manifest)
 
+        self.assertTrue(summary["lct_search_allowed"])
+        self.assertFalse(summary["lct_search_used"])
+        self.assertEqual(summary["lct_web_tool_calls"], 0)
         self.assertTrue(summary["search_allowed"])
         self.assertFalse(summary["search_used"])
         self.assertEqual(summary["web_tool_calls_count"], 0)
@@ -549,6 +561,9 @@ FINAL RANKING:
 
         summary = summarize_search_usage(manifest)
 
+        self.assertFalse(summary["lct_search_allowed"])
+        self.assertTrue(summary["lct_search_used"])
+        self.assertEqual(summary["lct_web_tool_calls"], 1)
         self.assertFalse(summary["search_allowed"])
         self.assertTrue(summary["search_used"])
         self.assertEqual(summary["web_tool_calls_count"], 1)
@@ -1350,7 +1365,7 @@ FINAL RANKING:
         import asyncio
         asyncio.run(_run())
 
-    def test_recommend_model_choice_prefers_non_openrouter(self):
+    def test_recommend_model_choice_prefers_non_openrouter_but_uses_openrouter_to_fill(self):
         from llm_council_for_trae.model_selection import recommend_model_choice
         models = [
             {"name": "openrouter-2o"},
@@ -1358,10 +1373,10 @@ FINAL RANKING:
             {"name": "Qwen3.6-Plus"},
         ]
         choice = recommend_model_choice(models)
-        self.assertNotIn("openrouter-2o", choice.members)
+        self.assertEqual(choice.members, ["Qwen3.6-Plus", "GLM-5.1", "openrouter-2o"])
         self.assertEqual(choice.source, "recommended")
 
-    def test_recommend_model_choice_excludes_seed_and_doubao_when_safe_alternatives_exist(self):
+    def test_recommend_model_choice_excludes_hard_banned_models_when_safe_alternatives_exist(self):
         from llm_council_for_trae.model_selection import recommend_model_choice
         models = [
             {"name": "GPT-5.4"},
@@ -1369,12 +1384,15 @@ FINAL RANKING:
             {"name": "Mystery-Safe-Model"},
             {"name": "Doubao-Seed-1.8"},
             {"name": "Kimi-K2.6"},
+            {"name": "GPT-5.5"},
         ]
         choice = recommend_model_choice(models)
 
-        self.assertEqual(choice.members, ["GPT-5.4", "Kimi-K2.6", "Mystery-Safe-Model"])
-        self.assertNotIn("Seed", ",".join(choice.members + [choice.chairman]))
-        self.assertNotIn("Doubao", ",".join(choice.members + [choice.chairman]))
+        self.assertEqual(choice.members, ["Kimi-K2.6", "GPT-5.4", "Mystery-Safe-Model"])
+        joined = ",".join(choice.members + [choice.chairman]).lower()
+        self.assertNotIn("seed", joined)
+        self.assertNotIn("doubao", joined)
+        self.assertNotIn("gpt-5.5", joined)
 
     def test_recommend_model_choice_prefers_openrouter_over_seed_when_it_is_the_only_safe_model(self):
         from llm_council_for_trae.model_selection import recommend_model_choice
@@ -1386,7 +1404,7 @@ FINAL RANKING:
 
         self.assertEqual(choice.members, ["openrouter-safe"])
 
-    def test_recommend_model_choice_falls_back_when_all_models_are_seed_or_doubao(self):
+    def test_recommend_model_choice_reports_no_safe_candidates_when_all_models_are_hard_banned(self):
         from llm_council_for_trae.model_selection import recommend_model_choice
 
         choice = recommend_model_choice([
@@ -1394,7 +1412,9 @@ FINAL RANKING:
             {"name": "Doubao-Seed-1.8"},
         ])
 
-        self.assertEqual(choice.members, ["Seed-Dogfooding-2.0", "Doubao-Seed-1.8"])
+        self.assertEqual(choice.members, [])
+        self.assertEqual(choice.chairman, "")
+        self.assertEqual(choice.source, "no-safe-candidates")
 
     def test_explicit_model_resolution_allows_seed_models(self):
         names = ["Seed-Dogfooding-2.0", "GPT-5.4"]

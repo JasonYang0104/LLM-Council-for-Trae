@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, TextIO
 
@@ -7,17 +8,23 @@ from .council import DEFAULT_CHAIRMAN, DEFAULT_MEMBERS
 
 
 PREFERRED_MEMBERS = [
-    "GPT-5.4",
-    "GLM-5.1",
-    "DeepSeek-V4-Pro",
     "Kimi-K2.6",
-    "Qwen3.6-Plus",
-    "Gemini-3.1-Pro-Preview",
     "MiniMax-M2.7",
     "GPT-5.2",
+    "DeepSeek-V4-Pro",
+    "Qwen3.6-Plus",
+    "Gemini-3.1-Pro-Preview",
+    "openrouter-1o",
+    "openrouter-1",
+    "MiniMax-M2.5",
+    "GPT-5.4",
+    "GLM-5.1",
 ]
-PREFERRED_CHAIRMEN = ["Kimi-K2.6", "DeepSeek-V4-Pro", "GPT-5.4", "GLM-5.1"]
-AUTO_EXCLUDED_MODEL_MARKERS = ("seed", "doubao")
+PREFERRED_CHAIRMEN = ["Kimi-K2.6", "DeepSeek-V4-Pro", "GPT-5.2", "GPT-5.4", "GLM-5.1"]
+HARD_BAN_EXACT = {"gpt-5.5"}
+HARD_BAN_MARKERS = ("seed", "doubao", "gpt-5.5")
+QUEUE_HEAT_THRESHOLD = 95
+QUEUE_HEAT_RE = re.compile(r"(?:queue\s*heat|排队热度|队列热度)[^\d%]*(\d{1,3})\s*%", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -42,41 +49,127 @@ def available_model_names(models: list[dict[str, Any]]) -> list[str]:
 
 
 def recommend_model_choice(models: list[dict[str, Any]]) -> ModelChoice:
-    names = available_model_names(models)
-    if not names:
+    unique_models = _dedupe_named_models(models)
+    if not unique_models:
         return ModelChoice(DEFAULT_MEMBERS, DEFAULT_CHAIRMAN, "static-default")
 
-    non_openrouter = [name for name in names if not name.lower().startswith("openrouter")]
-    safe_names = [name for name in names if not is_auto_excluded_model(name)]
-    safe_non_openrouter = [name for name in non_openrouter if not is_auto_excluded_model(name)]
-    if safe_non_openrouter:
-        usable = safe_non_openrouter
-    elif safe_names:
-        usable = safe_names
-    elif non_openrouter:
-        usable = non_openrouter
-    else:
-        usable = names
+    safe_models = [model for model in unique_models if not model_exclusion_reasons(model)]
+    if not safe_models:
+        return ModelChoice([], "", "no-safe-candidates")
+
+    safe_names = [model["name"] for model in safe_models]
+    safe_non_openrouter = [name for name in safe_names if not name.lower().startswith("openrouter")]
+    safe_openrouter = [name for name in safe_names if name.lower().startswith("openrouter")]
+    usable = safe_non_openrouter + safe_openrouter
 
     members: list[str] = []
     for preferred in PREFERRED_MEMBERS:
-        if preferred in usable and preferred not in members:
+        if preferred in safe_names and preferred not in members:
             members.append(preferred)
-        if len(members) >= 3:
+        if len(members) >= 4:
             break
     for name in usable:
         if name not in members:
             members.append(name)
-        if len(members) >= 3:
+        if len(members) >= 4:
             break
 
-    chairman = next((name for name in PREFERRED_CHAIRMEN if name in usable), members[0])
+    chairman = next(
+        (name for name in PREFERRED_CHAIRMEN if name in safe_non_openrouter),
+        members[0],
+    )
     return ModelChoice(members, chairman, "recommended")
 
 
 def is_auto_excluded_model(name: str) -> bool:
+    return bool(model_exclusion_reasons({"name": name}))
+
+
+def model_exclusion_reasons(model: dict[str, Any], *, queue_heat_threshold: int = QUEUE_HEAT_THRESHOLD) -> list[str]:
+    name = str(model.get("name") or "")
     lowered = name.lower()
-    return any(marker in lowered for marker in AUTO_EXCLUDED_MODEL_MARKERS)
+    reasons: list[str] = []
+    if lowered in HARD_BAN_EXACT or any(marker in lowered for marker in HARD_BAN_MARKERS):
+        reasons.append("hard-banned model")
+    if any(marker in lowered for marker in ("seed", "doubao")):
+        reasons.append("Seed/Doubao model")
+    if _is_beta_model(model):
+        reasons.append("Beta model")
+    queue_heat = parse_queue_heat_percent(model)
+    if queue_heat is not None and queue_heat >= queue_heat_threshold:
+        reasons.append(f"Queue heat {queue_heat}%")
+    return reasons
+
+
+def parse_queue_heat_percent(model: dict[str, Any]) -> int | None:
+    for key in ("queue_heat", "queue_heat_percent", "queueHeat", "queueHeatPercent"):
+        value = model.get(key)
+        parsed = _parse_percent(value)
+        if parsed is not None:
+            return parsed
+
+    usage = model.get("usage")
+    if isinstance(usage, dict):
+        for key in ("queue_heat", "queue_heat_percent", "queueHeat", "queueHeatPercent"):
+            parsed = _parse_percent(usage.get(key))
+            if parsed is not None:
+                return parsed
+
+    for key in ("description", "label", "status", "tags", "labels"):
+        value = model.get(key)
+        if isinstance(value, list):
+            haystack = " ".join(str(item) for item in value)
+        else:
+            haystack = str(value or "")
+        match = QUEUE_HEAT_RE.search(haystack)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def _parse_percent(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return round(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        if stripped.endswith("%"):
+            stripped = stripped[:-1].strip()
+        if stripped.isdigit():
+            return int(stripped)
+    return None
+
+
+def _is_beta_model(model: dict[str, Any]) -> bool:
+    for key in ("beta", "is_beta", "isBeta"):
+        if model.get(key) is True:
+            return True
+    text = " ".join(
+        str(model.get(key) or "")
+        for key in ("name", "description", "label", "status")
+    ).lower()
+    for key in ("tags", "labels"):
+        value = model.get(key)
+        if isinstance(value, list):
+            text += " " + " ".join(str(item).lower() for item in value)
+    return "beta" in text or "测试" in text
+
+
+def _dedupe_named_models(models: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for model in models:
+        name = model.get("name")
+        if not isinstance(name, str) or not name.strip() or name in seen:
+            continue
+        seen.add(name)
+        deduped.append(model | {"name": name})
+    return deduped
 
 
 def select_model_choice_interactively(
@@ -93,6 +186,8 @@ def select_model_choice_interactively(
     write_model_menu(stderr, models, recommendation)
     mode = read_answer(stdin, stderr, "选择 [回车=使用推荐 / d=默认模型套 / c=自定义 / q=取消]: ").strip().lower()
     if mode in {"", "r", "recommend", "recommended"}:
+        if not recommendation.members:
+            raise ValueError("当前模型列表没有安全推荐候选；请显式传 --members/--chairman。")
         return recommendation
     if mode in {"d", "default"}:
         return ModelChoice(list(DEFAULT_MEMBERS), DEFAULT_CHAIRMAN, "static-default")
@@ -127,7 +222,7 @@ def write_model_menu(stderr: TextIO, models: list[dict[str, Any]], recommendatio
     stderr.write("\n推荐 council 模型套：\n")
     stderr.write(f"  members: {', '.join(recommendation.members)}\n")
     stderr.write(f"  chairman: {recommendation.chairman}\n")
-    stderr.write("推荐逻辑：优先选择当前列表里可用、互补、非 OpenRouter 且非 Seed/Doubao 的强模型；没有更安全候选时才回落。主席优先级：Kimi、DeepSeek、GPT、GLM。\n")
+    stderr.write("推荐逻辑：硬排除 Seed/Doubao/GPT-5.5、Beta 和 Queue heat 过高模型；优先非 OpenRouter，安全非 OpenRouter 不足 4 个时才用 OpenRouter 补位。主席优先级：Kimi、DeepSeek、GPT。\n")
     if names:
         stderr.write("\n")
     stderr.flush()

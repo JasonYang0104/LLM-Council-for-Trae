@@ -11,6 +11,7 @@
 - run 结束后会校验 expected model 和 actual model。
 - 如果 Trae CLI 对无效模型 fallback 到默认模型，run 必须失败。
 - `profiles/subagents.json` 会受 live roster 模型漂移影响；如果 profile 中的模型已不在 `traecli models --json`，不要把失败解读成 direct provider 失败。
+- 当前 direct 默认阵容以 `src/llm_council_for_trae/council.py` 为准；不要因为 `profiles/subagents.json` 保留旧固定成员，就把 GLM-5.1、GPT-5.4、Qwen3.6-Plus 或 Gemini-3.1-Pro-Preview 重新抬回 direct 默认阵容。
 
 ## 需要复验的命令
 
@@ -65,7 +66,7 @@ Answer only the current council stage prompt. Do not browse the workspace, do no
 profiles/subagents.json
 ```
 
-`profiles/subagents.json` 当前与 direct 默认阵容对齐：
+`profiles/subagents.json` 是历史固定成员 profile，不再代表 direct 默认阵容：
 
 ```text
 members: GPT-5.4, GLM-5.1, Qwen3.6-Plus, Kimi-K2.6, DeepSeek-V4-Pro, Gemini-3.1-Pro-Preview

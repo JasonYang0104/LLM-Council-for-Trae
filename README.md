@@ -10,7 +10,7 @@
 
 - **三阶段 council run**：Stage 1 独立回答，Stage 2 匿名互评排序，Stage 3 主席综合。
 - **traecli-first runtime**：默认通过 `traecli` 调用模型，不维护第二套模型清单。
-- **主动模型选择**：只传问题文件时，CLI 会读取当前 `traecli models --json`，展示模型列表和推荐 council 套装，再询问是否采用。
+- **主动模型选择**：只传问题文件时，CLI 会读取当前 `traecli models --json`，展示模型列表和推荐 council 套装，再询问是否采用；推荐逻辑会排除 Seed/Doubao/GPT-5.5、Beta 和 Queue heat 过高模型。
 - **可审计 artifact**：每次运行保存 input、config、manifest、每阶段 prompt / response / metadata、traecli stream JSON 和 HTML export。
 - **模型防 fallback**：记录 expected model 和 actual model，模型不匹配、空响应、无效模型、Stage 2 parse failure 都会失败。
 - **本地 HTML 报告**：HTML export 只读 artifacts，不调用模型，不改写主席答案。
@@ -53,7 +53,7 @@ make -C ~/.LCT install-global
 使用 LCT，回答："""<你的问题>"""
 ```
 
-Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo（出现 `src/llm_council_for_trae/`、`.trae/agents/` 或 `profiles/subagents.json` 时停止）→ 确认 `traecli` 和 `llm-council-for-trae` 可用 → 把问题写入 `_lct_question.md` → 使用 `--default-models` 和 `--json` 非交互运行 → `validate` 校验 → 读取 `stage3/final.md` → 在问题 workspace 根目录写出 `<run_id>-final.md` 和 `<run_id>-index.md`（必须包含 run status、validate status、HTML path、Input mode、search_allowed、search_used、failed models / timeout）→ 返回 run status、validate status、最终答案路径和 HTML 报告路径。
+Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo（出现 `src/llm_council_for_trae/`、`.trae/agents/` 或 `profiles/subagents.json` 时停止）→ 确认 `traecli` 和 `llm-council-for-trae` 可用 → 把问题写入 `_lct_question.md` → 先记录 `models --recommend --json` 的推荐阵容 → 使用 `--default-models` 和 `--json` 非交互运行 → 如果默认阵容失败或不可用，再由外层 Agent 使用推荐阵容显式传 `--members/--chairman` 重跑；fallback 编排只属于 Skill / 外层 Agent，不属于 CLI 内部自动行为 → `validate` 校验 → 读取 `stage3/final.md` → 在问题 workspace 根目录写出 `<run_id>-final.md` 和 `<run_id>-index.md`（必须包含 run status、validate status、HTML path、Input mode、lct_search_allowed、lct_search_used、lct_web_tool_calls、agent_external_search_allowed、agent_external_search_used、agent_sources、agent_fact_pack_path、agent_added_context、final_answer_source、failed models / timeout）→ 返回 run status、validate status、最终答案路径和 HTML 报告路径。
 
 ### 1. 确认 traecli 可用
 
@@ -115,7 +115,7 @@ llm-council-for-trae run \
   --json
 ```
 
-默认 direct run 不再传 `--yolo`，并使用 `--member-tool-mode search_enabled`：成员模型可使用 `WebSearch` / `WebFetch`，但 `Skill`、`Agent`、workspace 读写和 shell 会被禁止并由 provider 做污染检测。`search_enabled` 只表示搜索被允许，不表示模型实际搜索了；HTML 和索引应分开记录 `search_allowed` 与 `search_used`。只有明确需要绕过权限时才传 `--yolo`；普通 council 成员不应使用它。
+默认 direct run 不再传 `--yolo`，并使用 `--member-tool-mode search_enabled`：成员模型可使用 `WebSearch` / `WebFetch`，但 `Skill`、`Agent`、workspace 读写和 shell 会被禁止并由 provider 做污染检测。`search_enabled` 只表示搜索被允许，不表示模型实际搜索了；HTML 和索引应分开记录 `lct_search_allowed` 与 `lct_search_used`，并用 `agent_external_search_*` 单独记录外层 Agent 是否自己做了外部检索。只有明确需要绕过权限时才传 `--yolo`；普通 council 成员不应使用它。
 
 可选工具模式：
 
@@ -133,8 +133,8 @@ LCT 检测到当前 traecli 可用模型：
   2. ...
 
 推荐 council 模型套：
-  members: GPT-5.4, GLM-5.1, DeepSeek-V4-Pro
-  chairman: GPT-5.4
+  members: Kimi-K2.6, MiniMax-M2.7, GPT-5.2, DeepSeek-V4-Pro
+  chairman: Kimi-K2.6
 
 选择 [回车=使用推荐 / d=默认模型套 / c=自定义 / q=取消]:
 ```
@@ -152,9 +152,11 @@ llm-council-for-trae run \
 默认模型套是：
 
 ```text
-members: GPT-5.4, GLM-5.1, Qwen3.6-Plus, Kimi-K2.6, DeepSeek-V4-Pro, Gemini-3.1-Pro-Preview
+members: Kimi-K2.6, MiniMax-M2.7, GPT-5.2, DeepSeek-V4-Pro
 chairman: Kimi-K2.6
 ```
+
+`--default-models` 始终使用这套静态默认阵容。`models --recommend --json` 只负责给外层 Agent 一个可审计候选：默认失败时，外层 Agent 可以显式传 `--members` / `--chairman` 重跑；CLI 内部不会把默认失败自动改成推荐阵容。
 
 LCT 的模型询问是 CLI 自己的终端输入，不依赖 Agent 的 AskUserQuestion **（注释：Agent 用来向用户发起澄清问题的工具能力）**。如果外层 Agent 不能交互式输入，使用 `--default-models`、`--members/--chairman` 或 `--profile`。
 
@@ -379,6 +381,6 @@ PYTHONPATH=src python3 -m llm_council_for_trae.cli run --input examples/question
 
 ## Current Status
 
-`LLM-Council-for-Trae` v1.1.2：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、subagent evidence validation、主动模型选择和中文默认输出全部落地。P0（failure 隐藏 + 主席综述 prompt）、P1（阵容代码落地）、P2（quorum 重试）、P3（E2E 验证）全部完成。测试数量以 `make test` 的当前输出为准。HTML 报告 h1 动态标题和问题摘要已上线，subagent profile 已对齐 6 成员全阵容。当前下一阶段是 runtime hardening：重点解决并发互斥、Stage 2 超时、timeout 真值源、优雅退出和降级收场。
+`LLM-Council-for-Trae` v1.1.2：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、subagent evidence validation、主动模型选择和中文默认输出全部落地。默认 direct 阵容已按 2026-06-02 live 可用性收敛为 4 成员：Kimi-K2.6、MiniMax-M2.7、GPT-5.2、DeepSeek-V4-Pro，主席为 Kimi-K2.6。`models --recommend` 会排除 Seed/Doubao/GPT-5.5、Beta 和 Queue heat ≥95% 的模型，优先安全非 OpenRouter，安全非 OpenRouter 不足 4 个时才用 OpenRouter 补位。测试数量以 `make test` 的当前输出为准。HTML 报告 h1 动态标题、问题摘要和 LCT 搜索证据摘要已上线。subagent profile 是 legacy / experimental 路径，不再代表 direct 默认阵容。当前下一阶段是 runtime hardening：重点解决并发互斥、Stage 2 超时、timeout 真值源、优雅退出和降级收场。
 
-模型阵容：6 成员（GPT-5.4、GLM-5.1、Qwen3.6-Plus、Kimi-K2.6、DeepSeek-V4-Pro、Gemini-3.1-Pro-Preview）+ Kimi-K2.6 主席 + DeepSeek-V4-Pro/GPT-5.4 备选链。HTML 报告结构已稳定化。
+模型阵容：direct 默认 4 成员（Kimi-K2.6、MiniMax-M2.7、GPT-5.2、DeepSeek-V4-Pro）+ Kimi-K2.6 主席。subagent profile 保留历史 6 成员固定实验路径，不再代表 direct 默认阵容。HTML 报告结构已稳定化。

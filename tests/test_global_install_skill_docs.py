@@ -49,12 +49,15 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
         for trigger in ["按原始输入", "不要改写", "只用原文", "评估 LCT 对原始问题的理解"]:
             self.assertIn(trigger, skill)
         self.assertIn("Input mode", skill)
-        self.assertIn("search_allowed", skill)
-        self.assertIn("search_used", skill)
-        index_line = next(line for line in skill.splitlines() if "$RUN_ID-index.md" in line)
+        self.assertIn("lct_search_allowed", skill)
+        self.assertIn("lct_search_used", skill)
+        self.assertIn("agent_external_search_used", skill)
+        self.assertIn("final_answer_source", skill)
+        index_line = next(line for line in skill.splitlines() if "$RUN_ID-index.md" in line and "lct_search_allowed" in line)
         self.assertIn("Input mode", index_line)
-        self.assertIn("search_allowed", index_line)
-        self.assertIn("search_used", index_line)
+        self.assertIn("lct_search_allowed", index_line)
+        self.assertIn("lct_search_used", index_line)
+        self.assertIn("agent_external_search_used", index_line)
 
     def test_docs_use_current_user_skill_path_and_no_stale_skill_path(self):
         doc_paths = [
@@ -117,8 +120,9 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
         quickstart_line = next(line for line in readme.splitlines() if "<run_id>-index.md" in line)
 
         self.assertIn("Input mode", quickstart_line)
-        self.assertIn("search_allowed", quickstart_line)
-        self.assertIn("search_used", quickstart_line)
+        self.assertIn("lct_search_allowed", quickstart_line)
+        self.assertIn("lct_search_used", quickstart_line)
+        self.assertIn("agent_external_search_used", quickstart_line)
 
     def test_make_install_global_writes_global_wrapper_and_skill_link(self):
         with tempfile.TemporaryDirectory() as tmp:

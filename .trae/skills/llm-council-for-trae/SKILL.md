@@ -71,7 +71,14 @@ $LCT doctor --json
 $LCT models --recommend --json
 ```
 
-记录 `recommendation.members` 和 `recommendation.chairman`。
+记录 `recommendation.members` 和 `recommendation.chairman`。当前静态默认模型套是：
+
+```text
+members: Kimi-K2.6, MiniMax-M2.7, GPT-5.2, DeepSeek-V4-Pro
+chairman: Kimi-K2.6
+```
+
+`models --recommend --json` 只给外层 Agent 一个可审计候选。fallback 编排只属于 Skill / 外层 Agent，不属于 CLI 内部自动行为。
 
 ## Step 2: 准备问题文件
 
@@ -89,7 +96,7 @@ EOF
 
 ### 3a. 非交互终端（Agent 场景）— 默认路径
 
-必须使用 `--default-models`。这是最常用的模式：
+必须先使用 `--default-models`。这是最常用的 default attempt：
 
 ```bash
 $LCT run \
@@ -98,6 +105,21 @@ $LCT run \
   --timeout 180 \
   --json
 ```
+
+记录 `default_attempt_status`、`default_attempt_run_id`、`default_attempt_failure_reason`。
+
+如果 default attempt 失败、默认模型缺失，或没有产生可 validate artifacts，再用 Step 1 的推荐阵容显式重跑：
+
+```bash
+$LCT run \
+  --input /tmp/council-question.md \
+  --members "Kimi-K2.6,MiniMax-M2.7,GPT-5.2,DeepSeek-V4-Pro" \
+  --chairman "Kimi-K2.6" \
+  --timeout 180 \
+  --json
+```
+
+记录 `recommended_rerun_status`、`recommended_rerun_run_id`、`recommended_members`、`recommended_chairman`。
 
 ### 3b. 交互终端 — 可省略模型参数
 
@@ -115,7 +137,7 @@ $LCT run \
 ```bash
 $LCT run \
   --input /tmp/council-question.md \
-  --members "GPT-5.4,GLM-5.1,Kimi-K2.6" \
+  --members "Kimi-K2.6,MiniMax-M2.7,GPT-5.2,DeepSeek-V4-Pro" \
   --chairman "Kimi-K2.6" \
   --timeout 180 \
   --json
@@ -125,7 +147,7 @@ $LCT run \
 
 命令执行后会依次运行三个阶段：
 
-1. **Stage 1** — 6 个成员模型独立回答同一问题（并发）
+1. **Stage 1** — 默认 4 个成员模型独立回答同一问题（并发）
 2. **Stage 2** — 每个成员对 Stage 1 的所有回答进行匿名排序和评价
 3. **Stage 3** — 主席模型综合 Stage 1 回答和 Stage 2 排序，给出最终答案
 
@@ -183,3 +205,17 @@ $LCT run \
 - `stage2/*.review.md` — 互评结果
 - `stage3/final.md` — 主席最终答案
 - `html/index.html` — HTML 报告
+
+交付给用户的根目录索引还必须拆开记录：
+
+```text
+lct_search_allowed: true|false
+lct_search_used: true|false
+lct_web_tool_calls: <number>
+agent_external_search_allowed: true|false
+agent_external_search_used: true|false
+agent_sources: <URLs or none>
+agent_fact_pack_path: <path or none>
+agent_added_context: true|false
+final_answer_source: stage3/final.md
+```
