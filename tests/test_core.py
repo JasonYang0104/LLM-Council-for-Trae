@@ -450,6 +450,8 @@ FINAL RANKING:
             self.assertNotIn('<details id="input-prompt" class="question-context" open>', html)
             self.assertNotIn('<p class="question-context">', html)
             self.assertIn("附录 A · 阶段 1 候选回答", html)
+            self.assertIn("搜索工具", html)
+            self.assertIn("允许：是 · 实际使用：否", html)
             self.assertIn("已验证<br>阶段 3", html)
             self.assertIn("复制 Markdown", html)
             self.assertIn('id="copy-fallback"', html)
@@ -472,6 +474,61 @@ FINAL RANKING:
             self.assertIn('# Final with <tag> & "quotes"', payloads["markdown"])
             self.assertIn("## 输入\n\n{}", payloads["markdown"])
             self.assertIn('Prompt with <tag> & "quotes"', payloads["prompt"])
+
+    def test_search_summary_separates_allowed_from_used(self):
+        from llm_council_for_trae.html_export import summarize_search_usage
+
+        manifest = {
+            "stages": {
+                "stage1": [
+                    {
+                        "allowed_tools": ["WebSearch", "WebFetch"],
+                        "tool_calls_count": 0,
+                        "tool_calls": [],
+                        "forbidden_tool_calls": [],
+                    }
+                ],
+                "stage2": [],
+                "stage3": {
+                    "allowed_tools": ["WebSearch", "WebFetch"],
+                    "tool_calls_count": 1,
+                    "tool_calls": [{"name": "WebSearch", "id": "tc1"}],
+                    "forbidden_tool_calls": [],
+                },
+            }
+        }
+
+        summary = summarize_search_usage(manifest)
+
+        self.assertTrue(summary["search_allowed"])
+        self.assertTrue(summary["search_used"])
+        self.assertEqual(summary["web_tool_calls_count"], 1)
+        self.assertEqual(summary["tool_calls_count"], 1)
+        self.assertEqual(summary["forbidden_tool_calls_count"], 0)
+
+    def test_search_summary_does_not_infer_search_from_allowed_tools_only(self):
+        from llm_council_for_trae.html_export import summarize_search_usage
+
+        manifest = {
+            "stages": {
+                "stage1": [
+                    {
+                        "allowed_tools": ["WebSearch", "WebFetch"],
+                        "tool_calls_count": 0,
+                        "tool_calls": [],
+                        "forbidden_tool_calls": [],
+                    }
+                ],
+                "stage2": [],
+                "stage3": {},
+            }
+        }
+
+        summary = summarize_search_usage(manifest)
+
+        self.assertTrue(summary["search_allowed"])
+        self.assertFalse(summary["search_used"])
+        self.assertEqual(summary["web_tool_calls_count"], 0)
 
     def test_subagent_validate_requires_invocation_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:
