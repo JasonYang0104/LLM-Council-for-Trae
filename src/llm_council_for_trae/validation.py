@@ -75,6 +75,23 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
     subagent_mode = provider_mode == "subagent"
     manifest_status = manifest.get("status")
 
+    if manifest_status == "running":
+        checks.append(
+            {
+                "name": "run_in_progress",
+                "ok": False,
+                "message": "manifest status is running; validation deferred until terminal status",
+            }
+        )
+        failures = [check for check in checks if not check["ok"]]
+        return {
+            "run_id": manifest.get("run_id"),
+            "status": "running",
+            "manifest_status": manifest_status,
+            "checks": checks,
+            "failures": failures,
+        }
+
     for relative in REQUIRED_FILES:
         checks.append(file_check(store.root, relative))
 

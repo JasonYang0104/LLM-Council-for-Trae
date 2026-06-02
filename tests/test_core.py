@@ -20,7 +20,7 @@ from llm_council_for_trae.council import (
     parse_ranking_from_text,
     record_stage_failures,
 )
-from llm_council_for_trae.html_export import export_html
+from llm_council_for_trae.html_export import _extract_title, export_html, render_html
 from llm_council_for_trae.model_benchmark import (
     BenchmarkTask,
     benchmark_record_from_call,
@@ -810,6 +810,65 @@ FINAL RANKING:
     def test_classify_stage1_status_failed_when_quorum_not_met(self):
         results = [{"status": "ok"}] * 3 + [{"status": "failed"}] * 5
         self.assertEqual(classify_stage1_status(results, min_valid_members=4), "failed")
+
+    def test_initial_manifest_status_is_running_until_terminal_outcome(self):
+        manifest = initial_manifest("run-starting", "test", CouncilConfig(members=["A"], chairman="B"))
+
+        self.assertEqual(manifest["status"], "running")
+
+    def test_validate_reports_running_manifest_without_missing_artifact_noise(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-running")
+            manifest = initial_manifest("run-running", "test", CouncilConfig(members=["A"], chairman="B"))
+            store.write_manifest(manifest)
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["status"], "running")
+            self.assertEqual(validation["manifest_status"], "running")
+            self.assertEqual([failure["name"] for failure in validation["failures"]], ["run_in_progress"])
+            self.assertFalse(any(check["name"].startswith("file:stage2/") for check in validation["checks"]))
+
+    def test_extract_title_uses_structured_topic_instead_of_original_input_label(self):
+        title = _extract_title(
+            """# Original input
+
+请帮我判断 LCT 最新 main 安装后的 E2E 笔记。
+
+## Agent interpretation
+LCT 安装后 E2E 运行状态与报告体验评估
+
+## Suggested council focus
+运行状态、搜索证据、HTML 可读性
+"""
+        )
+
+        self.assertEqual(title, "LCT 安装后 E2E 运行状态与报告体验评估")
+
+    def test_extract_title_preserves_specific_user_heading_and_truncates(self):
+        self.assertEqual(_extract_title("# LCT 报告标题改进"), "LCT 报告标题改进")
+
+        long_title = _extract_title("# " + "A" * 80, max_chars=20)
+        self.assertEqual(long_title, "A" * 20 + "…")
+
+    def test_html_hero_uses_topic_title_and_escapes_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "input.md").write_text(
+                """# Original input
+
+## Agent interpretation
+LCT <status> 与 HTML 标题评估
+""",
+                encoding="utf-8",
+            )
+            (root / "stage3").mkdir()
+            (root / "stage3" / "final.md").write_text("Final\n", encoding="utf-8")
+            html = render_html(root, {"run_id": "run-title", "status": "ok", "config": {}, "stages": {}, "metadata": {}})
+
+            self.assertIn("<h1>LCT &lt;status&gt; 与 HTML 标题评估</h1>", html)
+            self.assertIn("<title>LCT &lt;status&gt; 与 HTML 标题评估 · LLM Council for Trae</title>", html)
+            self.assertNotIn("<h1>Original input</h1>", html)
 
     def test_chairman_metadata_records_fallback(self):
         from llm_council_for_trae.council import stage3_synthesize_final
