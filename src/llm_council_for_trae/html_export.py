@@ -11,6 +11,30 @@ from .utils import read_text, utc_now
 
 
 WEB_SEARCH_TOOLS = {"WebSearch", "WebFetch"}
+GENERIC_INPUT_TITLES = {
+    "original input",
+    "input",
+    "user input",
+    "original question",
+    "question",
+    "输入",
+    "输入提示词",
+    "用户输入",
+    "用户原始输入",
+    "原始输入",
+    "原始问题",
+}
+PREFERRED_TOPIC_SECTIONS = {
+    "agent interpretation",
+    "agent interpretation / framing",
+    "suggested council focus",
+    "council focus",
+    "task focus",
+    "问题理解",
+    "任务理解",
+    "议题概括",
+    "讨论焦点",
+}
 
 ARTIFACT_PROMPT = """traecli-llm-council HTML artifact rendering contract.
 
@@ -43,15 +67,77 @@ def export_html(store: ArtifactStore) -> dict[str, Any]:
 def _extract_title(input_text: str, max_chars: int = 60) -> str:
     if not input_text:
         return "最终答案"
-    first_line = input_text.strip().split("\n")[0].strip()
-    heading = re.match(r"^#{1,6}\s+(.+)$", first_line)
-    if heading:
-        title = heading.group(1).strip()
-    else:
+    lines = input_text.strip().splitlines()
+    first_line = _clean_title_candidate(lines[0]) if lines else ""
+    first_heading = _heading_text(lines[0]) if lines else None
+    if first_heading and not _is_generic_input_title(first_heading):
+        title = first_heading
+    elif first_line and not _is_generic_input_title(first_line):
         title = first_line
+    else:
+        title = _extract_preferred_topic(lines) or _extract_first_content_line(lines) or "最终答案"
     if len(title) > max_chars:
         title = title[:max_chars].rstrip() + "…"
     return title
+
+
+def _extract_preferred_topic(lines: list[str]) -> str | None:
+    for index, line in enumerate(lines):
+        heading = _heading_text(line)
+        if heading and _normalize_title(heading) in PREFERRED_TOPIC_SECTIONS:
+            candidate = _first_content_after(lines, index + 1)
+            if candidate:
+                return candidate
+        label_match = re.match(r"^\s*([A-Za-z][A-Za-z /_-]{2,80}|[\u4e00-\u9fff][^:：]{1,30})\s*[:：]\s*(.+)$", line)
+        if label_match and _normalize_title(label_match.group(1)) in PREFERRED_TOPIC_SECTIONS:
+            candidate = _clean_title_candidate(label_match.group(2))
+            if candidate:
+                return candidate
+    return None
+
+
+def _extract_first_content_line(lines: list[str]) -> str | None:
+    for line in lines:
+        candidate = _clean_title_candidate(line)
+        if candidate and not _is_generic_input_title(candidate):
+            return candidate
+    return None
+
+
+def _first_content_after(lines: list[str], start: int) -> str | None:
+    for line in lines[start:]:
+        if _heading_text(line):
+            return None
+        candidate = _clean_title_candidate(line)
+        if candidate and not _is_generic_input_title(candidate):
+            return candidate
+    return None
+
+
+def _heading_text(line: str) -> str | None:
+    heading = re.match(r"^\s*#{1,6}\s+(.+?)\s*$", line)
+    if not heading:
+        return None
+    return _clean_title_candidate(heading.group(1))
+
+
+def _clean_title_candidate(line: str) -> str:
+    text = line.strip()
+    text = re.sub(r"^#{1,6}\s+", "", text)
+    text = re.sub(r"^[-*+]\s+", "", text)
+    text = re.sub(r"^\d+[.)]\s+", "", text)
+    text = text.strip("`*_ \t")
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+
+def _is_generic_input_title(title: str) -> bool:
+    return _normalize_title(title) in GENERIC_INPUT_TITLES
+
+
+def _normalize_title(title: str) -> str:
+    title = _clean_title_candidate(title).casefold()
+    return re.sub(r"\s+", " ", title).strip(" :：-")
 
 
 def render_html(root: Path, manifest: dict[str, Any]) -> str:

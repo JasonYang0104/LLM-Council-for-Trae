@@ -671,8 +671,7 @@ async def run_full_council(
         manifest["status"] = "failed"
         store.write_manifest(manifest)
         return manifest
-    if any(r.get("status") != "ok" for r in stage2_results):
-        manifest["status"] = "degraded_ok"
+    stage2_degraded = any(r.get("status") != "ok" for r in stage2_results)
 
     fallback_chain = config.chairman_fallback
     if not fallback_chain:
@@ -693,6 +692,10 @@ async def run_full_council(
         manifest["failures"].extend(chairman_meta.get("failed_attempts") or [])
     elif stage3_result.get("status") != "ok":
         manifest["status"] = "failed"
+    elif stage1_status == "degraded_ok" or stage2_degraded:
+        manifest["status"] = "degraded_ok"
+    else:
+        manifest["status"] = "ok"
     store.write_manifest(manifest)
     return manifest
 
@@ -703,7 +706,7 @@ def initial_manifest(run_id: str, user_query: str, config: CouncilConfig) -> dic
         "run_id": run_id,
         "created_at": utc_now(),
         "updated_at": utc_now(),
-        "status": "ok",
+        "status": "running",
         "input_chars": len(user_query),
         "config": config_to_json(config),
         "artifacts": {
@@ -810,8 +813,6 @@ def classify_stage1_status(results: list[dict[str, Any]], min_valid_members: int
 def update_manifest_with_stage1_status(manifest: dict[str, Any], stage1_status: str) -> None:
     if stage1_status == "failed":
         manifest["status"] = "failed"
-    elif stage1_status == "degraded_ok":
-        manifest["status"] = "degraded_ok"
 
 
 def record_stage_failures(manifest: dict[str, Any], records: list[dict[str, Any]]) -> None:
