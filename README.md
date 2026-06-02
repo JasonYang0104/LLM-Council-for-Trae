@@ -13,7 +13,6 @@
 - **主动模型选择**：只传问题文件时，CLI 会读取当前 `traecli models --json`，展示模型列表和推荐 council 套装，再询问是否采用。
 - **可审计 artifact**：每次运行保存 input、config、manifest、每阶段 prompt / response / metadata、traecli stream JSON 和 HTML export。
 - **模型防 fallback**：记录 expected model 和 actual model，模型不匹配、空响应、无效模型、Stage 2 parse failure 都会失败。
-- **固定 subagent 成员**：支持通过 `profiles/subagents.json` 使用 council 成员。
 - **本地 HTML 报告**：HTML export 只读 artifacts，不调用模型，不改写主席答案。
 - **结构化 validate**：`validate` 会检查文件完整性、模型一致性、subagent evidence 和 schema contract **（注释：数据结构契约，规定 JSON 文件必须包含哪些字段以及字段类型）**。
 
@@ -116,7 +115,7 @@ llm-council-for-trae run \
   --json
 ```
 
-默认 direct run 不再传 `--yolo`，并使用 `--member-tool-mode search_enabled`：成员模型可使用 `WebSearch` / `WebFetch`，但 `Skill`、`Agent`、workspace 读写和 shell 会被禁止并由 provider 做污染检测。只有明确需要绕过权限时才传 `--yolo`；普通 council 成员不应使用它。
+默认 direct run 不再传 `--yolo`，并使用 `--member-tool-mode search_enabled`：成员模型可使用 `WebSearch` / `WebFetch`，但 `Skill`、`Agent`、workspace 读写和 shell 会被禁止并由 provider 做污染检测。`search_enabled` 只表示搜索被允许，不表示模型实际搜索了；HTML 和索引应分开记录 `search_allowed` 与 `search_used`。只有明确需要绕过权限时才传 `--yolo`；普通 council 成员不应使用它。
 
 可选工具模式：
 
@@ -223,9 +222,11 @@ llm-council-for-trae run --help
 llm-council-for-trae replay --help
 ```
 
-## Subagent Profile
+## Legacy / Experimental Subagent Profile
 
-direct provider **（注释：直接调用模型的执行方式）** 是默认路径，适合高频使用。subagent provider **（注释：通过 traecli 自定义子智能体调用固定成员的执行方式）** 用于固定 council 成员。
+direct provider **（注释：直接调用模型的执行方式）** 是默认路径，适合高频使用。subagent provider **（注释：通过 traecli 自定义子智能体调用固定成员的执行方式）** 现在是 legacy / experimental 路径：它保留用于历史 artifact validation **（注释：产物校验，检查已保存运行记录是否完整可信）** 和未来固定成员实验，不是日常全局安装后的主路径。
+
+`profiles/subagents.json` 可能因为当前 `traecli models --json` 模型漂移而失败，例如 profile 中的模型已经不在 live roster 里。不要把 subagent profile run 当成默认 smoke；除非你正在验证 subagent provider 本身，否则优先使用 direct provider。
 
 先检查 subagent profile：
 

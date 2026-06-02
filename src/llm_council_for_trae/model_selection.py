@@ -17,6 +17,7 @@ PREFERRED_MEMBERS = [
     "GPT-5.2",
 ]
 PREFERRED_CHAIRMEN = ["Kimi-K2.6", "DeepSeek-V4-Pro", "GPT-5.4", "GLM-5.1"]
+AUTO_EXCLUDED_MODEL_MARKERS = ("seed", "doubao")
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,9 @@ def recommend_model_choice(models: list[dict[str, Any]]) -> ModelChoice:
     usable = [name for name in names if not name.lower().startswith("openrouter")]
     if not usable:
         usable = names
+    safer_usable = [name for name in usable if not is_auto_excluded_model(name)]
+    if safer_usable:
+        usable = safer_usable
 
     members: list[str] = []
     for preferred in PREFERRED_MEMBERS:
@@ -63,6 +67,11 @@ def recommend_model_choice(models: list[dict[str, Any]]) -> ModelChoice:
 
     chairman = next((name for name in PREFERRED_CHAIRMEN if name in usable), members[0])
     return ModelChoice(members, chairman, "recommended")
+
+
+def is_auto_excluded_model(name: str) -> bool:
+    lowered = name.lower()
+    return any(marker in lowered for marker in AUTO_EXCLUDED_MODEL_MARKERS)
 
 
 def select_model_choice_interactively(

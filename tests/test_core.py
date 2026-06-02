@@ -1311,6 +1311,21 @@ FINAL RANKING:
         self.assertNotIn("openrouter-2o", choice.members)
         self.assertEqual(choice.source, "recommended")
 
+    def test_recommend_model_choice_excludes_seed_and_doubao_when_safe_alternatives_exist(self):
+        from llm_council_for_trae.model_selection import recommend_model_choice
+        models = [
+            {"name": "GPT-5.4"},
+            {"name": "Seed-Dogfooding-2.0"},
+            {"name": "Mystery-Safe-Model"},
+            {"name": "Doubao-Seed-1.8"},
+            {"name": "Kimi-K2.6"},
+        ]
+        choice = recommend_model_choice(models)
+
+        self.assertEqual(choice.members, ["GPT-5.4", "Kimi-K2.6", "Mystery-Safe-Model"])
+        self.assertNotIn("Seed", ",".join(choice.members + [choice.chairman]))
+        self.assertNotIn("Doubao", ",".join(choice.members + [choice.chairman]))
+
     def test_recommend_model_choice_fallback_to_openrouter(self):
         from llm_council_for_trae.model_selection import recommend_model_choice
         models = [{"name": "openrouter-2o"}]
