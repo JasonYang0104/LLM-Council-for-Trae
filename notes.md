@@ -24,3 +24,13 @@
 - Live smoke was real `traecli`, not fake runtime. It was not full `ok`: Stage 2 reviewer B / GLM-5.1 failed with `traecli result error`, manifest failure reports actual model `Seed-Dogfooding-2.0`. Stage 3 Kimi-K2.6 succeeded and HTML exists at `/tmp/lct-live-smoke/.llm-council-for-trae/runs/lct-global-smoke-20260601-201808/html/index.html`.
 - Follow-up review fix starts from four concrete regressions: design/test plan live smoke still used `examples/question.md`, README mixed CLI artifacts with Agent/Skill root-level copies, `install-global` accepted an LCT dir with Skill but no source package, and README kept the stale `78 tests passed` baseline. RED added contract checks for all four before implementation.
 - Follow-up review fix GREEN makes live smoke examples create `/tmp/lct-live-smoke` and copy `~/.LCT/examples/question.md` to `_lct_question.md`, splits README CLI artifacts from Agent/Skill extra outputs, adds `src/llm_council_for_trae` preflight before wrapper creation, and changes the README baseline to avoid fixed test counts while warning that command output is the truth source.
+
+## 2026-06-02 LCT UX Evidence Hardening
+
+- Created a clean worktree at `/Users/bytedance/Documents/AI Coder/COCO-llm-council-lct-ux-evidence-20260602` from fresh `origin/main` because the original checkout has unrelated dirty and untracked files.
+- This iteration is scoped to daily LCT usage honesty and reviewability, not broad model benchmarking.
+- Four product boundaries are frozen: subagent profile downgrade, raw/structured input modes, search allowed versus search used, and collapsed input prompt in HTML.
+- The manual E2E record from `/Users/bytedance/Documents/AI Coder/test/LLM-Council-for-Trae-v3/notes.md` is treated as evidence for two risks: default roster drift around `GLM-5.1`, and recommended roster drift that can include `Seed-Dogfooding-2.0`.
+- Decision: keep `profiles/subagents.json` and `.trae/agents/` for validation and historical evidence. Do not delete them in this iteration.
+- Decision: add deterministic Seed/Doubao exclusion to automatic recommendations, but do not block explicit user-provided model names.
+- Decision: do not ask the user for another design approval pause because the handoff already instructs this `/goal` thread to execute design-first, test-plan-first, then implement. The design and test plan are still committed as a separate phase before behavior edits.
