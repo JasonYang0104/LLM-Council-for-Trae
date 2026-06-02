@@ -41,6 +41,21 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
         self.assertIn("profiles/subagents.json", skill)
         self.assertIn("不要把 fake runtime 结果说成 live traecli 结果", skill)
 
+    def test_skill_template_documents_input_modes_and_search_evidence(self):
+        skill = self.read_text("skills/llm-council-for-trae/SKILL.md")
+
+        self.assertIn("raw original input", skill)
+        self.assertIn("structured by Agent", skill)
+        for trigger in ["按原始输入", "不要改写", "只用原文", "评估 LCT 对原始问题的理解"]:
+            self.assertIn(trigger, skill)
+        self.assertIn("Input mode", skill)
+        self.assertIn("search_allowed", skill)
+        self.assertIn("search_used", skill)
+        index_line = next(line for line in skill.splitlines() if "$RUN_ID-index.md" in line)
+        self.assertIn("Input mode", index_line)
+        self.assertIn("search_allowed", index_line)
+        self.assertIn("search_used", index_line)
+
     def test_docs_use_current_user_skill_path_and_no_stale_skill_path(self):
         doc_paths = [
             "README.md",
@@ -85,6 +100,25 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
             self.assertNotIn("llm-council-for-trae run --input examples/question.md", text, relative)
             self.assertIn("/tmp/lct-live-smoke", text, relative)
             self.assertIn("_lct_question.md", text, relative)
+
+    def test_subagent_profile_is_documented_as_legacy_experimental(self):
+        readme = self.read_text("README.md")
+        highlights = readme.split("## Quickstart", 1)[0]
+        subagents_doc = self.read_text("docs/traecli-subagents.md")
+
+        self.assertNotIn("固定 subagent 成员", highlights)
+        self.assertIn("legacy / experimental", readme)
+        self.assertIn("legacy / experimental", subagents_doc)
+        self.assertIn("direct provider 是日常主路径", subagents_doc)
+        self.assertIn("模型漂移", subagents_doc)
+
+    def test_readme_quickstart_index_contract_includes_input_and_search_evidence(self):
+        readme = self.read_text("README.md")
+        quickstart_line = next(line for line in readme.splitlines() if "<run_id>-index.md" in line)
+
+        self.assertIn("Input mode", quickstart_line)
+        self.assertIn("search_allowed", quickstart_line)
+        self.assertIn("search_used", quickstart_line)
 
     def test_make_install_global_writes_global_wrapper_and_skill_link(self):
         with tempfile.TemporaryDirectory() as tmp:

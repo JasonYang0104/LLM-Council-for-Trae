@@ -445,7 +445,13 @@ FINAL RANKING:
             self.assertIn('lang="zh-CN"', html)
             self.assertIn("归档副本", html)
             self.assertIn('class="sheet"', html)
+            self.assertIn('<details id="input-prompt" class="question-context">', html)
+            self.assertIn("<summary>输入提示词</summary>", html)
+            self.assertNotIn('<details id="input-prompt" class="question-context" open>', html)
+            self.assertNotIn('<p class="question-context">', html)
             self.assertIn("附录 A · 阶段 1 候选回答", html)
+            self.assertIn("搜索工具", html)
+            self.assertIn("允许：是 · 实际使用：否", html)
             self.assertIn("已验证<br>阶段 3", html)
             self.assertIn("复制 Markdown", html)
             self.assertIn('id="copy-fallback"', html)
@@ -466,7 +472,110 @@ FINAL RANKING:
             end = html.index("</script>", start)
             payloads = json.loads(html[start:end])
             self.assertIn('# Final with <tag> & "quotes"', payloads["markdown"])
+            self.assertIn("## 输入\n\n{}", payloads["markdown"])
             self.assertIn('Prompt with <tag> & "quotes"', payloads["prompt"])
+
+    def test_search_summary_separates_allowed_from_used(self):
+        from llm_council_for_trae.html_export import summarize_search_usage
+
+        manifest = {
+            "stages": {
+                "stage1": [
+                    {
+                        "allowed_tools": ["WebSearch", "WebFetch"],
+                        "tool_calls_count": 0,
+                        "tool_calls": [],
+                        "forbidden_tool_calls": [],
+                    }
+                ],
+                "stage2": [],
+                "stage3": {
+                    "allowed_tools": ["WebSearch", "WebFetch"],
+                    "tool_calls_count": 1,
+                    "tool_calls": [{"name": "WebSearch", "id": "tc1"}],
+                    "forbidden_tool_calls": [],
+                },
+            }
+        }
+
+        summary = summarize_search_usage(manifest)
+
+        self.assertTrue(summary["search_allowed"])
+        self.assertTrue(summary["search_used"])
+        self.assertEqual(summary["web_tool_calls_count"], 1)
+        self.assertEqual(summary["tool_calls_count"], 1)
+        self.assertEqual(summary["forbidden_tool_calls_count"], 0)
+
+    def test_search_summary_does_not_infer_search_from_allowed_tools_only(self):
+        from llm_council_for_trae.html_export import summarize_search_usage
+
+        manifest = {
+            "stages": {
+                "stage1": [
+                    {
+                        "allowed_tools": ["WebSearch", "WebFetch"],
+                        "tool_calls_count": 2,
+                        "forbidden_tool_calls": [],
+                    }
+                ],
+                "stage2": [],
+                "stage3": {},
+            }
+        }
+
+        summary = summarize_search_usage(manifest)
+
+        self.assertTrue(summary["search_allowed"])
+        self.assertFalse(summary["search_used"])
+        self.assertEqual(summary["web_tool_calls_count"], 0)
+        self.assertEqual(summary["tool_calls_count"], 2)
+
+    def test_search_summary_counts_forbidden_web_tool_as_used(self):
+        from llm_council_for_trae.html_export import summarize_search_usage
+
+        manifest = {
+            "stages": {
+                "stage1": [
+                    {
+                        "allowed_tools": [],
+                        "tool_calls_count": 1,
+                        "forbidden_tool_calls": [{"name": "WebSearch", "id": "tc1"}],
+                    }
+                ],
+                "stage2": [],
+                "stage3": {},
+            }
+        }
+
+        summary = summarize_search_usage(manifest)
+
+        self.assertFalse(summary["search_allowed"])
+        self.assertTrue(summary["search_used"])
+        self.assertEqual(summary["web_tool_calls_count"], 1)
+        self.assertEqual(summary["forbidden_tool_calls_count"], 1)
+
+    def test_tool_policy_record_persists_tool_call_details(self):
+        from llm_council_for_trae.council import tool_policy_record
+        from llm_council_for_trae.provider import ModelCallResult
+
+        tool_calls = [{"id": "tc1", "name": "WebFetch", "arguments": "{}", "turn_index": 1}]
+        result = ModelCallResult(
+            expected_model="GPT-5.4",
+            actual_model="GPT-5.4",
+            response="ok",
+            status="ok",
+            session_id="s1",
+            command=["traecli"],
+            exit_code=0,
+            stdout_path="out.jsonl",
+            stderr_path="err.log",
+            member_tool_mode="search_enabled",
+            allowed_tools=["WebSearch", "WebFetch"],
+            disallowed_tools=["Skill", "Agent"],
+            tool_calls=tool_calls,
+        )
+
+        self.assertEqual(tool_policy_record(result)["tool_calls"], tool_calls)
 
     def test_subagent_validate_requires_invocation_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -815,6 +924,7 @@ FINAL RANKING:
     def test_model_call_result_includes_tool_policy_fields(self):
         from llm_council_for_trae.provider import ModelCallResult
         forbidden = [{"id": "tc1", "name": "Skill", "arguments": "{}", "turn_index": 1}]
+        tool_calls = [{"id": "tc0", "name": "WebSearch", "arguments": "{}", "turn_index": 1}]
         result = ModelCallResult(
             expected_model="GPT-5.4",
             actual_model="GPT-5.4",
@@ -829,12 +939,14 @@ FINAL RANKING:
             allowed_tools=["WebSearch", "WebFetch"],
             disallowed_tools=["Skill", "Agent"],
             forbidden_tool_calls=forbidden,
+            tool_calls=tool_calls,
         )
         j = result.to_json()
         self.assertEqual(j["member_tool_mode"], "search_enabled")
         self.assertEqual(j["allowed_tools"], ["WebSearch", "WebFetch"])
         self.assertEqual(j["disallowed_tools"], ["Skill", "Agent"])
         self.assertEqual(j["forbidden_tool_calls"], forbidden)
+        self.assertEqual(j["tool_calls"], tool_calls)
 
     def test_model_call_result_includes_partial_output_fields(self):
         from llm_council_for_trae.provider import ModelCallResult
@@ -1248,6 +1360,46 @@ FINAL RANKING:
         choice = recommend_model_choice(models)
         self.assertNotIn("openrouter-2o", choice.members)
         self.assertEqual(choice.source, "recommended")
+
+    def test_recommend_model_choice_excludes_seed_and_doubao_when_safe_alternatives_exist(self):
+        from llm_council_for_trae.model_selection import recommend_model_choice
+        models = [
+            {"name": "GPT-5.4"},
+            {"name": "Seed-Dogfooding-2.0"},
+            {"name": "Mystery-Safe-Model"},
+            {"name": "Doubao-Seed-1.8"},
+            {"name": "Kimi-K2.6"},
+        ]
+        choice = recommend_model_choice(models)
+
+        self.assertEqual(choice.members, ["GPT-5.4", "Kimi-K2.6", "Mystery-Safe-Model"])
+        self.assertNotIn("Seed", ",".join(choice.members + [choice.chairman]))
+        self.assertNotIn("Doubao", ",".join(choice.members + [choice.chairman]))
+
+    def test_recommend_model_choice_prefers_openrouter_over_seed_when_it_is_the_only_safe_model(self):
+        from llm_council_for_trae.model_selection import recommend_model_choice
+
+        choice = recommend_model_choice([
+            {"name": "Seed-Dogfooding-2.0"},
+            {"name": "openrouter-safe"},
+        ])
+
+        self.assertEqual(choice.members, ["openrouter-safe"])
+
+    def test_recommend_model_choice_falls_back_when_all_models_are_seed_or_doubao(self):
+        from llm_council_for_trae.model_selection import recommend_model_choice
+
+        choice = recommend_model_choice([
+            {"name": "Seed-Dogfooding-2.0"},
+            {"name": "Doubao-Seed-1.8"},
+        ])
+
+        self.assertEqual(choice.members, ["Seed-Dogfooding-2.0", "Doubao-Seed-1.8"])
+
+    def test_explicit_model_resolution_allows_seed_models(self):
+        names = ["Seed-Dogfooding-2.0", "GPT-5.4"]
+
+        self.assertEqual(resolve_model_tokens("Seed-Dogfooding-2.0", names), ["Seed-Dogfooding-2.0"])
 
     def test_recommend_model_choice_fallback_to_openrouter(self):
         from llm_council_for_trae.model_selection import recommend_model_choice

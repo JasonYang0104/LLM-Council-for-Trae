@@ -17,6 +17,7 @@ PREFERRED_MEMBERS = [
     "GPT-5.2",
 ]
 PREFERRED_CHAIRMEN = ["Kimi-K2.6", "DeepSeek-V4-Pro", "GPT-5.4", "GLM-5.1"]
+AUTO_EXCLUDED_MODEL_MARKERS = ("seed", "doubao")
 
 
 @dataclass(frozen=True)
@@ -45,8 +46,16 @@ def recommend_model_choice(models: list[dict[str, Any]]) -> ModelChoice:
     if not names:
         return ModelChoice(DEFAULT_MEMBERS, DEFAULT_CHAIRMAN, "static-default")
 
-    usable = [name for name in names if not name.lower().startswith("openrouter")]
-    if not usable:
+    non_openrouter = [name for name in names if not name.lower().startswith("openrouter")]
+    safe_names = [name for name in names if not is_auto_excluded_model(name)]
+    safe_non_openrouter = [name for name in non_openrouter if not is_auto_excluded_model(name)]
+    if safe_non_openrouter:
+        usable = safe_non_openrouter
+    elif safe_names:
+        usable = safe_names
+    elif non_openrouter:
+        usable = non_openrouter
+    else:
         usable = names
 
     members: list[str] = []
@@ -63,6 +72,11 @@ def recommend_model_choice(models: list[dict[str, Any]]) -> ModelChoice:
 
     chairman = next((name for name in PREFERRED_CHAIRMEN if name in usable), members[0])
     return ModelChoice(members, chairman, "recommended")
+
+
+def is_auto_excluded_model(name: str) -> bool:
+    lowered = name.lower()
+    return any(marker in lowered for marker in AUTO_EXCLUDED_MODEL_MARKERS)
 
 
 def select_model_choice_interactively(
@@ -113,7 +127,7 @@ def write_model_menu(stderr: TextIO, models: list[dict[str, Any]], recommendatio
     stderr.write("\n推荐 council 模型套：\n")
     stderr.write(f"  members: {', '.join(recommendation.members)}\n")
     stderr.write(f"  chairman: {recommendation.chairman}\n")
-    stderr.write("推荐逻辑：优先选择当前列表里可用、互补、非 OpenRouter 的强模型；主席优先选择 GPT 系列。\n")
+    stderr.write("推荐逻辑：优先选择当前列表里可用、互补、非 OpenRouter 且非 Seed/Doubao 的强模型；没有更安全候选时才回落。主席优先级：Kimi、DeepSeek、GPT、GLM。\n")
     if names:
         stderr.write("\n")
     stderr.flush()

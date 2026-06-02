@@ -87,6 +87,7 @@ class ModelCallResult:
     allowed_tools: list[str] = field(default_factory=list)
     disallowed_tools: list[str] = field(default_factory=list)
     forbidden_tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
     tool_budget_status: str = "ok"
     assistant_content_chars_total: int = 0
     last_assistant_content_chars: int = 0
@@ -118,6 +119,7 @@ class ModelCallResult:
             "allowed_tools": self.allowed_tools,
             "disallowed_tools": self.disallowed_tools,
             "forbidden_tool_calls": self.forbidden_tool_calls,
+            "tool_calls": self.tool_calls,
             "tool_budget_status": self.tool_budget_status,
             "assistant_content_chars_total": self.assistant_content_chars_total,
             "last_assistant_content_chars": self.last_assistant_content_chars,
@@ -337,8 +339,9 @@ class TraeCliProvider:
         raw_model_markers = parsed["raw_model_markers"]
         subagent_invocation = parsed["subagent_invocation"]
         tool_calls_count = parsed.get("tool_calls_count", 0)
+        tool_calls = parsed.get("tool_calls", [])
         turns_count = parsed.get("turns_count", 0)
-        forbidden_tool_calls = forbidden_tool_calls_for_mode(parsed.get("tool_calls", []), self.member_tool_mode)
+        forbidden_tool_calls = forbidden_tool_calls_for_mode(tool_calls, self.member_tool_mode)
         status = "ok"
         error = None
         if proc.returncode != 0:
@@ -388,6 +391,7 @@ class TraeCliProvider:
             allowed_tools=self.allowed_tools,
             disallowed_tools=self.disallowed_tools,
             forbidden_tool_calls=forbidden_tool_calls,
+            tool_calls=tool_calls,
             tool_budget_status=tool_budget_status,
             assistant_content_chars_total=parsed.get("assistant_content_chars_total", 0),
             last_assistant_content_chars=parsed.get("last_assistant_content_chars", 0),

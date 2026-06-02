@@ -10,6 +10,8 @@ from .store import ArtifactStore
 from .utils import read_text, utc_now
 
 
+WEB_SEARCH_TOOLS = {"WebSearch", "WebFetch"}
+
 ARTIFACT_PROMPT = """traecli-llm-council HTML artifact rendering contract.
 
 Do not call any model. Do not change the chairman synthesis. Render the existing artifacts only.
@@ -192,6 +194,16 @@ h1 {{ margin:0; font-size:58px; line-height:1.05; font-weight:400; letter-spacin
   color:var(--body);
   font:15px/1.65 var(--serif);
   max-width:72ch;
+}}
+.question-context summary {{
+  cursor:pointer;
+  font-weight:600;
+  color:var(--ink);
+}}
+.question-context .details-body {{
+  margin-top:12px;
+  padding-top:12px;
+  border-top:1px solid rgba(123,45,38,.25);
   white-space:pre-line;
 }}
 .run-meta {{ margin:14px 0 0; color:var(--muted); font:13px/1.55 var(--mono); }}
@@ -259,7 +271,7 @@ th {{ background:var(--paper-deep); }}
 .status-degraded_ok {{ color:var(--warn); }}
 .summary-strip {{
   display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
+  grid-template-columns:repeat(4,minmax(0,1fr));
   border-top:1px solid var(--line);
   border-bottom:1px solid var(--line);
   margin:0 0 24px;
@@ -336,7 +348,7 @@ svg {{ width:100%; max-width:760px; height:auto; display:block; }}
     <section class="archive-hero" aria-label="运行标题">
       <div>
       <h1>{esc(page_title)}</h1>
-      <p class="question-context">{esc(input_text.strip())}</p>
+      <details id="input-prompt" class="question-context"><summary>输入提示词</summary><div class="details-body">{esc(input_text.strip())}</div></details>
       <p class="run-meta">运行 {esc(manifest.get('run_id'))} · 状态 <strong class="status-{esc(manifest.get('status'))}">{esc(manifest.get('status'))}</strong> · 导出 {esc(generated_at)}</p>
     </div>
     <div class="toolbar" aria-label="导出操作">
@@ -604,11 +616,82 @@ def render_ranking_matrix(aggregate: list[dict[str, Any]]) -> str:
 def render_summary_cards(manifest: dict[str, Any], aggregate: list[dict[str, Any]]) -> str:
     config = manifest.get("config") if isinstance(manifest.get("config"), dict) else {}
     top_model = aggregate[0].get("model") if aggregate and isinstance(aggregate[0], dict) else "暂无聚合排序"
+    search = summarize_search_usage(manifest)
+    search_text = f"允许：{yes_no(search['search_allowed'])} · 实际使用：{yes_no(search['search_used'])}"
+    search_meta = f"Web 工具调用：{search['web_tool_calls_count']} · 总工具调用：{search['tool_calls_count']}"
     return (
         f"<div class='summary-card'><h3>最高排序成员</h3><p>{esc(top_model)}</p></div>"
         f"<div class='summary-card'><h3>成员模型</h3><p>{esc(', '.join(config.get('members') or []))}</p></div>"
         f"<div class='summary-card'><h3>主席模型</h3><p>{esc(config.get('chairman'))}</p></div>"
+        f"<div class='summary-card'><h3>搜索工具</h3><p>{esc(search_text)}</p><p class='meta'>{esc(search_meta)}</p></div>"
     )
+
+
+def summarize_search_usage(manifest: dict[str, Any]) -> dict[str, Any]:
+    search_allowed = False
+    web_tool_calls_count = 0
+    web_tool_call_keys: set[str] = set()
+    tool_calls_count = 0
+    forbidden_tool_calls_count = 0
+
+    def record_web_tool_call(call: dict[str, Any]) -> None:
+        nonlocal web_tool_calls_count
+        if call.get("name") not in WEB_SEARCH_TOOLS:
+            return
+        key = str(call.get("id") or (call.get("name"), call.get("arguments"), call.get("turn_index")))
+        if key in web_tool_call_keys:
+            return
+        web_tool_call_keys.add(key)
+        web_tool_calls_count += 1
+
+    for item in iter_stage_records(manifest):
+        allowed_tools = item.get("allowed_tools")
+        if isinstance(allowed_tools, list) and any(tool in WEB_SEARCH_TOOLS for tool in allowed_tools):
+            search_allowed = True
+
+        raw_count = item.get("tool_calls_count")
+        if isinstance(raw_count, int):
+            tool_calls_count += raw_count
+
+        tool_calls = item.get("tool_calls")
+        if isinstance(tool_calls, list):
+            if not isinstance(raw_count, int):
+                tool_calls_count += len(tool_calls)
+            for call in tool_calls:
+                if isinstance(call, dict):
+                    record_web_tool_call(call)
+
+        forbidden_tool_calls = item.get("forbidden_tool_calls")
+        if isinstance(forbidden_tool_calls, list):
+            forbidden_tool_calls_count += len(forbidden_tool_calls)
+            for call in forbidden_tool_calls:
+                if isinstance(call, dict):
+                    record_web_tool_call(call)
+
+    return {
+        "search_allowed": search_allowed,
+        "search_used": web_tool_calls_count > 0,
+        "web_tool_calls_count": web_tool_calls_count,
+        "tool_calls_count": tool_calls_count,
+        "forbidden_tool_calls_count": forbidden_tool_calls_count,
+    }
+
+
+def iter_stage_records(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    stages = manifest.get("stages") if isinstance(manifest.get("stages"), dict) else {}
+    records: list[dict[str, Any]] = []
+    for stage_name in ("stage1", "stage2"):
+        stage_items = stages.get(stage_name)
+        if isinstance(stage_items, list):
+            records.extend(item for item in stage_items if isinstance(item, dict))
+    stage3 = stages.get("stage3")
+    if isinstance(stage3, dict):
+        records.append(stage3)
+    return records
+
+
+def yes_no(value: bool) -> str:
+    return "是" if value else "否"
 
 
 def render_model_performance_summary(manifest: dict[str, Any]) -> str:
