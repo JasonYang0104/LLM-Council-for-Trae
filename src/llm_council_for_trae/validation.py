@@ -193,6 +193,7 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
     _, final_json_checks = validate_json_file("stage3.final", store.root / "stage3/final.json", FINAL_JSON_SCHEMA)
     checks.extend(final_json_checks)
     checks.extend(tool_contamination_checks(manifest_status, stage1, stage2, stage3, stage_meta_records))
+    checks.extend(quorum_semantic_checks(manifest_status, manifest, stage1, stage2))
 
     html_path = store.root / "html" / "index.html"
     if html_path.exists():
@@ -361,6 +362,92 @@ def tool_contamination_checks(
                 "message": f"status={item.get('status')}, forbidden_tool_calls={item.get('forbidden_tool_calls')}",
             }
         )
+    return checks
+
+
+def quorum_semantic_checks(
+    manifest_status: Any,
+    manifest: dict[str, Any],
+    stage1: list[dict[str, Any]],
+    stage2: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    metadata = manifest.get("metadata") if isinstance(manifest.get("metadata"), dict) else {}
+    quorum = metadata.get("quorum") if isinstance(metadata.get("quorum"), dict) else None
+    if not quorum:
+        return []
+
+    checks: list[dict[str, Any]] = []
+    low_quorum_used = quorum.get("low_quorum_used") is True
+    if low_quorum_used:
+        checks.append(
+            {
+                "name": "quorum_low_status",
+                "ok": manifest_status == "degraded_ok",
+                "message": f"low_quorum_used=true requires manifest.status=degraded_ok, got {manifest_status}",
+            }
+        )
+
+    backfill_attempted = {
+        item for item in quorum.get("backfill_attempted") or []
+        if isinstance(item, str)
+    }
+    backfill_used = quorum.get("backfill_used") is True or bool(backfill_attempted)
+    if backfill_used:
+        for item in stage1:
+            model = item.get("model")
+            attempt_role = item.get("attempt_role")
+            if attempt_role == "backfill":
+                continue
+            if isinstance(model, str) and model in backfill_attempted:
+                label = item.get("file_label") or item.get("label") or model
+                checks.append(
+                    {
+                        "name": f"stage1_backfill_attempt_role_{label}",
+                        "ok": False,
+                        "message": f"backfilled model {model} is missing attempt_role=backfill",
+                    }
+                )
+
+    valid_stage1_models = {
+        item.get("model")
+        for item in stage1
+        if item.get("status") == "ok" and not item.get("forbidden_tool_calls")
+    }
+    label_to_model = metadata.get("label_to_model") if isinstance(metadata.get("label_to_model"), dict) else {}
+    subject_labels = set(label_to_model)
+    subject_models = {
+        model for model in label_to_model.values()
+        if isinstance(model, str)
+    }
+    for item in stage2:
+        model = item.get("model")
+        if item.get("reviewer_eligible") is True:
+            source = item.get("reviewer_source")
+            if source == "stage2_reviewer_backfill":
+                reviewer_label = item.get("reviewer_label") or model
+                parsed_ranking = item.get("parsed_ranking") if isinstance(item.get("parsed_ranking"), list) else []
+                checks.append(
+                    {
+                        "name": f"stage2_reviewer_backfill_not_subject_{reviewer_label}",
+                        "ok": model not in subject_models,
+                        "message": f"reviewer-only model {model} must not appear in label_to_model subjects",
+                    }
+                )
+                checks.append(
+                    {
+                        "name": f"stage2_reviewer_backfill_ranking_subjects_{reviewer_label}",
+                        "ok": set(parsed_ranking) == subject_labels and len(parsed_ranking) == len(subject_labels),
+                        "message": f"reviewer-only ranking must match review subjects: {sorted(subject_labels)}",
+                    }
+                )
+                continue
+            checks.append(
+                {
+                    "name": f"stage2_reviewer_effective_stage1_{item.get('reviewer_label') or model}",
+                    "ok": model in valid_stage1_models,
+                    "message": f"reviewer model {model} must have an effective Stage 1 answer",
+                }
+            )
     return checks
 
 

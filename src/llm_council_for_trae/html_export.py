@@ -289,6 +289,7 @@ def render_html(root: Path, manifest: dict[str, Any]) -> str:
                 item.get("reviewer_label", "?"),
                 f"<h3>评审者 {esc(item.get('reviewer_label'))} · {esc(item.get('model'))}</h3>"
                 f"<p class='meta'>期望模型：{esc(item.get('expected_model'))} · 实际模型：{esc(item.get('actual_model'))} · 解析：{esc(item.get('parse_status'))}</p>"
+                f"<p class='meta'>来源：{esc(item.get('reviewer_source') or 'stage1_ok')} · 角色：{esc(item.get('attempt_role') or 'primary')} · 评审对象数：{esc(item.get('review_subject_count'))}</p>"
                 f"<p><strong>解析排序：</strong> {esc(', '.join(item.get('parsed_ranking') or []))}</p>"
                 f"<pre><code>{esc(item.get('ranking'))}</code></pre>",
             )
@@ -554,7 +555,7 @@ svg {{ width:100%; max-width:760px; height:auto; display:block; }}
       <textarea id="copy-fallback" class="copy-fallback" hidden aria-label="复制备用文本"></textarea>
     </div>
     </section>
-    {render_alerts(warnings, failures, manifest.get('status', 'ok'))}
+    {render_alerts(warnings, failures, manifest.get('status', 'ok'), manifest=manifest)}
     <section id="decision-summary" class="summary-strip" aria-label="决策摘要">
       {render_summary_cards(manifest, aggregate)}
     </section>
@@ -810,16 +811,55 @@ def render_ranking_matrix(aggregate: list[dict[str, Any]]) -> str:
 
 def render_summary_cards(manifest: dict[str, Any], aggregate: list[dict[str, Any]]) -> str:
     config = manifest.get("config") if isinstance(manifest.get("config"), dict) else {}
+    metadata = manifest.get("metadata") if isinstance(manifest.get("metadata"), dict) else {}
+    quorum = metadata.get("quorum") if isinstance(metadata.get("quorum"), dict) else {}
+    stage2_reviewers = metadata.get("stage2_reviewers") if isinstance(metadata.get("stage2_reviewers"), dict) else {}
+    chairman = metadata.get("chairman") if isinstance(metadata.get("chairman"), dict) else {}
     top_model = aggregate[0].get("model") if aggregate and isinstance(aggregate[0], dict) else "暂无聚合排序"
     search = summarize_search_usage(manifest)
     search_text = f"允许：{yes_no(search['lct_search_allowed'])} · 实际使用：{yes_no(search['lct_search_used'])}"
     search_meta = f"Web 工具调用：{search['lct_web_tool_calls']} · 总工具调用：{search['tool_calls_count']}"
-    return (
+    cards = [
         f"<div class='summary-card'><h3>最高排序成员</h3><p>{esc(top_model)}</p></div>"
-        f"<div class='summary-card'><h3>成员模型</h3><p>{esc(', '.join(config.get('members') or []))}</p></div>"
-        f"<div class='summary-card'><h3>主席模型</h3><p>{esc(config.get('chairman'))}</p></div>"
-        f"<div class='summary-card'><h3>搜索工具</h3><p>{esc(search_text)}</p><p class='meta'>{esc(search_meta)}</p></div>"
-    )
+    ]
+    if quorum:
+        effective = quorum.get("effective_valid_members")
+        minimum = quorum.get("min_valid_members")
+        quorum_status = "low quorum" if quorum.get("low_quorum_used") else ("normal quorum" if quorum.get("normal_quorum_met") else "quorum failed")
+        members = ", ".join(str(item) for item in quorum.get("effective_stage1_members") or [])
+        backfill = ", ".join(str(item) for item in quorum.get("backfill_attempted") or [])
+        meta_parts = []
+        if members:
+            meta_parts.append(f"有效成员：{members}")
+        if backfill:
+            meta_parts.append(f"auto-backfill：{backfill}")
+        cards.append(
+            f"<div class='summary-card'><h3>Quorum 状态</h3><p>{esc(effective)} / {esc(minimum)} · {esc(quorum_status)}</p>"
+            f"<p class='meta'>{esc(' · '.join(meta_parts))}</p></div>"
+        )
+    else:
+        cards.append(f"<div class='summary-card'><h3>成员模型</h3><p>{esc(', '.join(config.get('members') or []))}</p></div>")
+
+    if stage2_reviewers.get("reviewer_only_backfill"):
+        attempted = ", ".join(str(item) for item in stage2_reviewers.get("reviewer_backfill_attempted") or [])
+        subject_count = stage2_reviewers.get("review_subject_count")
+        reviewer_count = len(stage2_reviewers.get("valid_reviewers") or [])
+        cards.append(
+            "<div class='summary-card'><h3>Stage 2 reviewer backfill</h3>"
+            f"<p>{esc(attempted or 'none')} · reviewer-only</p>"
+            f"<p class='meta'>subjects：{esc(subject_count)} · reviewers：{esc(reviewer_count)}</p></div>"
+        )
+
+    if chairman.get("fallback_used") or chairman.get("fallback_from"):
+        fallback_from = chairman.get("fallback_from") or config.get("chairman")
+        used = chairman.get("used")
+        cards.append(
+            f"<div class='summary-card'><h3>主席备选</h3><p>{esc(fallback_from)} -> {esc(used)}</p></div>"
+        )
+    else:
+        cards.append(f"<div class='summary-card'><h3>主席模型</h3><p>{esc(config.get('chairman'))}</p></div>")
+    cards.append(f"<div class='summary-card'><h3>搜索工具</h3><p>{esc(search_text)}</p><p class='meta'>{esc(search_meta)}</p></div>")
+    return "".join(cards)
 
 
 def summarize_search_usage(manifest: dict[str, Any]) -> dict[str, Any]:
@@ -951,8 +991,24 @@ def render_metadata(manifest: dict[str, Any], warnings: list[Any], failures: lis
     )
 
 
-def render_alerts(warnings: list[Any], failures: list[Any], manifest_status: str = "ok") -> str:
-    return ""
+def render_alerts(
+    warnings: list[Any],
+    failures: list[Any],
+    manifest_status: str = "ok",
+    manifest: dict[str, Any] | None = None,
+) -> str:
+    manifest = manifest or {}
+    metadata = manifest.get("metadata") if isinstance(manifest.get("metadata"), dict) else {}
+    quorum = metadata.get("quorum") if isinstance(metadata.get("quorum"), dict) else {}
+    alerts: list[str] = []
+    if manifest_status == "degraded_ok" and quorum.get("low_quorum_used"):
+        effective = quorum.get("effective_valid_members")
+        minimum = quorum.get("min_valid_members")
+        alerts.append(
+            "<section class='warning-banner'><strong>Quorum 降级</strong>"
+            f"<p>本报告为 degraded fallback：仅 {esc(effective)} 个有效成员参与最终综合，低于默认 {esc(minimum)}-member quorum。</p></section>"
+        )
+    return "".join(alerts)
 
 
 def render_trace(stage1: list[Any], stage2: list[Any], stage3: dict[str, Any] | None) -> str:
@@ -965,9 +1021,12 @@ def render_trace(stage1: list[Any], stage2: list[Any], stage3: dict[str, Any] | 
             tool_budget_status = item.get("tool_budget_status")
             if tool_budget_status and tool_budget_status not in ("ok", None):
                 budget_html = f" · <span class='warning'>工具预算：{esc(tool_budget_status)}</span>"
+            source_html = ""
+            if stage_name == "stage2" and item.get("reviewer_source"):
+                source_html = f" · 来源：{esc(item.get('reviewer_source'))}"
             rows.append(
                 f"<div class='cell'><h3>{esc(stage_name)} · {esc(item.get('file_label') or item.get('reviewer_label'))}</h3>"
-                f"<p>{esc(item.get('expected_model'))} -> {esc(item.get('actual_model'))}</p><p class='meta'>{esc(item.get('status'))}{budget_html}</p></div>"
+                f"<p>{esc(item.get('expected_model'))} -> {esc(item.get('actual_model'))}</p><p class='meta'>{esc(item.get('status'))}{budget_html}{source_html}</p></div>"
             )
     if stage3:
         budget_html = ""

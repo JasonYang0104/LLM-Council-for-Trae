@@ -96,6 +96,7 @@ class ModelCallResult:
     turns_count: int = 0
     retried: bool = False
     retry_error: str | None = None
+    termination: dict[str, Any] = field(default_factory=dict)
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -128,6 +129,7 @@ class ModelCallResult:
             "turns_count": self.turns_count,
             "retried": self.retried,
             "retry_error": self.retry_error,
+            "termination": self.termination,
         }
 
 
@@ -283,6 +285,7 @@ class TraeCliProvider:
             start_new_session=os.name != "nt",
         )
         budget_killed = False
+        termination: dict[str, Any] = {}
         try:
             collected, _stream_tool_calls, budget_exceeded = await asyncio.wait_for(
                 monitor_stream_for_budget(proc.stdout, self.deliver_tool_limit),
@@ -290,7 +293,7 @@ class TraeCliProvider:
             )
             if budget_exceeded:
                 budget_killed = True
-                await terminate_process_tree(proc)
+                termination = termination_with_reason(await terminate_process_tree(proc), "tool_budget")
             try:
                 await proc.wait()
             except ProcessLookupError:
@@ -298,14 +301,14 @@ class TraeCliProvider:
             stdout_b = b"".join(collected)
             stderr_b = await proc.stderr.read()
         except asyncio.TimeoutError:
-            await terminate_process_tree(proc)
+            termination = termination_with_reason(await terminate_process_tree(proc), "timeout")
             stdout_b = b""
             stderr_b = b""
             stdout = stdout_b.decode("utf-8", errors="replace")
             stderr = stderr_b.decode("utf-8", errors="replace") + "\nTimed out while waiting for traecli."
             write_text(stream_path, stdout)
             write_text(stderr_path, stderr)
-            return ModelCallResult(
+            result = ModelCallResult(
                 expected_model=model,
                 actual_model=None,
                 response="",
@@ -323,9 +326,35 @@ class TraeCliProvider:
                 member_tool_mode=self.member_tool_mode,
                 allowed_tools=self.allowed_tools,
                 disallowed_tools=self.disallowed_tools,
+                termination=termination,
             )
+            write_json(output_dir / f"{label}.meta.json", result.to_json() | {"captured_at": utc_now()})
+            return result
         except asyncio.CancelledError:
-            await terminate_process_tree(proc)
+            termination = termination_with_reason(await terminate_process_tree(proc), "cancelled")
+            write_text(stream_path, "")
+            write_text(stderr_path, "Cancelled while waiting for traecli.\n")
+            result = ModelCallResult(
+                expected_model=model,
+                actual_model=None,
+                response="",
+                status="failed",
+                session_id=session_id,
+                command=safe_command(cmd),
+                exit_code=-1,
+                stdout_path=stream_path.name,
+                stderr_path=stderr_path.name,
+                runtime_cwd=str(self.runtime_cwd) if self.runtime_cwd else None,
+                agent=agent,
+                subagent_invocation=missing_subagent_invocation(agent),
+                error="cancelled",
+                permission_mode=permission_mode,
+                member_tool_mode=self.member_tool_mode,
+                allowed_tools=self.allowed_tools,
+                disallowed_tools=self.disallowed_tools,
+                termination=termination,
+            )
+            write_json(output_dir / f"{label}.meta.json", result.to_json() | {"captured_at": utc_now()})
             raise
 
         stdout = stdout_b.decode("utf-8", errors="replace")
@@ -398,6 +427,7 @@ class TraeCliProvider:
             raw_partial_recoverable=parsed.get("raw_partial_recoverable", False),
             tool_calls_count=tool_calls_count,
             turns_count=turns_count,
+            termination=termination,
         )
         write_json(output_dir / f"{label}.meta.json", result.to_json() | {"captured_at": utc_now()})
         return result
@@ -410,37 +440,68 @@ def safe_command(cmd: list[str]) -> list[str]:
     return safe
 
 
-async def terminate_process_tree(proc: Any, grace_seconds: float = 2.0) -> None:
+async def terminate_process_tree(proc: Any, grace_seconds: float = 2.0) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        "pid": getattr(proc, "pid", None),
+        "pgid": None,
+        "terminated": False,
+        "termination_reason": None,
+        "signals_sent": [],
+        "final_returncode": getattr(proc, "returncode", None),
+    }
     if getattr(proc, "returncode", None) is not None:
-        return
+        return metadata
     if os.name != "nt" and getattr(proc, "pid", None):
         try:
             pgid = os.getpgid(proc.pid)
+            metadata["pgid"] = pgid
             os.killpg(pgid, signal.SIGTERM)
+            metadata["signals_sent"].append("SIGTERM")
             await asyncio.wait_for(proc.wait(), timeout=grace_seconds)
-            return
+            metadata["terminated"] = True
+            metadata["final_returncode"] = getattr(proc, "returncode", None)
+            return metadata
         except ProcessLookupError:
-            return
+            metadata["terminated"] = True
+            metadata["final_returncode"] = getattr(proc, "returncode", None)
+            return metadata
         except asyncio.TimeoutError:
             try:
                 os.killpg(pgid, signal.SIGKILL)
+                metadata["signals_sent"].append("SIGKILL")
             except ProcessLookupError:
-                return
+                metadata["terminated"] = True
+                metadata["final_returncode"] = getattr(proc, "returncode", None)
+                return metadata
             try:
                 await proc.wait()
             except ProcessLookupError:
                 pass
-            return
+            metadata["terminated"] = True
+            metadata["final_returncode"] = getattr(proc, "returncode", None)
+            return metadata
         except Exception:
             pass
     try:
         proc.kill()
+        metadata["signals_sent"].append("kill")
     except ProcessLookupError:
-        return
+        metadata["terminated"] = True
+        metadata["final_returncode"] = getattr(proc, "returncode", None)
+        return metadata
     try:
         await proc.wait()
     except ProcessLookupError:
         pass
+    metadata["terminated"] = True
+    metadata["final_returncode"] = getattr(proc, "returncode", None)
+    return metadata
+
+
+def termination_with_reason(termination: dict[str, Any], reason: str) -> dict[str, Any]:
+    if not termination:
+        termination = {}
+    return termination | {"termination_reason": termination.get("termination_reason") or reason}
 
 
 def parse_stream_json(stdout: str, expected_agent: str | None = None) -> dict[str, Any]:

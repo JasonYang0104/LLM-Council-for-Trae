@@ -68,6 +68,92 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
                 for term in required_terms:
                     self.assertIn(term, text)
 
+    def test_skills_no_longer_instruct_full_recommended_rerun_as_primary_recovery(self):
+        forbidden_terms = [
+            "$RUN_ID-recommended",
+            "recommended_rerun_status",
+            "recommended_rerun_run_id",
+            "不属于 CLI 内部自动行为",
+        ]
+        required_terms = [
+            "同一个 run",
+            "auto-backfill",
+            "backfill candidates",
+            "--backfill-members",
+            "不整轮重跑",
+        ]
+        for relative in [
+            "README.md",
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in forbidden_terms:
+                    self.assertNotIn(term, text)
+                for term in required_terms:
+                    self.assertIn(term, text)
+
+    def test_skills_require_auto_backfill_and_effective_member_reporting(self):
+        required_terms = [
+            "valid_stage1_models",
+            "quorum_default",
+            "quorum_effective",
+            "low_quorum_used",
+            "backfill_attempts",
+            "stage2_reviewers",
+            "chairman_fallback_used",
+        ]
+        for relative in [
+            "README.md",
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+
+    def test_docs_distinguish_stage1_member_and_stage2_reviewer_backfill(self):
+        required_terms = [
+            "member backfill",
+            "reviewer-only backfill",
+            "stage1_backfill_members",
+            "stage2_reviewer_backfill",
+            "review_subject_count",
+            "reviewer_count",
+            "只有 Stage 1 quorum 不足",
+            "不新增候选答案",
+        ]
+        for relative in [
+            "README.md",
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+            "docs/lct-auto-backfill-implementation-brief-20260603.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+
+    def test_skills_require_fact_pack_inline_and_notes_md_boundary(self):
+        required_terms = [
+            "fact pack",
+            "直接嵌入 _lct_question.md",
+            "notes.md",
+            "只由外层 Agent 维护",
+            "模型不要创建或修改 notes",
+        ]
+        for relative in [
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+                self.assertNotIn("请读取 _lct_fact_pack.md", text)
+
     def test_readme_and_skills_require_explicit_chinese_report_topic(self):
         required_terms = [
             "Report topic",
