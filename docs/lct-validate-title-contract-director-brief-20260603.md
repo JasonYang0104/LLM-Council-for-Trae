@@ -1,7 +1,7 @@
 # LCT validate 与报告标题契约：PM Director Brief
 
-日期：2026-06-03  
-分支：`codex/lct-validate-title-contract-20260603`  
+日期：2026-06-03
+分支：`codex/lct-validate-title-contract-20260603`
 范围：`validate` 状态契约、HTML 报告题名、Skill / README 工作流硬规则
 
 ## 一句话结论
@@ -99,4 +99,3 @@ live smoke：
 `validate` 已经把 terminal 状态讲清楚，但外层 Agent 是否持续遵守规则，还取决于安装到用户环境里的 Skill 是否更新到本分支之后的版本。合并后需要刷新 `~/.LCT` 和用户级 Skill symlink。
 
 `--skip-html` 仍会产生没有 HTML 的 run。本轮延续当前口径：完整报告交付必须有 HTML，因此 `usable_final` 只对具备 Stage 3 final 和 HTML 的报告为 true。若未来要支持“纯 Markdown final 也算可交付”，需要另设 verdict，而不是挤进当前报告交付语义。
-
