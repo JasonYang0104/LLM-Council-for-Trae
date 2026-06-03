@@ -882,6 +882,7 @@ FINAL RANKING:
                 [
                     {
                         "stage": "stage1",
+                        "stage_record": "Response B",
                         "label": "Response B",
                         "model": "DeepSeek-V4-Pro",
                         "expected_model": "DeepSeek-V4-Pro",
@@ -891,6 +892,43 @@ FINAL RANKING:
                     }
                 ],
             )
+
+    def test_validate_failed_stage_records_dedupes_real_manifest_failure_shape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-degraded-real-failure-shape")
+            write_minimal_valid_direct_run(store)
+            manifest = store.read_manifest()
+            manifest["status"] = "degraded_ok"
+            failed_stage_record = {
+                "label": "Response B",
+                "file_label": "B",
+                "model": "DeepSeek-V4-Pro",
+                "expected_model": "DeepSeek-V4-Pro",
+                "actual_model": "DeepSeek-V4-Pro",
+                "status": "failed",
+                "error": "traecli result error",
+            }
+            manifest["stages"]["stage1"].append(failed_stage_record | tool_policy_json())
+            manifest["failures"] = [
+                {
+                    "stage_record": "Response B",
+                    "status": "failed",
+                    "error": "traecli result error",
+                    "expected_model": "DeepSeek-V4-Pro",
+                    "actual_model": "DeepSeek-V4-Pro",
+                }
+            ]
+            store.write_manifest(manifest)
+            for relative in ["stage1/B.response.md", "stage1/B.traecli.stream.jsonl"]:
+                store.write_text(relative, "{}\n")
+            write_json_text(store, "stage1/B.meta.json", stage_meta("DeepSeek-V4-Pro") | {"status": "failed", "error": "traecli result error", "response_chars": 0})
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["status"], "degraded_ok", validation["failures"])
+            self.assertEqual(len(validation["failed_stage_records"]), 1)
+            self.assertEqual(validation["failed_stage_records"][0]["model"], "DeepSeek-V4-Pro")
+            self.assertEqual(validation["failed_stage_records"][0]["stage_record"], "Response B")
 
     def test_validate_contract_reports_failed_no_final_for_terminal_failed_run(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1008,6 +1046,26 @@ The user is not merely asking whether local inference hardware will improve; the
             self.assertIn(f"<h1>{expected}</h1>", html)
             self.assertIn(f"<title>{expected}</title>", html)
             self.assertNotIn("The user is not merely asking", html.split("<h1>", 1)[1].split("</h1>", 1)[0])
+
+    def test_html_title_rejects_unpunctuated_english_long_interpretation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "input.md").write_text(
+                """# Original input
+
+## Agent interpretation
+The user is not merely asking whether local inference hardware will improve they are asking for a market timing judgment
+""",
+                encoding="utf-8",
+            )
+            (root / "stage3").mkdir()
+            (root / "stage3" / "final.md").write_text("# Final Answer\n\n正文\n", encoding="utf-8")
+
+            html = render_html(root, {"run_id": "run-unpunctuated-english", "status": "ok", "config": {}, "stages": {}, "metadata": {}})
+            hero_heading = html.split('<section class="archive-hero"', 1)[1].split("<h1>", 1)[1].split("</h1>", 1)[0]
+
+            self.assertEqual(hero_heading, "最终答案：多模型智囊团评估")
+            self.assertNotIn("The user is not merely asking", hero_heading)
 
     def test_html_title_skips_generic_final_headings(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -68,6 +68,16 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
                 for term in required_terms:
                     self.assertIn(term, text)
 
+    def test_trae_skill_has_source_repo_guard_and_clean_workspace_contract(self):
+        skill = self.read_text(".trae/skills/llm-council-for-trae/SKILL.md")
+
+        self.assertIn("确认当前目录不是 LCT 源码 repo", skill)
+        self.assertIn("src/llm_council_for_trae/", skill)
+        self.assertIn(".trae/agents/", skill)
+        self.assertIn("profiles/subagents.json", skill)
+        self.assertIn("干净问题 workspace", skill)
+        self.assertNotIn("在仓库根目录执行", skill)
+
     def test_skill_template_documents_input_modes_and_search_evidence(self):
         skill = self.read_text("skills/llm-council-for-trae/SKILL.md")
 

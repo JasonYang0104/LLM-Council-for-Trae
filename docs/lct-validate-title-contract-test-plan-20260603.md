@@ -66,4 +66,3 @@ llm-council-for-trae validate <run_id> --json
 ```
 
 live smoke 汇报必须拆分 fake / fixture / live，不把 fixture 说成 live。
-

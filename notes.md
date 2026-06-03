@@ -11,6 +11,7 @@
 - RED tests added for validate verdict fields, title source/filtered suffix behavior, and README/Skill hard rules. Targeted RED run failed as expected on missing `terminal`/`verdict` fields, old input-based title extraction, and missing docs terms.
 - Implementation GREEN added `validate` contract fields without changing old `status`, and changed HTML title derivation to use explicit topic, final-answer Chinese heading, structured topic, then raw input. Targeted validate/title tests and full `tests.test_core` passed.
 - Skill/docs GREEN updated README, canonical Skill, and `.trae` Skill so failed classification requires terminal manifest plus `validate <run_id> --json`; `degraded_ok` is documented as usable and member failure is not run failure.
+- Final subagent review found three P2 issues: duplicate `failed_stage_records` for real manifest failure shape, `.trae` Skill still implying source repo execution, and unpunctuated English long sentences entering titles. Review-fix tests now cover all three and pass.
 
 ## 2026-06-01 LCT Global Install And Skill Iteration
 

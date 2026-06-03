@@ -202,7 +202,13 @@ def _is_generic_report_title(title: str) -> bool:
 def _usable_topic(candidate: str, allow_english: bool = False, require_chinese: bool = False) -> bool:
     if not candidate:
         return False
-    if _is_generic_input_title(candidate) or _is_generic_report_title(candidate):
+    normalized = _normalize_title(candidate)
+    if (
+        _is_generic_input_title(candidate)
+        or _is_generic_report_title(candidate)
+        or normalized in PREFERRED_TOPIC_SECTIONS
+        or normalized in EXPLICIT_TOPIC_LABELS
+    ):
         return False
     has_chinese = bool(re.search(r"[\u4e00-\u9fff]", candidate))
     if require_chinese and not has_chinese:
@@ -218,7 +224,7 @@ def _looks_like_english_long_sentence(candidate: str) -> bool:
     if re.search(r"[\u4e00-\u9fff]", candidate):
         return False
     words = re.findall(r"[A-Za-z]+", candidate)
-    return len(words) >= 9 and bool(re.search(r"[.;,]", candidate))
+    return len(words) >= 9
 
 
 def _normalize_title(title: str) -> str:

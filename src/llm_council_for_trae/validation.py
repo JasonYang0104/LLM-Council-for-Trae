@@ -267,13 +267,29 @@ def collect_failed_stage_records(manifest: dict[str, Any]) -> list[dict[str, Any
                 records.append({"stage": "manifest", "status": "failed", "error": str(item)})
 
     deduped: list[dict[str, Any]] = []
-    seen: set[tuple[tuple[str, Any], ...]] = set()
     for record in records:
-        key = tuple(sorted(record.items()))
-        if key not in seen:
-            seen.add(key)
+        existing = next((item for item in deduped if same_failure_record(item, record)), None)
+        if existing is None:
             deduped.append(record)
+        else:
+            for key, value in record.items():
+                existing.setdefault(key, value)
     return deduped
+
+
+def same_failure_record(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    left_model = left.get("model") or left.get("expected_model") or left.get("actual_model")
+    right_model = right.get("model") or right.get("expected_model") or right.get("actual_model")
+    return (
+        failure_stage_record_key(left) == failure_stage_record_key(right)
+        and left_model == right_model
+        and left.get("status") == right.get("status")
+        and left.get("error") == right.get("error")
+    )
+
+
+def failure_stage_record_key(record: dict[str, Any]) -> Any:
+    return record.get("stage_record") or record.get("label") or record.get("reviewer_label") or record.get("model")
 
 
 def is_failed_stage_record(item: dict[str, Any]) -> bool:
@@ -286,11 +302,12 @@ def compact_failed_stage_record(item: dict[str, Any], stage_name: Any = None) ->
     stage = stage_name or item.get("stage")
     if stage:
         compact["stage"] = stage
+    stage_record = item.get("stage_record") or item.get("label") or item.get("reviewer_label") or item.get("model")
+    if stage_record:
+        compact["stage_record"] = stage_record
     for field in (
         "label",
         "reviewer_label",
-        "file_label",
-        "stage_record",
         "model",
         "expected_model",
         "actual_model",

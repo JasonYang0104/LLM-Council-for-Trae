@@ -12,6 +12,14 @@ description: |
 
 ## 前置条件
 
+确认当前目录不是 LCT 源码 repo。出现以下任一标记时停止，除非用户明确说正在做 LCT 开发：
+
+- `src/llm_council_for_trae/`
+- `.trae/agents/`
+- `profiles/subagents.json`
+
+日常使用应在干净问题 workspace 中调用全局 CLI，不要在 LCT 源码 repo 中跑用户问题。
+
 确认以下条件满足后再开始：
 
 ```bash
@@ -38,7 +46,7 @@ Step 5: 交付 HTML 报告
 
 ## Step 0: 定位或自举 LCT CLI
 
-在仓库根目录执行。新 clone 的 workspace 可能还没有安装 `llm-council-for-trae` wrapper，先选择可用命令：
+在干净问题 workspace 中执行。新环境可能还没有安装 `llm-council-for-trae` wrapper，先选择可用命令：
 
 ```bash
 if command -v llm-council-for-trae >/dev/null 2>&1; then
