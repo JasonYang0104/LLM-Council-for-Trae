@@ -275,6 +275,146 @@ class AutoBackfillQuorumTests(unittest.TestCase):
         import asyncio
         asyncio.run(_run())
 
+    def test_stage2_reviewers_default_to_valid_stage1_models(self):
+        async def _run():
+            from llm_council_for_trae.council import CouncilConfig, stage2_collect_rankings
+            from llm_council_for_trae.provider import ModelCallResult, TraeCliProvider
+            from llm_council_for_trae.store import ArtifactStore
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-stage2-eligible")
+            config = CouncilConfig(members=["M1", "M2", "M3"], chairman="Chair", stage2_timeout=1)
+            seen = []
+
+            async def query_model(**kwargs):
+                seen.append((kwargs["model"], kwargs["label"]))
+                return ModelCallResult(
+                    expected_model=kwargs["model"],
+                    actual_model=kwargs["model"],
+                    response="FINAL RANKING:\n1. Response A\n2. Response B",
+                    status="ok",
+                    session_id="s",
+                    command=["traecli"],
+                    exit_code=0,
+                    stdout_path="out.jsonl",
+                    stderr_path="err.log",
+                )
+
+            provider = TraeCliProvider.__new__(TraeCliProvider)
+            provider.query_model = query_model
+            stage1_results = [
+                {"label": "Response A", "file_label": "A", "model": "M1", "response": "A", "status": "ok"},
+                {"label": "Response B", "file_label": "B", "model": "M2", "response": "B", "status": "ok"},
+                {"label": "Response C", "file_label": "C", "model": "M3", "response": "", "status": "failed"},
+            ]
+
+            stage2_results, label_to_model = await stage2_collect_rankings("question", stage1_results, config, provider, store)
+
+            self.assertEqual(seen, [("M1", "A"), ("M2", "B")])
+            self.assertEqual(label_to_model, {"Response A": "M1", "Response B": "M2"})
+            self.assertEqual([r["reviewer_label"] for r in stage2_results], ["A", "B"])
+            self.assertTrue(all(r["reviewer_eligible"] for r in stage2_results))
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_run_full_council_stage2_reviewer_failure_backfills_new_reviewer(self):
+        async def _run():
+            from llm_council_for_trae.council import CouncilConfig, run_full_council
+            from llm_council_for_trae.provider import ModelCallResult
+            from llm_council_for_trae.store import ArtifactStore
+            import llm_council_for_trae.council as council_mod
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-stage2-backfill")
+            config = CouncilConfig(
+                members=["M1", "M2", "M3"],
+                chairman="Chair",
+                min_valid_members=3,
+                stage1_max_retries=0,
+                backfill_members=["M4"],
+                stage2_timeout=1,
+            )
+            calls = []
+
+            class MockProvider:
+                def __init__(self, *args, **kwargs):
+                    pass
+
+                async def query_model(self, **kwargs):
+                    stage = kwargs["stage"]
+                    model = kwargs["model"]
+                    calls.append((stage, model, kwargs["label"]))
+                    if stage == "stage1":
+                        return ModelCallResult(
+                            expected_model=model,
+                            actual_model=model,
+                            response=f"answer {model}",
+                            status="ok",
+                            session_id=f"s-{model}",
+                            command=["traecli"],
+                            exit_code=0,
+                            stdout_path="out.jsonl",
+                            stderr_path="err.log",
+                        )
+                    status = "failed" if stage == "stage2" and model == "M2" else "ok"
+                    ranking = (
+                        "FINAL RANKING:\n1. Response A\n2. Response B\n3. Response C\n4. Response D"
+                        if model == "M4"
+                        else "FINAL RANKING:\n1. Response A\n2. Response B\n3. Response C"
+                    )
+                    return ModelCallResult(
+                        expected_model=model,
+                        actual_model=model if status == "ok" else None,
+                        response=ranking if status == "ok" else "",
+                        status=status,
+                        session_id=f"s-{model}",
+                        command=["traecli"],
+                        exit_code=0 if status == "ok" else 1,
+                        stdout_path="out.jsonl",
+                        stderr_path="err.log",
+                        error=None if status == "ok" else "timeout",
+                    )
+
+            async def fake_stage3(user_query, stage1_results, stage2_results, config, provider, store, fallback_chain=None):
+                return {
+                    "model": "Chair",
+                    "expected_model": "Chair",
+                    "actual_model": "Chair",
+                    "response": "final",
+                    "status": "ok",
+                    "error": None,
+                    "prompt_path": "stage3/chairman.prompt.md",
+                    "response_path": "stage3/final.md",
+                    "json_path": "stage3/final.json",
+                }, {"attempted": ["Chair"], "used": "Chair", "fallback_from": None, "failed_attempts": []}
+
+            with patch.object(council_mod, "runtime_doctor") as mock_doctor:
+                mock_doctor.return_value = type("Health", (), {
+                    "ok": True,
+                    "command": "fake",
+                    "version": "1.0",
+                    "doctor_exit_code": 0,
+                    "doctor": {},
+                    "errors": [],
+                    "warnings": [],
+                    "ignored_errors": [],
+                    "models": [{"name": name} for name in ["M1", "M2", "M3", "M4", "Chair"]],
+                })()
+                with patch.object(council_mod, "require_models_available"):
+                    with patch.object(council_mod, "TraeCliProvider", MockProvider):
+                        with patch.object(council_mod, "stage3_synthesize_final", fake_stage3):
+                            manifest = await run_full_council("question", config, store)
+
+            self.assertIn(("stage1", "M4", "D"), calls)
+            self.assertIn(("stage2", "M4", "D"), calls)
+            self.assertEqual(manifest["metadata"]["stage2_reviewers"]["backfill_reviewers"], ["M4"])
+            self.assertEqual(
+                [r["model"] for r in manifest["stages"]["stage2"]],
+                ["M1", "M2", "M3", "M4"],
+            )
+
+        import asyncio
+        asyncio.run(_run())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -183,4 +183,54 @@
 
 ### Commit
 
-- 待提交：`feat: backfill failed stage1 members in-run`
+- `aba731c feat: backfill failed stage1 members in-run`
+
+## Phase 4：Stage 2 reviewer eligibility 与 backfill
+
+### 阶段目标
+
+- Stage 2 的 review subjects 和 reviewers 默认都来自有效 Stage 1 成员。
+- Stage 1 failed / contaminated 成员不再默认参与 Stage 2 reviewer。
+- Stage 2 reviewer 失败后，如有效 review 数低于目标且仍有候补，先补一个 Stage 1 answer，再让该候补补交 Stage 2 review。
+
+### 新增/修改的测试
+
+- 新增：`test_stage2_reviewers_default_to_valid_stage1_models`
+  - 先红后绿；红态证明旧代码仍调用 Stage 1 failed 的 M3 做 reviewer。
+  - 绿态断言 Stage 2 只调用 M1/M2，`label_to_model` 也只包含有效 Stage 1 answers。
+- 新增：`test_run_full_council_stage2_reviewer_failure_backfills_new_reviewer`
+  - 先红后绿；红态证明 Stage 2 reviewer M2 失败后不会补 M4。
+  - 绿态断言 M4 先跑 Stage 1 `Response D`，再跑 Stage 2 reviewer，并写入 `metadata.stage2_reviewers.backfill_reviewers=["M4"]`。
+- 修改：`test_stage2_timeout_keeps_completed_reviews_and_marks_pending_failed`
+  - 测试 fixture 按新 contract 显式提供 M1/M2 两个有效 Stage 1 record；不再期待只因 `config.members` 有 M2 就启动 M2 reviewer。
+
+### 实现决定
+
+- `stage2_collect_rankings()` 增加可选 `reviewers` 参数：
+  - 默认 `review_subjects = valid Stage 1 records`
+  - 默认 `reviewers = review_subjects`
+  - backfill reviewer 场景可以只让新增 Stage 1 record 补交 review。
+- Stage 2 review record 增加：
+  - `reviewer_eligible`
+  - `reviewer_source`
+  - `review_subject_count`
+  - `attempt_role`
+- `run_full_council()` 增加 `metadata.stage2_reviewers`，记录 reviewer target、valid reviewers、failed reviewers、backfill reviewers 和 attempted backfill。
+- Stage 2 reviewer backfill 只在 `0 < valid_stage2 < reviewer_target` 时触发；如果没有任何有效 review，仍保留现有 failed/fallback 语义，避免把完全失败伪装成可恢复。
+
+### 权衡与风险
+
+- 新 backfill reviewer 的 ranking 可能覆盖 `stage2/review.prompt.md` 这份共享 prompt 文件；目前 manifest/stage records 可审计，但 prompt sidecar 还不是多批次结构。后续如要完整复盘每批 Stage 2 prompt，可拆成 batch-specific prompt path。
+- 新增 Stage 1 backfill 成员可作为 review subject，但旧 reviewer 不会为新增 subject 重新 review；这是 MVP 权衡。Phase 5 validate/HTML 会显式展示 backfill 和 reviewer provenance，避免用户误以为所有 reviewer 都评审了完全相同集合。
+
+### 阶段验证
+
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_auto_backfill_quorum -v`（7 个测试）
+- 通过：Stage 2 timeout / metrics / all-failed 定向测试（3 个测试）
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`make test`（173 个 unittest 通过）
+- 通过：`git diff --check`
+
+### Commit
+
+- 待提交：`feat: backfill stage2 reviewers from effective members`

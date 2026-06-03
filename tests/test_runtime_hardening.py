@@ -101,7 +101,7 @@ class RuntimeHardeningTests(unittest.TestCase):
                     return ModelCallResult(
                         expected_model="M1",
                         actual_model="M1",
-                        response="FINAL RANKING:\n1. Response A",
+                        response="FINAL RANKING:\n1. Response A\n2. Response B",
                         status="ok",
                         session_id="s1",
                         command=["traecli"],
@@ -124,11 +124,14 @@ class RuntimeHardeningTests(unittest.TestCase):
 
             provider = TraeCliProvider.__new__(TraeCliProvider)
             provider.query_model = query_model
-            stage1_results = [{"label": "Response A", "model": "M1", "response": "A", "status": "ok"}]
+            stage1_results = [
+                {"label": "Response A", "file_label": "A", "model": "M1", "response": "A", "status": "ok"},
+                {"label": "Response B", "file_label": "B", "model": "M2", "response": "B", "status": "ok"},
+            ]
 
             stage2_results, label_to_model = await stage2_collect_rankings("question", stage1_results, config, provider, store)
 
-            self.assertEqual(label_to_model, {"Response A": "M1"})
+            self.assertEqual(label_to_model, {"Response A": "M1", "Response B": "M2"})
             self.assertEqual([r["status"] for r in stage2_results], ["ok", "failed"])
             self.assertIn("cancelled_by_stage_timeout", stage2_results[1]["error"])
             self.assertTrue((store.root / "stage2" / "B.traecli.stream.jsonl").exists())

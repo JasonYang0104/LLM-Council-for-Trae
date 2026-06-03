@@ -165,6 +165,7 @@ async def backfill_stage1_responses(
     provider: TraeCliProvider,
     store: ArtifactStore,
     runtime_models: list[dict[str, Any]],
+    target_valid_members: int | None = None,
 ) -> tuple[list[str], list[str]]:
     from .model_selection import build_backfill_candidates
 
@@ -188,8 +189,9 @@ async def backfill_stage1_responses(
         explicit_members=config.backfill_members or None,
     )
     attempted_backfill: list[str] = []
+    target = target_valid_members or config.min_valid_members
     for model in candidates:
-        if effective_stage1_count(stage1_results) >= config.min_valid_members:
+        if effective_stage1_count(stage1_results) >= target:
             break
         label = chr(65 + len(stage1_results))
         attempted_backfill.append(model)
@@ -238,17 +240,23 @@ async def stage2_collect_rankings(
     config: CouncilConfig,
     provider: TraeCliProvider,
     store: ArtifactStore,
+    reviewers: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, str]]:
-    label_to_model = {result["label"]: result["model"] for result in stage1_results}
+    review_subjects = [result for result in stage1_results if stage1_record_is_valid(result)]
+    reviewer_records = [result for result in (reviewers or review_subjects) if stage1_record_is_valid(result)]
+    label_to_model = {result["label"]: result["model"] for result in review_subjects}
     store.write_json("stage2/label_to_model.json", label_to_model)
 
-    ranking_prompt = build_stage2_prompt(user_query, stage1_results)
+    ranking_prompt = build_stage2_prompt(user_query, review_subjects)
     store.write_text("stage2/review.prompt.md", ranking_prompt + "\n")
 
     output_dir = store.path("stage2")
-    task_map: dict[asyncio.Task, tuple[int, str, str]] = {}
-    for index, model in enumerate(config.members):
-        label = chr(65 + index)
+    task_map: dict[asyncio.Task, tuple[int, dict[str, Any], str, str]] = {}
+    for index, reviewer in enumerate(reviewer_records):
+        model = str(reviewer["model"])
+        label = stage_file_label(reviewer, index)
+        member_index = config.members.index(model) if model in config.members else -1
+        agent = config.agent_for_member(member_index) if member_index >= 0 else None
         task = asyncio.create_task(
             provider.query_model(
                 model=model,
@@ -257,12 +265,12 @@ async def stage2_collect_rankings(
                 stage="stage2",
                 label=label,
                 output_dir=output_dir,
-                agent=config.agent_for_member(index),
+                agent=agent,
             )
         )
-        task_map[task] = (index, model, label)
+        task_map[task] = (index, reviewer, model, label)
 
-    call_results: list[ModelCallResult | None] = [None] * len(config.members)
+    call_results: list[ModelCallResult | None] = [None] * len(reviewer_records)
     stage2_timeout = config.stage2_timeout if config.stage2_timeout is not None else max(config.query_timeout + 30, 240)
     loop = asyncio.get_running_loop()
     stage_start = loop.time()
@@ -282,7 +290,7 @@ async def stage2_collect_rankings(
                 return_when=asyncio.FIRST_COMPLETED,
             )
             for task in done:
-                idx, model, label = task_map[task]
+                idx, _reviewer, model, label = task_map[task]
                 try:
                     call_results[idx] = task.result()
                 except (asyncio.CancelledError, Exception) as exc:
@@ -290,7 +298,7 @@ async def stage2_collect_rankings(
     finally:
         await cancel_and_drain(pending)
 
-    for task, (idx, model, label) in task_map.items():
+    for task, (idx, _reviewer, model, label) in task_map.items():
         if call_results[idx] is None:
             call_results[idx] = synthetic_failed_call(
                 model,
@@ -302,8 +310,9 @@ async def stage2_collect_rankings(
 
     stage2_results: list[dict[str, Any]] = []
     valid_labels = set(label_to_model)
-    for index, (model, call) in enumerate(zip(config.members, call_results)):
-        label = chr(65 + index)
+    for reviewer, call in zip(reviewer_records, call_results):
+        model = str(reviewer["model"])
+        label = stage_file_label(reviewer, 0)
         if call is None:
             call = synthetic_failed_call(
                 model,
@@ -328,6 +337,10 @@ async def stage2_collect_rankings(
             "error": call.error,
             "review_path": f"stage2/{label}.review.md",
             "json_path": f"stage2/{label}.review.json",
+            "reviewer_eligible": True,
+            "reviewer_source": "stage1_backfill" if reviewer.get("attempt_role") == "backfill" else "stage1_ok",
+            "review_subject_count": len(review_subjects),
+            "attempt_role": "backfill" if reviewer.get("attempt_role") == "backfill" else "primary",
             "tool_calls_count": call.tool_calls_count,
             "turns_count": call.turns_count,
             "tool_budget_status": call.tool_budget_status,
@@ -773,16 +786,73 @@ async def run_full_council(
     if stage1_status == "failed":
         return manifest
 
-    valid_stage1 = [r for r in stage1_results if r.get("status") == "ok"]
+    valid_stage1 = [r for r in stage1_results if stage1_record_is_valid(r)]
 
     store.event("stage2_start")
     stage2_results, label_to_model = await stage2_collect_rankings(user_query, valid_stage1, config, provider, store)
+    valid_stage2 = [r for r in stage2_results if r.get("status") == "ok"]
+    stage2_reviewer_target = min(len(valid_stage1), config.min_valid_members)
+    stage2_backfill_attempted: list[str] = []
+    if (
+        config.stage2_auto_backfill
+        and 0 < len(valid_stage2) < stage2_reviewer_target
+    ):
+        needed_reviewers = stage2_reviewer_target - len(valid_stage2)
+        before_count = len(stage1_results)
+        stage2_candidates, stage2_backfill_attempted = await backfill_stage1_responses(
+            user_query,
+            stage1_results,
+            config,
+            provider,
+            store,
+            health.models,
+            target_valid_members=effective_stage1_count(stage1_results) + needed_reviewers,
+        )
+        backfill_candidates = list(dict.fromkeys(backfill_candidates + stage2_candidates))
+        backfill_attempted = list(dict.fromkeys(backfill_attempted + stage2_backfill_attempted))
+        new_reviewers = [
+            result
+            for result in stage1_results[before_count:]
+            if stage1_record_is_valid(result)
+        ]
+        if new_reviewers:
+            store.event("stage2_backfill_reviewers", {"models": [r["model"] for r in new_reviewers]})
+            more_stage2, label_to_model = await stage2_collect_rankings(
+                user_query,
+                [r for r in stage1_results if stage1_record_is_valid(r)],
+                config,
+                provider,
+                store,
+                reviewers=new_reviewers,
+            )
+            stage2_results.extend(more_stage2)
+            valid_stage1 = [r for r in stage1_results if stage1_record_is_valid(r)]
+            valid_stage2 = [r for r in stage2_results if r.get("status") == "ok"]
+            manifest["stages"]["stage1"] = stage1_results
+            manifest["metadata"]["quorum"] = stage1_quorum_metadata(
+                stage1_results,
+                config,
+                primary_members=config.members,
+                backfill_candidates=backfill_candidates,
+                backfill_attempted=backfill_attempted,
+            )
     aggregate_rankings = calculate_aggregate_rankings(valid_stage2_rankings(stage2_results), label_to_model)
     manifest["metadata"]["label_to_model"] = label_to_model
     manifest["metadata"]["aggregate_rankings"] = aggregate_rankings
+    manifest["metadata"]["stage2_reviewers"] = {
+        "reviewer_target": stage2_reviewer_target,
+        "review_subject_count": len(valid_stage1),
+        "valid_reviewers": [r["model"] for r in stage2_results if r.get("status") == "ok"],
+        "failed_reviewers": [r["model"] for r in stage2_results if r.get("status") != "ok"],
+        "backfill_reviewers": [
+            r["model"]
+            for r in stage2_results
+            if r.get("reviewer_source") == "stage1_backfill"
+        ],
+        "backfill_attempted": stage2_backfill_attempted,
+    }
     manifest["stages"]["stage2"] = stage2_results
     record_stage_failures(manifest, stage2_results)
-    valid_stage2 = [r for r in stage2_results if r.get("status") == "ok"]
     if not valid_stage2:
         manifest["status"] = "failed"
         store.write_manifest(manifest)
@@ -912,6 +982,18 @@ def synthetic_failed_call(
 
 def stage1_record_is_valid(record: dict[str, Any]) -> bool:
     return record.get("status") == "ok" and not record.get("forbidden_tool_calls")
+
+
+def stage_file_label(record: dict[str, Any], index: int) -> str:
+    file_label = record.get("file_label")
+    if isinstance(file_label, str) and file_label:
+        return file_label
+    label = record.get("label")
+    if isinstance(label, str) and label.startswith("Response "):
+        suffix = label.removeprefix("Response ").strip()
+        if suffix:
+            return suffix
+    return chr(65 + index)
 
 
 def effective_stage1_count(stage1_results: list[dict[str, Any]]) -> int:
