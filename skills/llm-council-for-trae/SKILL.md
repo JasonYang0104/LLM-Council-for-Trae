@@ -61,7 +61,7 @@ final_answer_source: stage3/final.md
 
 ## Run
 
-1. 按 Input Preparation 规则将用户问题写入当前 workspace 的临时 Markdown 文件，例如 `_lct_question.md`。
+1. 按 Input Preparation 规则将用户问题写入当前 workspace 的临时 Markdown 文件，例如 `_lct_question.md`。默认保留用户原文；在原始问题下方追加一行 `Report topic: <中文议题>`，让 HTML 标题稳定生成为 `<中文议题>：多模型智囊团评估`。
 2. 设置 run id：
 
 ```bash

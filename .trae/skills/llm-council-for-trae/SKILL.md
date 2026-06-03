@@ -90,7 +90,7 @@ chairman: Kimi-K2.6
 
 ## Step 2: 准备问题文件
 
-将用户问题写入 `.md` 文件。中文问题直接写，英文问题保持原文。
+将用户问题写入 `.md` 文件。中文问题直接写，英文问题保持原文。原始问题下方追加一行 `Report topic: <中文议题>`，让 HTML 标题稳定生成为 `<中文议题>：多模型智囊团评估`。
 
 ```bash
 cat > /tmp/council-question.md << 'EOF'

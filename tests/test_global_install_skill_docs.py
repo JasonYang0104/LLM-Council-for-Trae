@@ -68,6 +68,22 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
                 for term in required_terms:
                     self.assertIn(term, text)
 
+    def test_readme_and_skills_require_explicit_chinese_report_topic(self):
+        required_terms = [
+            "Report topic",
+            "中文议题",
+            "多模型智囊团评估",
+        ]
+        for relative in [
+            "README.md",
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+
     def test_trae_skill_has_source_repo_guard_and_clean_workspace_contract(self):
         skill = self.read_text(".trae/skills/llm-council-for-trae/SKILL.md")
 

@@ -135,6 +135,11 @@ def _extract_explicit_topic(lines: list[str]) -> str | None:
 
 def _extract_final_answer_topic(lines: list[str]) -> str | None:
     for line in lines:
+        if _is_section_separator(line):
+            return None
+        core_question = _core_question_topic(line)
+        if core_question and _usable_topic(core_question, require_chinese=True):
+            return core_question
         heading = _heading_text(line)
         if heading and _usable_topic(heading, require_chinese=True):
             return heading
@@ -181,11 +186,23 @@ def _heading_text(line: str) -> str | None:
     return _clean_title_candidate(heading.group(1))
 
 
+def _is_section_separator(line: str) -> bool:
+    return bool(re.match(r"^\s*-{3,}\s*$", line.strip()))
+
+
+def _core_question_topic(line: str) -> str | None:
+    match = re.search(r"核心问题是\s*[:：]\s*(.+)$", line)
+    if not match:
+        return None
+    return _clean_title_candidate(match.group(1)).rstrip("。")
+
+
 def _clean_title_candidate(line: str) -> str:
     text = line.strip()
     text = re.sub(r"^#{1,6}\s+", "", text)
     text = re.sub(r"^[-*+]\s+", "", text)
     text = re.sub(r"^\d+[.)]\s+", "", text)
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
     text = text.strip("`*_ \t")
     text = re.sub(r"\s+", " ", text)
     return text

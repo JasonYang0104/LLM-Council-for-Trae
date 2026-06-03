@@ -1047,6 +1047,36 @@ The user is not merely asking whether local inference hardware will improve; the
             self.assertIn(f"<title>{expected}</title>", html)
             self.assertNotIn("The user is not merely asking", html.split("<h1>", 1)[1].split("</h1>", 1)[0])
 
+    def test_html_title_uses_final_core_question_before_later_section_heading(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "input.md").write_text(
+                """# Original input
+
+## Agent interpretation
+The user is not merely asking whether local inference hardware will improve; they are asking for a market timing judgment.
+""",
+                encoding="utf-8",
+            )
+            (root / "stage3").mkdir()
+            (root / "stage3" / "final.md").write_text(
+                """## 我真正理解你的需求
+
+你需要判断。核心问题是：**H2 2026 到 H1 2027 本地AI会跨越到消费级生产力工具吗？**
+
+---
+
+## 如果这一天已经来了：宏观推演
+""",
+                encoding="utf-8",
+            )
+
+            html = render_html(root, {"run_id": "run-core-question", "status": "ok", "config": {}, "stages": {}, "metadata": {}})
+
+            expected = "H2 2026 到 H1 2027 本地AI会跨越到消费级生产力工具吗？：多模型智囊团评估"
+            self.assertIn(f"<h1>{expected}</h1>", html)
+            self.assertNotIn("如果这一天已经来了", html.split("<h1>", 1)[1].split("</h1>", 1)[0])
+
     def test_html_title_rejects_unpunctuated_english_long_interpretation(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
