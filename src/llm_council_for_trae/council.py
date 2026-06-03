@@ -81,34 +81,37 @@ async def stage1_collect_responses(
     soft_warned = False
     pending: set[asyncio.Task] = set(task_map.keys())
 
-    while pending:
-        elapsed = loop.time() - stage_start
+    try:
+        while pending:
+            elapsed = loop.time() - stage_start
 
-        if elapsed > config.member_hard_timeout:
-            store.event("stage1_hard_timeout", {"elapsed_seconds": int(elapsed)})
-            for t in pending:
-                t.cancel()
-            break
-
-        if not soft_warned and elapsed > config.member_soft_checkpoint:
-            store.event("stage1_soft_checkpoint", {"elapsed_seconds": int(elapsed)})
-            soft_warned = True
-
-        if elapsed > config.member_quorum_checkpoint:
-            ok_count = sum(1 for r in call_results if r is not None and r.status == "ok")
-            if ok_count >= config.min_valid_members:
-                store.event("stage1_quorum_checkpoint", {"ok_count": ok_count, "elapsed_seconds": int(elapsed)})
-                for t in pending:
-                    t.cancel()
+            if elapsed > config.member_hard_timeout:
+                store.event("stage1_hard_timeout", {"elapsed_seconds": int(elapsed)})
+                await cancel_and_drain(pending)
+                pending = set()
                 break
 
-        done, pending = await asyncio.wait(pending, timeout=10, return_when=asyncio.FIRST_COMPLETED)
-        for task in done:
-            idx, model, label = task_map[task]
-            try:
-                call_results[idx] = task.result()
-            except (asyncio.CancelledError, Exception) as exc:
-                call_results[idx] = synthetic_failed_call(model, f"cancelled_by_stage_timeout: {exc}", config)
+            if not soft_warned and elapsed > config.member_soft_checkpoint:
+                store.event("stage1_soft_checkpoint", {"elapsed_seconds": int(elapsed)})
+                soft_warned = True
+
+            if elapsed > config.member_quorum_checkpoint:
+                ok_count = sum(1 for r in call_results if r is not None and r.status == "ok")
+                if ok_count >= config.min_valid_members:
+                    store.event("stage1_quorum_checkpoint", {"ok_count": ok_count, "elapsed_seconds": int(elapsed)})
+                    await cancel_and_drain(pending)
+                    pending = set()
+                    break
+
+            done, pending = await asyncio.wait(pending, timeout=10, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                idx, model, label = task_map[task]
+                try:
+                    call_results[idx] = task.result()
+                except (asyncio.CancelledError, Exception) as exc:
+                    call_results[idx] = synthetic_failed_call(model, f"cancelled_by_stage_timeout: {exc}", config)
+    finally:
+        await cancel_and_drain(pending)
 
     for task in task_map:
         idx, model, label = task_map[task]
@@ -120,6 +123,8 @@ async def stage1_collect_responses(
         label = chr(65 + index)
         if call is None:
             call = synthetic_failed_call(model, "cancelled_by_stage_timeout", config)
+        if not (store.root / "stage1" / f"{label}.meta.json").exists():
+            store.write_json(f"stage1/{label}.meta.json", call.to_json() | {"captured_at": utc_now()})
         store.write_text(f"stage1/{label}.response.md", call.response + "\n")
         stage1_results.append(
             {
@@ -182,29 +187,27 @@ async def stage2_collect_rankings(
     stage_start = loop.time()
     pending: set[asyncio.Task] = set(task_map.keys())
 
-    while pending:
-        elapsed = loop.time() - stage_start
-        remaining = stage2_timeout - elapsed
-        if remaining <= 0:
-            store.event("stage2_timeout", {"elapsed_seconds": round(elapsed, 2)})
-            break
+    try:
+        while pending:
+            elapsed = loop.time() - stage_start
+            remaining = stage2_timeout - elapsed
+            if remaining <= 0:
+                store.event("stage2_timeout", {"elapsed_seconds": round(elapsed, 2)})
+                break
 
-        done, pending = await asyncio.wait(
-            pending,
-            timeout=min(10, max(0.01, remaining)),
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-        for task in done:
-            idx, model, label = task_map[task]
-            try:
-                call_results[idx] = task.result()
-            except (asyncio.CancelledError, Exception) as exc:
-                call_results[idx] = synthetic_failed_call(model, f"cancelled_by_stage_timeout: {exc}", config)
-
-    if pending:
-        for task in pending:
-            task.cancel()
-        await asyncio.gather(*pending, return_exceptions=True)
+            done, pending = await asyncio.wait(
+                pending,
+                timeout=min(10, max(0.01, remaining)),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in done:
+                idx, model, label = task_map[task]
+                try:
+                    call_results[idx] = task.result()
+                except (asyncio.CancelledError, Exception) as exc:
+                    call_results[idx] = synthetic_failed_call(model, f"cancelled_by_stage_timeout: {exc}", config)
+    finally:
+        await cancel_and_drain(pending)
 
     for task, (idx, model, label) in task_map.items():
         if call_results[idx] is None:
@@ -263,6 +266,15 @@ async def stage2_collect_rankings(
     aggregate_rankings = calculate_aggregate_rankings(valid_stage2_rankings(stage2_results), label_to_model)
     store.write_json("stage2/aggregate.json", aggregate_rankings)
     return stage2_results, label_to_model
+
+
+async def cancel_and_drain(tasks: set[asyncio.Task] | list[asyncio.Task]) -> None:
+    pending = [task for task in tasks if not task.done()]
+    if not pending:
+        return
+    for task in pending:
+        task.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
 
 
 async def stage3_synthesize_final(
@@ -758,6 +770,7 @@ def tool_policy_record(call: ModelCallResult) -> dict[str, Any]:
         "disallowed_tools": call.disallowed_tools,
         "forbidden_tool_calls": call.forbidden_tool_calls,
         "tool_calls": call.tool_calls,
+        "termination": call.termination,
     }
 
 
@@ -767,6 +780,7 @@ def synthetic_failed_call(
     config: CouncilConfig,
     stdout_path: str = "",
     stderr_path: str = "",
+    termination: dict[str, Any] | None = None,
 ) -> ModelCallResult:
     allowed_tools, disallowed_tools = tool_policy_for_mode(config.member_tool_mode)
     return ModelCallResult(
@@ -783,6 +797,7 @@ def synthetic_failed_call(
         member_tool_mode=config.member_tool_mode,
         allowed_tools=allowed_tools,
         disallowed_tools=disallowed_tools,
+        termination=termination or {},
     )
 
 

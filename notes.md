@@ -33,4 +33,46 @@
 
 ### Commit
 
-- 待提交：`docs: add auto-backfill implementation plan`
+- `785476d docs: add auto-backfill implementation plan`
+
+## Phase 1：Runtime cleanup 测试与最小实现
+
+### 阶段目标
+
+- 让 Stage 1 在 quorum checkpoint 或 hard timeout 取消 pending model task 后，等待 provider cleanup 完成再返回。
+- Stage 2 collector 在外部取消或 timeout 后也统一 drain pending task。
+- 为 provider timeout / cancel / tool-budget kill 路径记录 termination metadata，供后续 manifest / validate / HTML 使用。
+
+### 新增/修改的测试
+
+- 新增：`test_stage1_quorum_checkpoint_drains_cancelled_provider_cleanup`
+  - 先红后绿；红态证明 Stage 1 返回时 fake provider 的取消 cleanup 尚未执行。
+  - 绿态断言 cleanup flag 完成，且 fake provider 未写 meta 时由 orchestrator 补写 `stage1/B.meta.json`。
+- 新增：`test_model_call_result_serializes_termination_metadata`
+  - 锁定 `ModelCallResult.to_json()` 输出 termination metadata。
+- 新增：`test_provider_timeout_records_termination_metadata`
+  - 锁定 provider timeout 后返回 failed result，并记录 `termination_reason=timeout`、`terminated=true`、`final_returncode`。
+
+### 实现决定
+
+- 在 `council.py` 增加 `cancel_and_drain()`，Stage 1 / Stage 2 对 pending task 统一 `cancel()` 后 `gather(..., return_exceptions=True)`。
+- Stage 1 在写 stage record 前检查 `stage1/{label}.meta.json`，如果 provider 没写过，则补写 synthetic failed meta；如果 provider 已写真实 meta，不覆盖 pid/pgid 等证据。
+- `terminate_process_tree()` 从“只做动作”改成“动作 + 返回 metadata”，保留旧调用方式兼容：调用方可以忽略返回值。
+- provider timeout 和 cancel 路径都会写 stream/stderr/meta sidecar。cancel 路径仍 re-raise，让 orchestrator 维持现有 synthetic failed record 语义。
+
+### 权衡与风险
+
+- 本阶段没有处理 preflight 的 `os.system` 路径；这是既有 pipe hang 约束，不属于 direct model call cleanup。
+- 本阶段没有做全局 process sweeping，也没有 kill 非本 run 拥有的进程。
+- `termination` 字段目前作为新增兼容字段进入 meta 和 stage record；Phase 5 再把它纳入 validate / HTML 的用户面展示。
+
+### 阶段验证
+
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_runtime_hardening -v`（24 个测试）
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`make test`（166 个 unittest 通过）
+- 通过：`git diff --check`
+
+### Commit
+
+- 待提交：`fix: drain cancelled model tasks before backfill`

@@ -179,6 +179,72 @@ class RuntimeHardeningTests(unittest.TestCase):
         import asyncio
         asyncio.run(_run())
 
+    def test_stage1_quorum_checkpoint_drains_cancelled_provider_cleanup(self):
+        async def _run():
+            import asyncio
+            from llm_council_for_trae.council import CouncilConfig, stage1_collect_responses
+            from llm_council_for_trae.provider import ModelCallResult, TraeCliProvider
+            from llm_council_for_trae.store import ArtifactStore
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-stage1-drain")
+            config = CouncilConfig(
+                members=["M1", "M2"],
+                chairman="Chair",
+                min_valid_members=1,
+                member_soft_checkpoint=999,
+                member_quorum_checkpoint=0,
+                member_hard_timeout=30,
+            )
+            cleanup_done = []
+
+            async def query_model(**kwargs):
+                if kwargs["model"] == "M1":
+                    return ModelCallResult(
+                        expected_model="M1",
+                        actual_model="M1",
+                        response="answer",
+                        status="ok",
+                        session_id="s1",
+                        command=["traecli"],
+                        exit_code=0,
+                        stdout_path="out.jsonl",
+                        stderr_path="err.log",
+                    )
+                try:
+                    await asyncio.sleep(60)
+                except asyncio.CancelledError:
+                    await asyncio.sleep(0.01)
+                    cleanup_done.append(kwargs["model"])
+                    raise
+                return ModelCallResult(
+                    expected_model="M2",
+                    actual_model="M2",
+                    response="slow answer",
+                    status="ok",
+                    session_id="s2",
+                    command=["traecli"],
+                    exit_code=0,
+                    stdout_path="out.jsonl",
+                    stderr_path="err.log",
+                )
+
+            provider = TraeCliProvider.__new__(TraeCliProvider)
+            provider.query_model = query_model
+
+            results = await asyncio.wait_for(
+                stage1_collect_responses("question", config, provider, store),
+                timeout=5,
+            )
+
+            self.assertEqual([r["status"] for r in results], ["ok", "failed"])
+            self.assertEqual(cleanup_done, ["M2"])
+            meta = (store.root / "stage1" / "B.meta.json").read_text(encoding="utf-8")
+            self.assertIn('"status": "failed"', meta)
+            self.assertIn("cancelled_by_stage_timeout", meta)
+
+        import asyncio
+        asyncio.run(_run())
+
     def test_stage3_uses_chairman_timeout_for_primary_and_fallback(self):
         async def _run():
             from llm_council_for_trae.council import CouncilConfig, stage3_synthesize_final
@@ -228,6 +294,90 @@ class RuntimeHardeningTests(unittest.TestCase):
         cmd = provider._build_command("M1", "prompt", "run", "stage3", "final", "session", query_timeout=777)
         self.assertIn("--query-timeout", cmd)
         self.assertIn("777s", cmd)
+
+    def test_model_call_result_serializes_termination_metadata(self):
+        from llm_council_for_trae.provider import ModelCallResult
+
+        result = ModelCallResult(
+            expected_model="M1",
+            actual_model=None,
+            response="",
+            status="failed",
+            session_id="s1",
+            command=["traecli"],
+            exit_code=-1,
+            stdout_path="out.jsonl",
+            stderr_path="err.log",
+            error="timeout",
+            termination={
+                "pid": 123,
+                "pgid": 123,
+                "terminated": True,
+                "termination_reason": "timeout",
+                "signals_sent": ["SIGTERM", "SIGKILL"],
+                "final_returncode": -9,
+            },
+        )
+
+        self.assertEqual(result.to_json()["termination"]["termination_reason"], "timeout")
+        self.assertEqual(result.to_json()["termination"]["signals_sent"], ["SIGTERM", "SIGKILL"])
+
+    def test_provider_timeout_records_termination_metadata(self):
+        async def _run():
+            from llm_council_for_trae.provider import TraeCliProvider
+
+            class FakeStdout:
+                async def read(self):
+                    return b""
+
+            class FakeStderr:
+                async def read(self):
+                    return b""
+
+            class FakeProc:
+                pid = 12345
+                returncode = None
+
+                def __init__(self):
+                    self.stdout = FakeStdout()
+                    self.stderr = FakeStderr()
+
+                async def wait(self):
+                    self.returncode = -15
+                    return self.returncode
+
+                def kill(self):
+                    self.returncode = -9
+
+            provider = TraeCliProvider(query_timeout=1)
+            termination = {
+                "pid": 12345,
+                "pgid": 12345,
+                "terminated": True,
+                "termination_reason": None,
+                "signals_sent": ["SIGTERM"],
+                "final_returncode": -15,
+            }
+            with tempfile.TemporaryDirectory() as tmp:
+                with patch("llm_council_for_trae.provider.asyncio.create_subprocess_exec", return_value=FakeProc()):
+                    with patch("llm_council_for_trae.provider.monitor_stream_for_budget", side_effect=asyncio.TimeoutError):
+                        with patch("llm_council_for_trae.provider.terminate_process_tree", return_value=termination):
+                            result = await provider.query_model(
+                                model="M1",
+                                prompt="prompt",
+                                run_id="run-timeout-meta",
+                                stage="stage1",
+                                label="A",
+                                output_dir=Path(tmp),
+                            )
+
+            self.assertEqual(result.status, "failed")
+            self.assertEqual(result.termination["termination_reason"], "timeout")
+            self.assertTrue(result.termination["terminated"])
+            self.assertIn("final_returncode", result.termination)
+
+        import asyncio
+        asyncio.run(_run())
 
     def test_provider_marks_forbidden_tool_call_as_failed(self):
         async def _run():
