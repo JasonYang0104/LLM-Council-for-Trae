@@ -883,6 +883,7 @@ async def run_full_council(
             stage2_results.extend(more_stage2)
             valid_stage2 = [r for r in stage2_results if r.get("status") == "ok"]
     aggregate_rankings = calculate_aggregate_rankings(valid_stage2_rankings(stage2_results), label_to_model)
+    store.write_json("stage2/aggregate.json", aggregate_rankings)
     manifest["metadata"]["label_to_model"] = label_to_model
     manifest["metadata"]["aggregate_rankings"] = aggregate_rankings
     valid_reviewer_models = [r["model"] for r in stage2_results if r.get("status") == "ok"]

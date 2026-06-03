@@ -432,6 +432,9 @@ class AutoBackfillQuorumTests(unittest.TestCase):
                 json.loads(store.path("stage2", "label_to_model.json").read_text(encoding="utf-8")),
                 {"Response A": "M1", "Response B": "M2", "Response C": "M3"},
             )
+            sidecar_aggregate = json.loads(store.path("stage2", "aggregate.json").read_text(encoding="utf-8"))
+            self.assertEqual(sidecar_aggregate, manifest["metadata"]["aggregate_rankings"])
+            self.assertEqual([row["rankings_count"] for row in sidecar_aggregate], [3, 3, 3])
 
         import asyncio
         asyncio.run(_run())
