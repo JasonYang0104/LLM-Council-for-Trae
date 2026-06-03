@@ -89,6 +89,13 @@ git diff --check
 
 当前全量测试结果：`make test` 通过 179 个 unittest。
 
+补充 live smoke 也已通过：
+
+- `doctor --json`：`ok: true`；仅有 MCP connecting 和 upgrade server timeout warning，无 doctor error。
+- `models --recommend --json`：runtime models 21 个；推荐成员为 Kimi-K2.6、MiniMax-M2.7、GPT-5.2、DeepSeek-V4-Pro；主席为 Kimi-K2.6。
+- live run：`live-auto-backfill-20260603-final`，`status: ok`，`degraded: false`，`failures: []`。
+- validate：`status: ok`，`terminal: true`，`usable_final: true`，`verdict: complete_ok_final`，`failed_stage_records: []`。
+
 ## 剩余风险
 
 Phase 7 没有纳入本轮实现，作为后续 PR 保留：

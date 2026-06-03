@@ -354,6 +354,35 @@
 - 生成 `docs/lct-auto-backfill-implementation-brief-20260603.html`。
 - 让读者在遗忘上下文的情况下，快速理解本轮为什么做、改了什么、如何验证、还剩什么风险。
 
+### 最终验证
+
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`make test`（179 个 unittest 通过）
+- 通过：`git diff --check`
+- 通过：`PYTHONPATH=src python3 -m llm_council_for_trae.cli doctor --json`
+  - `ok: true`
+  - `traecli` version：`0.120.32`
+  - warnings：MCP servers connecting、upgrade server timeout；没有 doctor error，符合本项目 MCP-only / upgrade warning 可继续边界。
+- 通过：`PYTHONPATH=src python3 -m llm_council_for_trae.cli models --recommend --json`
+  - runtime models：21
+  - recommendation members：Kimi-K2.6、MiniMax-M2.7、GPT-5.2、DeepSeek-V4-Pro
+  - recommendation chairman：Kimi-K2.6
+- 通过 live smoke：
+  - 命令：`PYTHONPATH=src python3 -m llm_council_for_trae.cli run --input examples/question.md --default-models --run-id live-auto-backfill-20260603-final --timeout 180 --json`
+  - run_id：`live-auto-backfill-20260603-final`
+  - run status：`ok`
+  - degraded：`false`
+  - failures：`[]`
+  - HTML：`.llm-council-for-trae/runs/live-auto-backfill-20260603-final/html/index.html`
+- 通过 validate：
+  - 命令：`PYTHONPATH=src python3 -m llm_council_for_trae.cli validate live-auto-backfill-20260603-final --json`
+  - status：`ok`
+  - terminal：`true`
+  - usable_final：`true`
+  - verdict：`complete_ok_final`
+  - failed_stage_records：`[]`
+
 ### Commit
 
-- 待提交：`docs: add auto-backfill implementation brief`
+- `1815539 docs: add auto-backfill implementation brief`
+- 当前最终验证证据将随下一条记录提交。

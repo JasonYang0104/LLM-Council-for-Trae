@@ -194,6 +194,7 @@
     <pre>PYTHONPATH=src python3 -m compileall src
 make test
 git diff --check</pre>
+    <p>补充 live smoke 也已通过：<code>doctor --json</code> 返回 <code>ok: true</code>；<code>models --recommend --json</code> 看到 21 个 runtime models，推荐成员为 Kimi-K2.6、MiniMax-M2.7、GPT-5.2、DeepSeek-V4-Pro，主席为 Kimi-K2.6；run <code>live-auto-backfill-20260603-final</code> 返回 <code>status: ok</code>、<code>degraded: false</code>、<code>failures: []</code>；validate 返回 <code>verdict: complete_ok_final</code>、<code>usable_final: true</code>。</p>
 
     <h2>剩余风险</h2>
     <ul>
