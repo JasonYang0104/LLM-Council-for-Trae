@@ -474,4 +474,46 @@
 
 ### Commit
 
-- 待提交：`feat: backfill stage2 reviewers without adding stage1 answers`
+- `9284e82 feat: backfill stage2 reviewers without adding stage1 answers`
+
+## Stage 2 Reviewer-Only Backfill：Phase 3 validate / HTML 可见性
+
+### 阶段目标
+
+- validate 接受合法 reviewer-only backfill，但拒绝 reviewer-only 模型混入 Stage 2 subject 映射。
+- HTML summary 和 Stage 2 evidence 显示 reviewer-only provenance，避免用户误读为新增候选答案。
+
+### 新增/修改的测试
+
+- 新增：`test_validate_accepts_stage2_reviewer_only_backfill`
+  - 构造 M1/M2/M3 三个有效 Stage 1 answers，M2 reviewer failed，M4 作为 `R4` reviewer-only backfill。
+  - 断言 validate `status=ok`、`verdict=complete_ok_final`。
+- 新增：`test_validate_rejects_stage2_reviewer_only_backfill_in_subject_mapping`
+  - 构造 M4 / Response D 泄漏进 `label_to_model` 和 ranking 的坏 artifact。
+  - 断言 validate 失败并出现 `stage2_reviewer_backfill_not_subject_R4`。
+- 新增 HTML 测试：
+  - summary card 显示 `Stage 2 reviewer backfill`、`reviewer-only`、subjects / reviewers 数。
+  - Stage 2 tab 显示 `reviewer_source`、`attempt_role`、`review_subject_count`。
+- 补强 Phase 1 行为测试：
+  - `stage1/D.response.md` 不存在。
+  - `stage2/D.review.json` 不存在。
+  - `stage2/R4.review.json` 存在。
+
+### 实现决定
+
+- `validation.quorum_semantic_checks()` 按 `reviewer_source` 分支：
+  - `stage1_ok` / `stage1_backfill` reviewer 必须有有效 Stage 1 answer。
+  - `stage2_reviewer_backfill` reviewer 不要求 Stage 1 answer，但必须不出现在 `label_to_model` subject models 中，并且 parsed ranking 必须精确匹配 subject labels。
+- HTML summary 新增 Stage 2 reviewer backfill card。
+- Stage 2 tab 和 provider trace 显示 reviewer source / role / subject count。
+
+### 阶段验证
+
+- 通过：Phase 3 validate / HTML 定向测试（4 个测试）
+- 通过：`tests.test_auto_backfill_quorum` + Phase 3 定向测试（11 个测试）
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`git diff --check main`
+
+### Commit
+
+- 待提交：`feat: validate and display reviewer-only backfill provenance`

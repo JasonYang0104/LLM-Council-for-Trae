@@ -422,6 +422,9 @@ class AutoBackfillQuorumTests(unittest.TestCase):
             self.assertEqual(backfill_review["attempt_role"], "reviewer_backfill")
             self.assertEqual(backfill_review["parsed_ranking"], ["Response A", "Response B", "Response C"])
             self.assertNotIn("Response D", backfill_review["ranking"])
+            self.assertFalse(store.path("stage1", "D.response.md").exists())
+            self.assertFalse(store.path("stage2", "D.review.json").exists())
+            self.assertTrue(store.path("stage2", "R4.review.json").exists())
             self.assertEqual(
                 json.loads(store.path("stage2", "label_to_model.json").read_text(encoding="utf-8")),
                 {"Response A": "M1", "Response B": "M2", "Response C": "M3"},

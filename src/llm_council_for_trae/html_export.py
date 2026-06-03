@@ -289,6 +289,7 @@ def render_html(root: Path, manifest: dict[str, Any]) -> str:
                 item.get("reviewer_label", "?"),
                 f"<h3>评审者 {esc(item.get('reviewer_label'))} · {esc(item.get('model'))}</h3>"
                 f"<p class='meta'>期望模型：{esc(item.get('expected_model'))} · 实际模型：{esc(item.get('actual_model'))} · 解析：{esc(item.get('parse_status'))}</p>"
+                f"<p class='meta'>来源：{esc(item.get('reviewer_source') or 'stage1_ok')} · 角色：{esc(item.get('attempt_role') or 'primary')} · 评审对象数：{esc(item.get('review_subject_count'))}</p>"
                 f"<p><strong>解析排序：</strong> {esc(', '.join(item.get('parsed_ranking') or []))}</p>"
                 f"<pre><code>{esc(item.get('ranking'))}</code></pre>",
             )
@@ -812,6 +813,7 @@ def render_summary_cards(manifest: dict[str, Any], aggregate: list[dict[str, Any
     config = manifest.get("config") if isinstance(manifest.get("config"), dict) else {}
     metadata = manifest.get("metadata") if isinstance(manifest.get("metadata"), dict) else {}
     quorum = metadata.get("quorum") if isinstance(metadata.get("quorum"), dict) else {}
+    stage2_reviewers = metadata.get("stage2_reviewers") if isinstance(metadata.get("stage2_reviewers"), dict) else {}
     chairman = metadata.get("chairman") if isinstance(metadata.get("chairman"), dict) else {}
     top_model = aggregate[0].get("model") if aggregate and isinstance(aggregate[0], dict) else "暂无聚合排序"
     search = summarize_search_usage(manifest)
@@ -837,6 +839,16 @@ def render_summary_cards(manifest: dict[str, Any], aggregate: list[dict[str, Any
         )
     else:
         cards.append(f"<div class='summary-card'><h3>成员模型</h3><p>{esc(', '.join(config.get('members') or []))}</p></div>")
+
+    if stage2_reviewers.get("reviewer_only_backfill"):
+        attempted = ", ".join(str(item) for item in stage2_reviewers.get("reviewer_backfill_attempted") or [])
+        subject_count = stage2_reviewers.get("review_subject_count")
+        reviewer_count = len(stage2_reviewers.get("valid_reviewers") or [])
+        cards.append(
+            "<div class='summary-card'><h3>Stage 2 reviewer backfill</h3>"
+            f"<p>{esc(attempted or 'none')} · reviewer-only</p>"
+            f"<p class='meta'>subjects：{esc(subject_count)} · reviewers：{esc(reviewer_count)}</p></div>"
+        )
 
     if chairman.get("fallback_used") or chairman.get("fallback_from"):
         fallback_from = chairman.get("fallback_from") or config.get("chairman")
@@ -1009,9 +1021,12 @@ def render_trace(stage1: list[Any], stage2: list[Any], stage3: dict[str, Any] | 
             tool_budget_status = item.get("tool_budget_status")
             if tool_budget_status and tool_budget_status not in ("ok", None):
                 budget_html = f" · <span class='warning'>工具预算：{esc(tool_budget_status)}</span>"
+            source_html = ""
+            if stage_name == "stage2" and item.get("reviewer_source"):
+                source_html = f" · 来源：{esc(item.get('reviewer_source'))}"
             rows.append(
                 f"<div class='cell'><h3>{esc(stage_name)} · {esc(item.get('file_label') or item.get('reviewer_label'))}</h3>"
-                f"<p>{esc(item.get('expected_model'))} -> {esc(item.get('actual_model'))}</p><p class='meta'>{esc(item.get('status'))}{budget_html}</p></div>"
+                f"<p>{esc(item.get('expected_model'))} -> {esc(item.get('actual_model'))}</p><p class='meta'>{esc(item.get('status'))}{budget_html}{source_html}</p></div>"
             )
     if stage3:
         budget_html = ""

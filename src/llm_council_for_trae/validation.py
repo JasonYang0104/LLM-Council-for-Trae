@@ -413,9 +413,34 @@ def quorum_semantic_checks(
         for item in stage1
         if item.get("status") == "ok" and not item.get("forbidden_tool_calls")
     }
+    label_to_model = metadata.get("label_to_model") if isinstance(metadata.get("label_to_model"), dict) else {}
+    subject_labels = set(label_to_model)
+    subject_models = {
+        model for model in label_to_model.values()
+        if isinstance(model, str)
+    }
     for item in stage2:
         model = item.get("model")
         if item.get("reviewer_eligible") is True:
+            source = item.get("reviewer_source")
+            if source == "stage2_reviewer_backfill":
+                reviewer_label = item.get("reviewer_label") or model
+                parsed_ranking = item.get("parsed_ranking") if isinstance(item.get("parsed_ranking"), list) else []
+                checks.append(
+                    {
+                        "name": f"stage2_reviewer_backfill_not_subject_{reviewer_label}",
+                        "ok": model not in subject_models,
+                        "message": f"reviewer-only model {model} must not appear in label_to_model subjects",
+                    }
+                )
+                checks.append(
+                    {
+                        "name": f"stage2_reviewer_backfill_ranking_subjects_{reviewer_label}",
+                        "ok": set(parsed_ranking) == subject_labels and len(parsed_ranking) == len(subject_labels),
+                        "message": f"reviewer-only ranking must match review subjects: {sorted(subject_labels)}",
+                    }
+                )
+                continue
             checks.append(
                 {
                     "name": f"stage2_reviewer_effective_stage1_{item.get('reviewer_label') or model}",

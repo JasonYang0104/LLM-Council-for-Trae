@@ -160,6 +160,181 @@ def write_minimal_valid_direct_run(store):
     write_json_text(store, "html/export.json", {"run_id": store.root.name, "generated_at": "2026-05-22T00:00:00Z", "format": "html", "path": "html/index.html", "source_manifest": "manifest.json"})
 
 
+def write_reviewer_only_backfill_run(store, *, leak_reviewer_into_subjects: bool = False, ranking_includes_reviewer_subject: bool = False):
+    label_to_model = {
+        "Response A": "M1",
+        "Response B": "M2",
+        "Response C": "M3",
+    }
+    if leak_reviewer_into_subjects:
+        label_to_model["Response D"] = "M4"
+    reviewer_labels = list(label_to_model.keys()) if ranking_includes_reviewer_subject else ["Response A", "Response B", "Response C"]
+    reviewer_ranking = "FINAL RANKING:\n" + "\n".join(f"{index + 1}. {label}" for index, label in enumerate(reviewer_labels))
+    stage2 = [
+        review_json() | {
+            "reviewer_label": "A",
+            "model": "M1",
+            "expected_model": "M1",
+            "actual_model": "M1",
+            "ranking": "FINAL RANKING:\n1. Response A\n2. Response B\n3. Response C",
+            "parsed_ranking": ["Response A", "Response B", "Response C"],
+            "reviewer_eligible": True,
+            "reviewer_source": "stage1_ok",
+            "attempt_role": "primary",
+            "review_subject_count": 3,
+            "review_path": "stage2/A.review.md",
+            "json_path": "stage2/A.review.json",
+        },
+        review_json() | {
+            "reviewer_label": "B",
+            "model": "M2",
+            "expected_model": "M2",
+            "actual_model": None,
+            "ranking": "",
+            "parsed_ranking": [],
+            "parse_status": "incomplete",
+            "status": "failed",
+            "error": "timeout",
+            "reviewer_eligible": True,
+            "reviewer_source": "stage1_ok",
+            "attempt_role": "primary",
+            "review_subject_count": 3,
+            "review_path": "stage2/B.review.md",
+            "json_path": "stage2/B.review.json",
+        },
+        review_json() | {
+            "reviewer_label": "C",
+            "model": "M3",
+            "expected_model": "M3",
+            "actual_model": "M3",
+            "ranking": "FINAL RANKING:\n1. Response C\n2. Response A\n3. Response B",
+            "parsed_ranking": ["Response C", "Response A", "Response B"],
+            "reviewer_eligible": True,
+            "reviewer_source": "stage1_ok",
+            "attempt_role": "primary",
+            "review_subject_count": 3,
+            "review_path": "stage2/C.review.md",
+            "json_path": "stage2/C.review.json",
+        },
+        review_json() | {
+            "reviewer_label": "R4",
+            "model": "M4",
+            "expected_model": "M4",
+            "actual_model": "M4",
+            "ranking": reviewer_ranking,
+            "parsed_ranking": reviewer_labels,
+            "reviewer_eligible": True,
+            "reviewer_source": "stage2_reviewer_backfill",
+            "attempt_role": "reviewer_backfill",
+            "review_subject_count": 3,
+            "review_path": "stage2/R4.review.md",
+            "json_path": "stage2/R4.review.json",
+        },
+    ]
+    manifest = {
+        "schema_version": 1,
+        "run_id": store.root.name,
+        "created_at": "2026-05-22T00:00:00Z",
+        "updated_at": "2026-05-22T00:00:00Z",
+        "status": "ok",
+        "input_chars": 4,
+        "config": {
+            "members": ["M1", "M2", "M3"],
+            "chairman": "Chair",
+            "provider_mode": "direct",
+            "runtime_command": "fake",
+            "query_timeout": 180,
+            "export_html": True,
+            "use_yolo": False,
+            "member_tool_mode": "search_enabled",
+            "member_runtime_cwd_mode": "isolated_temp",
+        },
+        "artifacts": {"html": "html/index.html"},
+        "metadata": {
+            "label_to_model": label_to_model,
+            "aggregate_rankings": [{"model": "M1", "average_rank": 1.0, "rankings_count": 3, "positions": [1, 2, 1]}],
+            "quorum": {
+                "min_valid_members": 3,
+                "target_valid_members": 8,
+                "low_quorum_floor": 2,
+                "effective_valid_members": 3,
+                "normal_quorum_met": True,
+                "low_quorum_used": False,
+                "backfill_used": False,
+                "primary_members": ["M1", "M2", "M3"],
+                "candidate_source": "explicit",
+                "backfill_candidates": ["M4"],
+                "backfill_attempted": [],
+                "effective_stage1_members": ["M1", "M2", "M3"],
+            },
+            "stage2_reviewers": {
+                "reviewer_target": 3,
+                "review_subject_count": 3,
+                "review_subject_labels": ["Response A", "Response B", "Response C"],
+                "valid_reviewers": ["M1", "M3", "M4"],
+                "failed_reviewers": ["M2"],
+                "backfill_reviewers": ["M4"],
+                "reviewer_backfill_attempted": ["M4"],
+                "member_backfill_attempted": [],
+                "reviewer_only_backfill": True,
+            },
+        },
+        "stages": {
+            "stage1": [
+                {"label": "Response A", "file_label": "A", "model": "M1", "expected_model": "M1", "actual_model": "M1", "response": "A", "status": "ok"} | tool_policy_json(),
+                {"label": "Response B", "file_label": "B", "model": "M2", "expected_model": "M2", "actual_model": "M2", "response": "B", "status": "ok"} | tool_policy_json(),
+                {"label": "Response C", "file_label": "C", "model": "M3", "expected_model": "M3", "actual_model": "M3", "response": "C", "status": "ok"} | tool_policy_json(),
+            ],
+            "stage2": stage2,
+            "stage3": final_json() | {"model": "Chair", "expected_model": "Chair", "actual_model": "Chair"},
+        },
+        "warnings": [],
+        "failures": [],
+    }
+    store.write_manifest(manifest)
+    for relative in [
+        "input.md",
+        "config.json",
+        "runtime/doctor.json",
+        "runtime/traecli.models.json",
+        "stage1/member.prompt.md",
+        "stage1/A.response.md",
+        "stage1/A.traecli.stream.jsonl",
+        "stage1/B.response.md",
+        "stage1/B.traecli.stream.jsonl",
+        "stage1/C.response.md",
+        "stage1/C.traecli.stream.jsonl",
+        "stage2/review.prompt.md",
+        "stage2/label_to_model.json",
+        "stage2/aggregate.json",
+        "stage2/A.review.md",
+        "stage2/A.traecli.stream.jsonl",
+        "stage2/B.review.md",
+        "stage2/B.traecli.stream.jsonl",
+        "stage2/C.review.md",
+        "stage2/C.traecli.stream.jsonl",
+        "stage2/R4.review.md",
+        "stage2/R4.traecli.stream.jsonl",
+        "stage3/chairman.prompt.md",
+        "stage3/final.md",
+        "stage3/final.traecli.stream.jsonl",
+        "html/index.html",
+    ]:
+        store.write_text(relative, "{}\n")
+    write_json_text(store, "stage1/A.meta.json", stage_meta("M1"))
+    write_json_text(store, "stage1/B.meta.json", stage_meta("M2"))
+    write_json_text(store, "stage1/C.meta.json", stage_meta("M3"))
+    for item in stage2:
+        label = item["reviewer_label"]
+        write_json_text(store, f"stage2/{label}.meta.json", stage_meta(item["expected_model"], item["actual_model"] or item["expected_model"]))
+        write_json_text(store, f"stage2/{label}.review.json", item)
+    write_json_text(store, "stage3/final.meta.json", stage_meta("Chair"))
+    write_json_text(store, "stage3/final.json", manifest["stages"]["stage3"])
+    write_json_text(store, "html/export.json", {"run_id": store.root.name, "generated_at": "2026-05-22T00:00:00Z", "format": "html", "path": "html/index.html", "source_manifest": "manifest.json"})
+    write_json_text(store, "stage2/label_to_model.json", label_to_model)
+    write_json_text(store, "stage2/aggregate.json", manifest["metadata"]["aggregate_rankings"])
+
+
 class CouncilCoreTests(unittest.TestCase):
     def test_parse_ranking_prefers_final_section(self):
         text = """Response A mentions Response B in prose.
@@ -1278,6 +1453,30 @@ The user is not merely asking whether local inference hardware will improve they
             self.assertEqual(validation["status"], "failed")
             self.assertTrue(any(check["name"] == "stage1_backfill_attempt_role_B" for check in validation["failures"]))
 
+    def test_validate_accepts_stage2_reviewer_only_backfill(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-reviewer-only-valid")
+            write_reviewer_only_backfill_run(store)
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["status"], "ok")
+            self.assertEqual(validation["verdict"], "complete_ok_final")
+            self.assertFalse(validation["failures"])
+
+    def test_validate_rejects_stage2_reviewer_only_backfill_in_subject_mapping(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-reviewer-only-leaked-subject")
+            write_reviewer_only_backfill_run(store, leak_reviewer_into_subjects=True, ranking_includes_reviewer_subject=True)
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["status"], "failed")
+            self.assertTrue(
+                any(check["name"] == "stage2_reviewer_backfill_not_subject_R4" for check in validation["failures"]),
+                validation["failures"],
+            )
+
     def test_validate_reports_stage_collection_type_errors_without_crashing(self):
         cases = [
             ("stage1", {"bad": "shape"}, "schema:manifest.stages.stage1"),
@@ -2192,6 +2391,69 @@ The user is not merely asking whether local inference hardware will improve they
         self.assertIn("主席备选", html)
         self.assertIn("GPT-5.4", html)
         self.assertIn("Qwen3.6-Plus", html)
+
+    def test_html_summary_shows_stage2_reviewer_only_backfill_card(self):
+        from llm_council_for_trae.html_export import render_summary_cards
+        manifest = {
+            "config": {"members": ["M1", "M2", "M3"], "chairman": "Chair"},
+            "metadata": {
+                "stage2_reviewers": {
+                    "reviewer_target": 3,
+                    "review_subject_count": 3,
+                    "valid_reviewers": ["M1", "M3", "M4"],
+                    "failed_reviewers": ["M2"],
+                    "reviewer_backfill_attempted": ["M4"],
+                    "member_backfill_attempted": [],
+                    "reviewer_only_backfill": True,
+                }
+            },
+            "status": "ok",
+        }
+        html = render_summary_cards(manifest, [])
+        self.assertIn("Stage 2 reviewer backfill", html)
+        self.assertIn("M4", html)
+        self.assertIn("reviewer-only", html)
+        self.assertIn("subjects：3", html)
+
+    def test_html_stage2_tab_shows_reviewer_source_and_subject_count(self):
+        manifest = {
+            "run_id": "run-reviewer-only-html",
+            "status": "ok",
+            "config": {"members": ["M1", "M2", "M3"], "chairman": "Chair"},
+            "metadata": {"aggregate_rankings": [], "label_to_model": {"Response A": "M1", "Response B": "M2", "Response C": "M3"}},
+            "stages": {
+                "stage1": [
+                    {"label": "Response A", "file_label": "A", "model": "M1", "expected_model": "M1", "actual_model": "M1", "response": "A", "status": "ok"},
+                    {"label": "Response B", "file_label": "B", "model": "M2", "expected_model": "M2", "actual_model": "M2", "response": "B", "status": "ok"},
+                    {"label": "Response C", "file_label": "C", "model": "M3", "expected_model": "M3", "actual_model": "M3", "response": "C", "status": "ok"},
+                ],
+                "stage2": [
+                    review_json() | {
+                        "reviewer_label": "R4",
+                        "model": "M4",
+                        "expected_model": "M4",
+                        "actual_model": "M4",
+                        "ranking": "FINAL RANKING:\n1. Response A\n2. Response B\n3. Response C",
+                        "parsed_ranking": ["Response A", "Response B", "Response C"],
+                        "reviewer_source": "stage2_reviewer_backfill",
+                        "attempt_role": "reviewer_backfill",
+                        "review_subject_count": 3,
+                    },
+                ],
+                "stage3": final_json() | {"model": "Chair", "expected_model": "Chair", "actual_model": "Chair"},
+            },
+            "warnings": [],
+            "failures": [],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "input.md").write_text("Report topic: reviewer-only backfill\n", encoding="utf-8")
+            (root / "stage3").mkdir()
+            (root / "stage3" / "final.md").write_text("Final\n", encoding="utf-8")
+            html = render_html(root, manifest)
+        self.assertIn("来源：stage2_reviewer_backfill", html)
+        self.assertIn("评审对象数：3", html)
+        self.assertIn("角色：reviewer_backfill", html)
 
     def test_html_low_quorum_degraded_banner_visible(self):
         from llm_council_for_trae.html_export import render_alerts
