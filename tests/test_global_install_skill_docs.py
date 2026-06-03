@@ -41,6 +41,33 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
         self.assertIn("profiles/subagents.json", skill)
         self.assertIn("不要把 fake runtime 结果说成 live traecli 结果", skill)
 
+    def test_validate_status_contract_is_documented_in_readme_and_skills(self):
+        required_terms = [
+            "terminal manifest",
+            "validate <run_id> --json",
+            "usable_final",
+            "stage3_final_exists",
+            "html_exists",
+            "failed_stage_records",
+            "verdict",
+            "complete_ok_final",
+            "usable_degraded_final",
+            "in_progress",
+            "failed_no_final",
+            "invalid_artifacts",
+            "degraded_ok 是可用结果",
+            "成员失败不等于 run 失败",
+        ]
+        for relative in [
+            "README.md",
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+
     def test_skill_template_documents_input_modes_and_search_evidence(self):
         skill = self.read_text("skills/llm-council-for-trae/SKILL.md")
 

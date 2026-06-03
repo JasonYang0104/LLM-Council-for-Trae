@@ -8,6 +8,7 @@
 - Scope frozen to validate machine-readable terminal verdict, deterministic Chinese report title, and Skill/README workflow rules. Runtime execution, fallback orchestration, and Stage 3 synthesis are out of scope.
 - v6 E2E evidence confirms the default run was usable `degraded_ok`; the original failed classification came from inspecting in-progress artifacts before terminal validate.
 - Subagent review confirmed the main risk areas and flagged `--skip-html` compatibility. Decision: keep existing `validate` status semantics and treat missing HTML as not a complete report handoff; do not overload `status` with the new `verdict`.
+- RED tests added for validate verdict fields, title source/filtered suffix behavior, and README/Skill hard rules. Targeted RED run failed as expected on missing `terminal`/`verdict` fields, old input-based title extraction, and missing docs terms.
 
 ## 2026-06-01 LCT Global Install And Skill Iteration
 

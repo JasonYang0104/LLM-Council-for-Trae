@@ -826,8 +826,106 @@ FINAL RANKING:
 
             self.assertEqual(validation["status"], "running")
             self.assertEqual(validation["manifest_status"], "running")
+            self.assertFalse(validation["terminal"])
+            self.assertFalse(validation["usable_final"])
+            self.assertFalse(validation["stage3_final_exists"])
+            self.assertFalse(validation["html_exists"])
+            self.assertEqual(validation["failed_stage_records"], [])
+            self.assertEqual(validation["verdict"], "in_progress")
             self.assertEqual([failure["name"] for failure in validation["failures"]], ["run_in_progress"])
             self.assertFalse(any(check["name"].startswith("file:stage2/") for check in validation["checks"]))
+
+    def test_validate_contract_reports_complete_ok_final(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-ok-contract")
+            write_minimal_valid_direct_run(store)
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["status"], "ok", validation["failures"])
+            self.assertTrue(validation["terminal"])
+            self.assertTrue(validation["usable_final"])
+            self.assertTrue(validation["stage3_final_exists"])
+            self.assertTrue(validation["html_exists"])
+            self.assertEqual(validation["failed_stage_records"], [])
+            self.assertEqual(validation["verdict"], "complete_ok_final")
+
+    def test_validate_contract_reports_usable_degraded_final_with_failed_member_record(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-degraded-contract")
+            write_minimal_valid_direct_run(store)
+            manifest = store.read_manifest()
+            manifest["status"] = "degraded_ok"
+            failed_member = {
+                "stage": "stage1",
+                "label": "Response B",
+                "model": "DeepSeek-V4-Pro",
+                "expected_model": "DeepSeek-V4-Pro",
+                "actual_model": "DeepSeek-V4-Pro",
+                "status": "failed",
+                "error": "traecli result error",
+            }
+            manifest["stages"]["stage1"].append(failed_member | tool_policy_json())
+            manifest["failures"] = [failed_member]
+            store.write_manifest(manifest)
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["status"], "degraded_ok", validation["failures"])
+            self.assertTrue(validation["terminal"])
+            self.assertTrue(validation["usable_final"])
+            self.assertTrue(validation["stage3_final_exists"])
+            self.assertTrue(validation["html_exists"])
+            self.assertEqual(validation["verdict"], "usable_degraded_final")
+            self.assertEqual(
+                validation["failed_stage_records"],
+                [
+                    {
+                        "stage": "stage1",
+                        "label": "Response B",
+                        "model": "DeepSeek-V4-Pro",
+                        "expected_model": "DeepSeek-V4-Pro",
+                        "actual_model": "DeepSeek-V4-Pro",
+                        "status": "failed",
+                        "error": "traecli result error",
+                    }
+                ],
+            )
+
+    def test_validate_contract_reports_failed_no_final_for_terminal_failed_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-failed-contract")
+            write_minimal_valid_direct_run(store)
+            manifest = store.read_manifest()
+            manifest["status"] = "failed"
+            manifest["stages"]["stage3"] = None
+            manifest["failures"] = [{"stage": "stage3", "model": "Kimi-K2.6", "status": "failed", "error": "timeout"}]
+            store.write_manifest(manifest)
+            (store.root / "stage3" / "final.md").unlink()
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["status"], "failed")
+            self.assertTrue(validation["terminal"])
+            self.assertFalse(validation["usable_final"])
+            self.assertFalse(validation["stage3_final_exists"])
+            self.assertEqual(validation["verdict"], "failed_no_final")
+            self.assertEqual(validation["failed_stage_records"][0]["stage"], "stage3")
+
+    def test_validate_contract_reports_invalid_artifacts_for_claimed_ok_missing_html(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-invalid-html-contract")
+            write_minimal_valid_direct_run(store)
+            (store.root / "html" / "index.html").unlink()
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["status"], "failed")
+            self.assertTrue(validation["terminal"])
+            self.assertFalse(validation["usable_final"])
+            self.assertTrue(validation["stage3_final_exists"])
+            self.assertFalse(validation["html_exists"])
+            self.assertEqual(validation["verdict"], "invalid_artifacts")
 
     def test_extract_title_uses_structured_topic_instead_of_original_input_label(self):
         title = _extract_title(
@@ -843,13 +941,13 @@ LCT 安装后 E2E 运行状态与报告体验评估
 """
         )
 
-        self.assertEqual(title, "LCT 安装后 E2E 运行状态与报告体验评估")
+        self.assertEqual(title, "LCT 安装后 E2E 运行状态与报告体验评估：多模型智囊团评估")
 
     def test_extract_title_preserves_specific_user_heading_and_truncates(self):
-        self.assertEqual(_extract_title("# LCT 报告标题改进"), "LCT 报告标题改进")
+        self.assertEqual(_extract_title("# LCT 报告标题改进"), "LCT 报告标题改进：多模型智囊团评估")
 
         long_title = _extract_title("# " + "A" * 80, max_chars=20)
-        self.assertEqual(long_title, "A" * 20 + "…")
+        self.assertEqual(long_title, "A" * 20 + "…：多模型智囊团评估")
 
     def test_html_hero_uses_topic_title_and_escapes_it(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -866,9 +964,84 @@ LCT <status> 与 HTML 标题评估
             (root / "stage3" / "final.md").write_text("Final\n", encoding="utf-8")
             html = render_html(root, {"run_id": "run-title", "status": "ok", "config": {}, "stages": {}, "metadata": {}})
 
-            self.assertIn("<h1>LCT &lt;status&gt; 与 HTML 标题评估</h1>", html)
-            self.assertIn("<title>LCT &lt;status&gt; 与 HTML 标题评估 · LLM Council for Trae</title>", html)
+            self.assertIn("<h1>LCT &lt;status&gt; 与 HTML 标题评估：多模型智囊团评估</h1>", html)
+            self.assertIn("<title>LCT &lt;status&gt; 与 HTML 标题评估：多模型智囊团评估</title>", html)
             self.assertNotIn("<h1>Original input</h1>", html)
+
+    def test_html_title_prefers_explicit_report_topic_and_dedupes_suffix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "input.md").write_text(
+                """# Original input
+
+Report topic: 本地AI推理与Agent消费级爆发：多模型智囊团评估
+""",
+                encoding="utf-8",
+            )
+            (root / "stage3").mkdir()
+            (root / "stage3" / "final.md").write_text("# 其他标题\n", encoding="utf-8")
+
+            html = render_html(root, {"run_id": "run-explicit-topic", "status": "ok", "config": {}, "stages": {}, "metadata": {}})
+
+            expected = "本地AI推理与Agent消费级爆发：多模型智囊团评估"
+            self.assertIn(f"<h1>{expected}</h1>", html)
+            self.assertIn(f"<title>{expected}</title>", html)
+            self.assertNotIn("多模型智囊团评估：多模型智囊团评估", html)
+
+    def test_html_title_uses_final_answer_chinese_heading_over_english_interpretation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "input.md").write_text(
+                """# Original input
+
+## Agent interpretation
+The user is not merely asking whether local inference hardware will improve; they are asking for a market timing judgment.
+""",
+                encoding="utf-8",
+            )
+            (root / "stage3").mkdir()
+            (root / "stage3" / "final.md").write_text("# 本地AI推理与Agent消费级爆发：系统性评估\n\n正文\n", encoding="utf-8")
+
+            html = render_html(root, {"run_id": "run-final-heading", "status": "ok", "config": {}, "stages": {}, "metadata": {}})
+
+            expected = "本地AI推理与Agent消费级爆发：系统性评估：多模型智囊团评估"
+            self.assertIn(f"<h1>{expected}</h1>", html)
+            self.assertIn(f"<title>{expected}</title>", html)
+            self.assertNotIn("The user is not merely asking", html.split("<h1>", 1)[1].split("</h1>", 1)[0])
+
+    def test_html_title_skips_generic_final_headings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "input.md").write_text("# Original input\n\n请评估本地 AI 推理硬件。\n", encoding="utf-8")
+            (root / "stage3").mkdir()
+            (root / "stage3" / "final.md").write_text(
+                """# 我真正理解你的需求
+
+## 正面信号
+
+## 本地AI推理硬件消费化窗口
+""",
+                encoding="utf-8",
+            )
+
+            html = render_html(root, {"run_id": "run-generic-heading", "status": "ok", "config": {}, "stages": {}, "metadata": {}})
+
+            self.assertIn("<h1>本地AI推理硬件消费化窗口：多模型智囊团评估</h1>", html)
+            self.assertNotIn("<h1>我真正理解你的需求", html)
+
+    def test_html_title_truncates_topic_without_truncating_fixed_suffix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            long_topic = "本地AI推理硬件与Agent消费市场爆发窗口" * 4
+            (root / "input.md").write_text(f"报告题名：{long_topic}\n", encoding="utf-8")
+            (root / "stage3").mkdir()
+            (root / "stage3" / "final.md").write_text("# 其他标题\n", encoding="utf-8")
+
+            html = render_html(root, {"run_id": "run-long-topic", "status": "ok", "config": {}, "stages": {}, "metadata": {}})
+            heading = html.split("<h1>", 1)[1].split("</h1>", 1)[0]
+
+            self.assertTrue(heading.endswith("…：多模型智囊团评估"), heading)
+            self.assertNotIn("多模型智囊团评…", heading)
 
     def test_chairman_metadata_records_fallback(self):
         from llm_council_for_trae.council import stage3_synthesize_final
