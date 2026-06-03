@@ -53,7 +53,7 @@ make -C ~/.LCT install-global
 使用 LCT，回答："""<你的问题>"""
 ```
 
-Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo（出现 `src/llm_council_for_trae/`、`.trae/agents/` 或 `profiles/subagents.json` 时停止）→ 确认 `traecli` 和 `llm-council-for-trae` 可用 → 把问题写入 `_lct_question.md` → 先记录 `models --recommend --json` 的推荐阵容 → 使用 `--default-models` 和 `--json` 非交互运行 → 如果默认阵容失败或不可用，再由外层 Agent 使用推荐阵容显式传 `--members/--chairman` 重跑；fallback 编排只属于 Skill / 外层 Agent，不属于 CLI 内部自动行为 → `validate` 校验 → 读取 `stage3/final.md` → 在问题 workspace 根目录写出 `<run_id>-final.md` 和 `<run_id>-index.md`（必须包含 run status、validate status、HTML path、Input mode、lct_search_allowed、lct_search_used、lct_web_tool_calls、agent_external_search_allowed、agent_external_search_used、agent_sources、agent_fact_pack_path、agent_added_context、final_answer_source、failed models / timeout）→ 返回 run status、validate status、最终答案路径和 HTML 报告路径。
+Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo（出现 `src/llm_council_for_trae/`、`.trae/agents/` 或 `profiles/subagents.json` 时停止）→ 确认 `traecli` 和 `llm-council-for-trae` 可用 → 把问题写入 `_lct_question.md` → 先记录 `models --recommend --json` 的推荐阵容 → 使用 `--default-models` 和 `--json` 非交互运行 → 如果默认阵容失败或不可用，先读取 terminal manifest 并执行 `llm-council-for-trae validate <run_id> --json`，再由外层 Agent 使用推荐阵容显式传 `--members/--chairman` 重跑；fallback 编排只属于 Skill / 外层 Agent，不属于 CLI 内部自动行为 → `validate` 校验 → 只有 validate JSON 显示 `usable_final: true` 时读取 `stage3/final.md` → 在问题 workspace 根目录写出 `<run_id>-final.md` 和 `<run_id>-index.md`（必须包含 run status、validate status、validate verdict、HTML path、Input mode、lct_search_allowed、lct_search_used、lct_web_tool_calls、agent_external_search_allowed、agent_external_search_used、agent_sources、agent_fact_pack_path、agent_added_context、final_answer_source、failed models / timeout）→ 返回 run status、validate status、最终答案路径和 HTML 报告路径。`degraded_ok 是可用结果`；成员失败不等于 run 失败。
 
 ### 1. 确认 traecli 可用
 
@@ -303,6 +303,8 @@ html/export.json
 - Stage 2 ranking 是否能解析出有效排序。
 - subagent mode 是否真的触发 traecli Agent tool，而不是普通 prompt 直答。
 - HTML export JSON 是否存在并可被消费。
+
+`validate <run_id> --json` 会输出终局判定字段：`terminal`、`usable_final`、`stage3_final_exists`、`html_exists`、`failed_stage_records`、`verdict`。`verdict` 取值为 `complete_ok_final`、`usable_degraded_final`、`in_progress`、`failed_no_final`、`invalid_artifacts`。交付或写 `<run_id>-index.md` 前，状态必须来自 terminal manifest 加 validate JSON；不要用中途目录为空、run JSON 为空或自然语言观察判 failed。`degraded_ok 是可用结果`，成员失败不等于 run 失败。
 
 坏 artifact 不应该让 `validate` 崩溃。类型错误会返回结构化 failure，例如：
 
