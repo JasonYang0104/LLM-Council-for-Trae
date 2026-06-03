@@ -386,3 +386,32 @@
 
 - `1815539 docs: add auto-backfill implementation brief`
 - 当前最终验证证据将随下一条记录提交。
+
+## Stage 2 Reviewer-Only Backfill：本轮 Phase 0 起点
+
+### 阶段目标
+
+- 按 `docs/lct-stage2-reviewer-only-backfill-handoff-20260603.md` 继续收紧 Stage 2 backfill 语义。
+- 确认上一轮 reviewer feedback 指出的 branch-level whitespace 问题已经修复。
+- 将本轮 handoff 文档纳入分支，避免最终工作树残留未跟踪规格文件。
+
+### 初始观察
+
+- 当前分支：`codex/lct-auto-backfill-plan-20260603`。
+- 当前 HEAD 包含 `1d4fd8a docs: fix auto-backfill branch whitespace`。
+- `git diff --check main..HEAD` 通过；本轮后续最终验证继续使用 branch-level whitespace 检查。
+- 当前实现仍是旧语义：Stage 2 reviewer 不足时调用 `backfill_stage1_responses()`，候补模型先生成 Stage 1 answer，再作为 reviewer。
+
+### 本轮冻结口径
+
+- Stage 1 quorum 不足时，继续使用 Stage 1 member backfill。
+- Stage 1 已满足 quorum、仅 Stage 2 reviewer 失败时，候补模型只作为 reviewer，不生成 Stage 1 answer，不进入 `label_to_model` subjects。
+- `notes.md` 继续只由外层 Agent 维护；不让 LCT 成员模型创建或修改。
+
+### 阶段验证
+
+- 通过：`git diff --check main..HEAD`
+
+### Commit
+
+- 待提交：`docs: add reviewer-only backfill handoff`
