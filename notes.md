@@ -1,59 +1,36 @@
-# Notes
+# LCT Auto-Backfill 实施记录
 
-## 2026-06-03 LCT Validate And Title Contract Hardening
+日期：2026-06-03
+分支：`codex/lct-auto-backfill-plan-20260603`
 
-- Source handoff read from `/Users/bytedance/Documents/AI Coder/COCO-llm-council-runtime-status-title-20260602/docs/lct-validate-title-hardening-handoff-20260603.md`.
-- Implementation worktree created at `/Users/bytedance/Documents/AI Coder/COCO-llm-council-validate-title-contract-20260603` on branch `codex/lct-validate-title-contract-20260603`, starting from `origin/main` commit `fdf83ff`.
-- The latest main worktree still has user handoff edits (`README.md` plus the handoff doc). I will not overwrite or depend on that dirty tree for implementation.
-- Scope frozen to validate machine-readable terminal verdict, deterministic Chinese report title, and Skill/README workflow rules. Runtime execution, fallback orchestration, and Stage 3 synthesis are out of scope.
-- v6 E2E evidence confirms the default run was usable `degraded_ok`; the original failed classification came from inspecting in-progress artifacts before terminal validate.
-- Subagent review confirmed the main risk areas and flagged `--skip-html` compatibility. Decision: keep existing `validate` status semantics and treat missing HTML as not a complete report handoff; do not overload `status` with the new `verdict`.
-- RED tests added for validate verdict fields, title source/filtered suffix behavior, and README/Skill hard rules. Targeted RED run failed as expected on missing `terminal`/`verdict` fields, old input-based title extraction, and missing docs terms.
-- Implementation GREEN added `validate` contract fields without changing old `status`, and changed HTML title derivation to use explicit topic, final-answer Chinese heading, structured topic, then raw input. Targeted validate/title tests and full `tests.test_core` passed.
-- Skill/docs GREEN updated README, canonical Skill, and `.trae` Skill so failed classification requires terminal manifest plus `validate <run_id> --json`; `degraded_ok` is documented as usable and member failure is not run failure.
-- Final subagent review found three P2 issues: duplicate `failed_stage_records` for real manifest failure shape, `.trae` Skill still implying source repo execution, and unpunctuated English long sentences entering titles. Review-fix tests now cover all three and pass.
-- Final verification after review-fix: `PYTHONPATH=src python3 -m compileall src` passed; `make test` passed with 161 tests; `git diff --check` and `git diff --check origin/main..HEAD` passed.
-- Live smoke used real `traecli` via this branch's `PYTHONPATH=src` in `/tmp/lct-validate-title-smoke-20260603`. Run `lct-validate-title-smoke-20260603` returned `status: ok`; validate returned `terminal: true`, `usable_final: true`, `stage3_final_exists: true`, `html_exists: true`, `verdict: complete_ok_final`, and no failures. HTML `<title>` and hero `<h1>` were both `LCT validate 状态契约 smoke：多模型智囊团评估`.
-- Post-completion review found one additional title fallback risk: without an explicit `Report topic`, the v6 artifact could select a later Stage 3 section heading (`如果这一天已经来了：宏观推演`) instead of a topic summary. The fix adds Skill / README requirements for `Report topic: <中文议题>` and changes deterministic fallback to prefer an early `核心问题是：...` sentence before crossing a section separator.
+## Phase 0：规格落地与基线
 
-## 2026-06-01 LCT Global Install And Skill Iteration
+### 阶段目标
 
-- Started from a separate worktree on `origin/main` because the original workspace had unrelated dirty/untracked PR skill files and deleted `.codex/skills/*` files. Those files are not part of this branch.
-- Read the requested handoff, deployment guide draft, original `AGENTS.md`, README, and Makefile before editing. The clean worktree does not track `AGENTS.md`, so the original workspace copy is treated as an instruction source, not a file to change.
-- Scope is limited to global install, user-level Skill, documentation consistency, installer support, and tests. Runtime behavior and `validate` semantics are out of scope.
-- The Skill path is `/Users/bytedance/.agents/skills`; old `~/.trae/skills` wording is forbidden in this iteration's user-facing install docs.
-- Test plan uses repository contract tests because this iteration changes installation/documentation behavior more than runtime code. The tests will still run through `make test` so the contract stays in the normal verification path.
-- TDD slice 1 starts with a README contract test. The expected RED state is the old quickstart phrase that tells users to clone the repository into another workspace.
-- TDD slice 1 GREEN changed only the README quickstart: default use is now `~/.LCT` + global wrapper + `/Users/bytedance/.agents/skills` + clean problem workspace. `make install-local` is now explicitly documented as development-only.
-- TDD slice 2 starts with a Skill template contract test. Expected RED state: `skills/llm-council-for-trae/SKILL.md` is missing.
-- TDD slice 2 GREEN adds the canonical user-level Skill template under `skills/llm-council-for-trae/`. It intentionally does not live under `.codex/skills/`, because this is for LCT users, not Codex development helpers.
-- TDD slice 3 starts with a cross-doc path consistency test. Expected RED state: `docs/lct-deployment-guide-20260601.md` is missing from the clean `origin/main` branch.
-- TDD slice 3 GREEN adds a deployment guide that separates development repo, `~/.LCT`, and clean problem workspace. It explicitly separates local tests, validate, user install smoke, live smoke, and fake runtime.
-- TDD slice 4 starts with a Makefile contract test for `install-global`. Expected RED state: current Makefile only has `install-local`.
-- TDD slice 4 GREEN adds `install-global` and `install-skill`. `install-global` writes a wrapper pointing at `LCT_DIR/src` and links the user Skill; `install-local` remains a development checkout wrapper.
-- Subagent review found one P1 repeated by two reviewers: clean workspace / live smoke examples still referenced `examples/question.md`. Review also found Makefile half-install risk when Skill source is missing, and README guard markers were not explicit enough.
-- Review-fix RED adds tests for clean workspace examples, README guard markers, root-level final/index outputs, and `install-global` failing without leaving a wrapper when the Skill source is missing.
-- Review-fix GREEN changes clean workspace examples to `_lct_question.md`, splits README fresh install vs update commands, adds Project Docs links for the new install docs, strengthens install verification, and makes `install-global` validate Skill inputs before writing the wrapper.
-- Actual global install was performed for verification. `~/.LCT` is a clone of GitHub with this branch checked out via local fetch because `origin/main` does not yet contain this iteration. Wrapper now points to `/Users/bytedance/.LCT/src`; user Skill is symlinked from `/Users/bytedance/.agents/skills/llm-council-for-trae` to `/Users/bytedance/.LCT/skills/llm-council-for-trae`.
-- Initial branch verification evidence before follow-up review fixes: `PYTHONPATH=src python3 -m compileall src` passed; `make test` passed with 120 tests; `git diff --check` passed.
-- Global live smoke evidence: `llm-council-for-trae doctor --json` returned ok with warnings only; `llm-council-for-trae models --recommend --json` returned a non-empty model list. The model count is environment-dynamic: it was 24 before the live run and 21 during final post-install recheck. Clean workspace run `/tmp/lct-live-smoke` produced run `lct-global-smoke-20260601-201808` with status `degraded_ok`; `validate lct-global-smoke-20260601-201808 --json` exited 0 with status `degraded_ok`.
-- Live smoke was real `traecli`, not fake runtime. It was not full `ok`: Stage 2 reviewer B / GLM-5.1 failed with `traecli result error`, manifest failure reports actual model `Seed-Dogfooding-2.0`. Stage 3 Kimi-K2.6 succeeded and HTML exists at `/tmp/lct-live-smoke/.llm-council-for-trae/runs/lct-global-smoke-20260601-201808/html/index.html`.
-- Follow-up review fix starts from four concrete regressions: design/test plan live smoke still used `examples/question.md`, README mixed CLI artifacts with Agent/Skill root-level copies, `install-global` accepted an LCT dir with Skill but no source package, and README kept the stale `78 tests passed` baseline. RED added contract checks for all four before implementation.
-- Follow-up review fix GREEN makes live smoke examples create `/tmp/lct-live-smoke` and copy `~/.LCT/examples/question.md` to `_lct_question.md`, splits README CLI artifacts from Agent/Skill extra outputs, adds `src/llm_council_for_trae` preflight before wrapper creation, and changes the README baseline to avoid fixed test counts while warning that command output is the truth source.
+- 确认当前分支和未提交规格文档。
+- 阅读 `AGENTS.md`、主设计文档和实现交接文档。
+- 建立本轮执行记录，后续每阶段记录测试、决策、风险、验证命令和 commit。
 
-## 2026-06-02 LCT UX Evidence Hardening
+### 初始观察
 
-- Created a clean worktree at `/Users/bytedance/Documents/AI Coder/COCO-llm-council-lct-ux-evidence-20260602` from fresh `origin/main` because the original checkout has unrelated dirty and untracked files.
-- This iteration is scoped to daily LCT usage honesty and reviewability, not broad model benchmarking.
-- Four product boundaries are frozen: subagent profile downgrade, raw/structured input modes, search allowed versus search used, and collapsed input prompt in HTML.
-- The manual E2E record from `/Users/bytedance/Documents/AI Coder/test/LLM-Council-for-Trae-v3/notes.md` is treated as evidence for two risks: default roster drift around `GLM-5.1`, and recommended roster drift that can include `Seed-Dogfooding-2.0`.
-- Decision: keep `profiles/subagents.json` and `.trae/agents/` for validation and historical evidence. Do not delete them in this iteration.
-- Decision: add deterministic Seed/Doubao exclusion to automatic recommendations, but do not block explicit user-provided model names.
-- Decision: do not ask the user for another design approval pause because the handoff already instructs this `/goal` thread to execute design-first, test-plan-first, then implement. The design and test plan are still committed as a separate phase before behavior edits.
-- TDD slice HTML prompt collapse: RED added assertions for `<details id="input-prompt" class="question-context">`, no `open` attribute, no old `<p class="question-context">`, and input preservation in the Markdown copy payload. GREEN changed only `html_export.py` rendering/CSS for the input prompt.
-- TDD slice search evidence: RED added `summarize_search_usage` tests proving allowed web tools do not imply actual search. GREEN added a summary helper and HTML summary card showing `允许` versus `实际使用` plus web and total tool-call counts.
-- TDD slice Skill/docs/model recommendation: RED proved the Skill lacked raw/structured input mode rules, README/subagent docs still treated subagent profile as too prominent, and automatic recommendation could include `Seed-Dogfooding-2.0`. GREEN added Skill reporting contracts, downgraded subagent profile to legacy / experimental docs, and filtered Seed/Doubao from automatic recommendations when safer alternatives exist.
-- Subagent review found three real issues: README Quickstart did not name `Input mode` / `search_allowed` / `search_used` in the root index contract; automatic recommendation could prefer Seed over OpenRouter when OpenRouter was the only safer model; HTML search summary depended on `tool_calls` details that were parsed but not persisted into real stage records. Review-fix GREEN persists `tool_calls` in `ModelCallResult.to_json()` and stage records, counts forbidden web tool calls as real search usage, fixes recommendation fallback order, updates the interaction-menu explanation, and tightens README/Skill contract tests.
-- Fresh verification after review-fix: `PYTHONPATH=src python3 -m compileall src` passed; `make test` passed with 132 tests; `git diff --check` passed.
-- Light live runtime check used this branch via `PYTHONPATH=src`: `doctor --json` returned `ok=true`, `traecli` version `coco version 0.120.32`, warnings only, no errors. `models --recommend --json` returned 21 live models and recommended `GPT-5.4, DeepSeek-V4-Pro, Kimi-K2.6, MiniMax-M2.7` with chairman `Kimi-K2.6`; recommendation contains no Seed/Doubao.
-- No live council run was executed in this iteration. Reason: the handoff explicitly scoped this away from broad model stability evaluation; static `--default-models` drift around `GLM-5.1` remains a next-stage roster decision, not something hidden by this branch.
+- 当前分支符合交接预期：`codex/lct-auto-backfill-plan-20260603`。
+- `docs/lct-auto-backfill-quorum-design-20260603.md` 和 `docs/lct-auto-backfill-implementation-handoff-20260603.md` 处于未提交状态。
+- 既有代码里 Stage 2 timeout 已有取消后 gather 收口；Stage 1 在 hard timeout / quorum checkpoint 后取消 pending task，但没有等待 provider cleanup 完成。
+- 既有 Stage 2 reviewer 仍来自 `config.members`，不是有效 Stage 1 成员集合；这会导致失败成员默认继续参与 reviewer。
+
+### 规范未覆盖但需要明确的执行决定
+
+- 本轮实现先保持同 run 内 auto-backfill，不做跨 run merge。
+- `notes.md` 只由执行 Agent 维护；不交给 LCT 成员模型写入或改写。
+- 仓库已有 `notes.md` 是上一轮 title/global-install/UX hardening 的历史执行记录；本轮 handoff 明确要求维护当前运行中的 `notes.md`，因此将它重置为本轮 auto-backfill 执行记录。旧内容仍在 git 历史中，不作为本轮交接入口。
+- Phase 7 的 stale run terminalize 和 forbidden tool fail-fast 如果拖慢核心 auto-backfill，会作为后续风险明确写入 brief，而不是稀释 Phase 1-6 的完成质量。
+
+### 阶段验证
+
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`make test`（163 个 unittest 通过）
+- 通过：`git diff --check`
+
+### Commit
+
+- 待提交：`docs: add auto-backfill implementation plan`
