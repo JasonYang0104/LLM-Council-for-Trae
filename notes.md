@@ -440,4 +440,38 @@
 
 ### Commit
 
-- 待提交：`test: define stage2 reviewer-only backfill contract`
+- `edbba4a test: define stage2 reviewer-only backfill contract`
+
+## Stage 2 Reviewer-Only Backfill：Phase 2 实现
+
+### 阶段目标
+
+- 当 Stage 1 已满足 quorum、Stage 2 reviewer 失败时，只补 reviewer，不新增候选答案。
+
+### 实现变更
+
+- 新增 `backfill_stage2_reviewers()`：
+  - 使用既有 `build_backfill_candidates()` 生成候补。
+  - 排除 primary members、已有 Stage 1 attempts、已有 / 失败 Stage 2 reviewers 和 chairman。
+  - 生成轻量 reviewer record，`file_label` 使用 `R4` 这类 reviewer-only label。
+- `stage2_collect_rankings()` 支持 reviewer-only record：
+  - review subjects 仍固定为有效 Stage 1 answers。
+  - reviewer-only record 不需要 `response`，也不会成为 subject。
+  - review record 标记 `reviewer_source=stage2_reviewer_backfill`、`attempt_role=reviewer_backfill`。
+- `run_full_council()` 的 Stage 2 backfill 不再调用 `backfill_stage1_responses()`；quorum metadata 不再被 reviewer-only D 污染。
+
+### 权衡与风险
+
+- reviewer-only label 选择 `R4`，显式区分 reviewer 文件和 `Response D`。这会新增 stage2 artifact label 格式，但避免 subject / reviewer 混淆。
+- 本阶段先让核心行为测试转绿；validate 和 HTML 更细语义在 Phase 3 更新。
+
+### 阶段验证
+
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_auto_backfill_quorum.AutoBackfillQuorumTests.test_run_full_council_stage2_reviewer_failure_backfills_reviewer_only_when_stage1_quorum_met -v`
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_auto_backfill_quorum -v`（7 个测试）
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`git diff --check main`
+
+### Commit
+
+- 待提交：`feat: backfill stage2 reviewers without adding stage1 answers`

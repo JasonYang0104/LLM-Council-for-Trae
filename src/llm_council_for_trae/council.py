@@ -243,7 +243,7 @@ async def stage2_collect_rankings(
     reviewers: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, str]]:
     review_subjects = [result for result in stage1_results if stage1_record_is_valid(result)]
-    reviewer_records = [result for result in (reviewers or review_subjects) if stage1_record_is_valid(result)]
+    reviewer_records = [result for result in (reviewers or review_subjects) if stage2_reviewer_record_is_valid(result)]
     label_to_model = {result["label"]: result["model"] for result in review_subjects}
     store.write_json("stage2/label_to_model.json", label_to_model)
 
@@ -338,9 +338,9 @@ async def stage2_collect_rankings(
             "review_path": f"stage2/{label}.review.md",
             "json_path": f"stage2/{label}.review.json",
             "reviewer_eligible": True,
-            "reviewer_source": "stage1_backfill" if reviewer.get("attempt_role") == "backfill" else "stage1_ok",
+            "reviewer_source": reviewer_source(reviewer),
             "review_subject_count": len(review_subjects),
-            "attempt_role": "backfill" if reviewer.get("attempt_role") == "backfill" else "primary",
+            "attempt_role": reviewer_attempt_role(reviewer),
             "tool_calls_count": call.tool_calls_count,
             "turns_count": call.turns_count,
             "tool_budget_status": call.tool_budget_status,
@@ -360,6 +360,74 @@ async def stage2_collect_rankings(
     aggregate_rankings = calculate_aggregate_rankings(valid_stage2_rankings(stage2_results), label_to_model)
     store.write_json("stage2/aggregate.json", aggregate_rankings)
     return stage2_results, label_to_model
+
+
+async def backfill_stage2_reviewers(
+    user_query: str,
+    review_subjects: list[dict[str, Any]],
+    existing_stage1_results: list[dict[str, Any]],
+    failed_stage2_results: list[dict[str, Any]],
+    config: CouncilConfig,
+    provider: TraeCliProvider,
+    store: ArtifactStore,
+    runtime_models: list[dict[str, Any]],
+    needed_reviewers: int,
+) -> tuple[list[dict[str, Any]], list[str], list[str]]:
+    from .model_selection import build_backfill_candidates
+
+    if needed_reviewers <= 0:
+        return [], [], []
+
+    attempted_models = [
+        str(result.get("model"))
+        for result in existing_stage1_results + failed_stage2_results
+        if result.get("model")
+    ]
+    failed_models = [
+        str(result.get("model"))
+        for result in failed_stage2_results
+        if result.get("model") and result.get("status") != "ok"
+    ]
+    candidates = build_backfill_candidates(
+        runtime_models,
+        primary_members=config.members,
+        attempted_models=attempted_models,
+        failed_models=failed_models,
+        chairman=config.chairman,
+        explicit_members=config.backfill_members or None,
+    )
+
+    attempted_backfill: list[str] = []
+    reviewer_records: list[dict[str, Any]] = []
+    existing_reviewer_count = len(failed_stage2_results)
+    for model in candidates:
+        if len(reviewer_records) >= needed_reviewers:
+            break
+        label = f"R{existing_reviewer_count + len(reviewer_records) + 1}"
+        attempted_backfill.append(model)
+        reviewer_records.append(
+            {
+                "model": model,
+                "file_label": label,
+                "reviewer_label": label,
+                "reviewer_source": "stage2_reviewer_backfill",
+                "attempt_role": "reviewer_backfill",
+            }
+        )
+        store.event("stage2_reviewer_backfill_attempt", {"model": model, "label": label})
+
+    if not reviewer_records:
+        return [], candidates, attempted_backfill
+
+    stage2_results, _label_to_model = await stage2_collect_rankings(
+        user_query,
+        review_subjects,
+        config,
+        provider,
+        store,
+        reviewers=reviewer_records,
+    )
+    return stage2_results, candidates, attempted_backfill
 
 
 async def cancel_and_drain(tasks: set[asyncio.Task] | list[asyncio.Task]) -> None:
@@ -792,50 +860,28 @@ async def run_full_council(
     stage2_results, label_to_model = await stage2_collect_rankings(user_query, valid_stage1, config, provider, store)
     valid_stage2 = [r for r in stage2_results if r.get("status") == "ok"]
     stage2_reviewer_target = min(len(valid_stage1), config.min_valid_members)
+    stage2_backfill_candidates: list[str] = []
     stage2_backfill_attempted: list[str] = []
     if (
         config.stage2_auto_backfill
         and 0 < len(valid_stage2) < stage2_reviewer_target
     ):
         needed_reviewers = stage2_reviewer_target - len(valid_stage2)
-        before_count = len(stage1_results)
-        stage2_candidates, stage2_backfill_attempted = await backfill_stage1_responses(
+        more_stage2, stage2_backfill_candidates, stage2_backfill_attempted = await backfill_stage2_reviewers(
             user_query,
+            valid_stage1,
             stage1_results,
+            stage2_results,
             config,
             provider,
             store,
             health.models,
-            target_valid_members=effective_stage1_count(stage1_results) + needed_reviewers,
+            needed_reviewers,
         )
-        backfill_candidates = list(dict.fromkeys(backfill_candidates + stage2_candidates))
-        backfill_attempted = list(dict.fromkeys(backfill_attempted + stage2_backfill_attempted))
-        new_reviewers = [
-            result
-            for result in stage1_results[before_count:]
-            if stage1_record_is_valid(result)
-        ]
-        if new_reviewers:
-            store.event("stage2_backfill_reviewers", {"models": [r["model"] for r in new_reviewers]})
-            more_stage2, label_to_model = await stage2_collect_rankings(
-                user_query,
-                [r for r in stage1_results if stage1_record_is_valid(r)],
-                config,
-                provider,
-                store,
-                reviewers=new_reviewers,
-            )
+        if more_stage2:
+            store.event("stage2_backfill_reviewers", {"models": [r["model"] for r in more_stage2]})
             stage2_results.extend(more_stage2)
-            valid_stage1 = [r for r in stage1_results if stage1_record_is_valid(r)]
             valid_stage2 = [r for r in stage2_results if r.get("status") == "ok"]
-            manifest["stages"]["stage1"] = stage1_results
-            manifest["metadata"]["quorum"] = stage1_quorum_metadata(
-                stage1_results,
-                config,
-                primary_members=config.members,
-                backfill_candidates=backfill_candidates,
-                backfill_attempted=backfill_attempted,
-            )
     aggregate_rankings = calculate_aggregate_rankings(valid_stage2_rankings(stage2_results), label_to_model)
     manifest["metadata"]["label_to_model"] = label_to_model
     manifest["metadata"]["aggregate_rankings"] = aggregate_rankings
@@ -847,9 +893,16 @@ async def run_full_council(
         "backfill_reviewers": [
             r["model"]
             for r in stage2_results
-            if r.get("reviewer_source") == "stage1_backfill"
+            if r.get("reviewer_source") in ("stage1_backfill", "stage2_reviewer_backfill")
         ],
         "backfill_attempted": stage2_backfill_attempted,
+        "reviewer_backfill_candidates": stage2_backfill_candidates,
+        "reviewer_backfill_attempted": stage2_backfill_attempted,
+        "member_backfill_attempted": backfill_attempted,
+        "reviewer_only_backfill": any(
+            r.get("reviewer_source") == "stage2_reviewer_backfill"
+            for r in stage2_results
+        ),
     }
     manifest["stages"]["stage2"] = stage2_results
     record_stage_failures(manifest, stage2_results)
@@ -982,6 +1035,26 @@ def synthetic_failed_call(
 
 def stage1_record_is_valid(record: dict[str, Any]) -> bool:
     return record.get("status") == "ok" and not record.get("forbidden_tool_calls")
+
+
+def stage2_reviewer_record_is_valid(record: dict[str, Any]) -> bool:
+    if reviewer_source(record) == "stage2_reviewer_backfill":
+        return bool(record.get("model"))
+    return stage1_record_is_valid(record)
+
+
+def reviewer_source(record: dict[str, Any]) -> str:
+    source = record.get("reviewer_source")
+    if isinstance(source, str) and source:
+        return source
+    return "stage1_backfill" if record.get("attempt_role") == "backfill" else "stage1_ok"
+
+
+def reviewer_attempt_role(record: dict[str, Any]) -> str:
+    attempt_role = record.get("attempt_role")
+    if isinstance(attempt_role, str) and attempt_role:
+        return attempt_role
+    return "backfill" if reviewer_source(record) == "stage1_backfill" else "primary"
 
 
 def stage_file_label(record: dict[str, Any], index: int) -> str:
