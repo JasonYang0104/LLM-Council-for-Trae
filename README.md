@@ -363,6 +363,7 @@ PYTHONPATH=src python3 -m llm_council_for_trae.cli run --input examples/question
 | `docs/lct-deployment-guide-20260601.md` | Agent / 用户安装者 | `~/.LCT` 全局安装、用户级 Skill、干净问题 workspace 和 live smoke 边界 |
 | `docs/lct-global-install-skill-design-20260601.md` | 接手开发者 / reviewer | 全局安装、Skill 模板、安装器和验证边界设计 |
 | `docs/lct-global-install-skill-test-plan-20260601.md` | 接手开发者 / reviewer | 全局安装与 Skill 的 TDD 切片和验收计划 |
+| `docs/lct-validate-title-hardening-handoff-20260603.md` | 新会话 Agent / 接手开发者 | 下一轮 validate 判定硬化、中文报告标题契约、TDD 节奏和 handoff 约束 |
 | `docs/lct-validate-title-contract-design-20260603.md` | 接手开发者 / reviewer | validate 终局判定和中文报告标题契约设计 |
 | `docs/lct-validate-title-contract-test-plan-20260603.md` | 接手开发者 / reviewer | validate 状态字段、标题抽取和 Skill 硬规则的测试计划 |
 | `docs/runtime-hardening-handoff-20260601.md` | 新会话 Agent / 接手开发者 | 这轮 runtime hardening 的背景、问题归因、索引文档、推进方式和交接口径 |
