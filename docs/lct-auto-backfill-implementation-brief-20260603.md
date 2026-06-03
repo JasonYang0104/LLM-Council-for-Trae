@@ -69,7 +69,7 @@ HTML summary 现在展示 quorum 状态、有效成员、auto-backfill 尝试、
 
 README、canonical Skill 和 `.trae` Skill 已删除整轮 recommended rerun 旧口径，改为同一个 run 内 auto-backfill。索引和汇报要求新增：`valid_stage1_models`、`quorum_default`、`quorum_effective`、`low_quorum_used`、`backfill_attempts`、`stage2_reviewers`、`stage1_backfill_members`、`stage2_reviewer_backfill`、`review_subject_count`、`reviewer_count`、`chairman_fallback_used`。fact pack 必须直接嵌入 `_lct_question.md`；`notes.md` 只由外层 Agent 维护，模型不要创建或修改 notes。
 
-对应提交：待本轮 reviewer-only 文档提交
+对应提交：`56b2449 docs: clarify reviewer-only backfill reporting`
 
 ## 测试证据
 
@@ -91,14 +91,16 @@ make test
 git diff --check main..HEAD
 ```
 
-当前最终全量验证结果以 `notes.md` 最后一节为准；不得再用 clean worktree 上的空 `git diff --check` 代替 branch-level whitespace check。
+当前全量测试结果：`make test` 通过 184 个 unittest。最终 whitespace 证据使用 `git diff --check main..HEAD`；不得再用 clean worktree 上的空 `git diff --check` 代替 branch-level whitespace check。
 
 补充 live smoke 也已通过：
 
 - `doctor --json`：`ok: true`；仅有 MCP connecting 和 upgrade server timeout warning，无 doctor error。
 - `models --recommend --json`：runtime models 21 个；推荐成员为 Kimi-K2.6、MiniMax-M2.7、GPT-5.2、DeepSeek-V4-Pro；主席为 Kimi-K2.6。
-- live run：`live-auto-backfill-20260603-final`，`status: ok`，`degraded: false`，`failures: []`。
+- live run：`live-stage2-reviewer-only-20260603-final`，`status: ok`，`degraded: false`，`failures: []`。
 - validate：`status: ok`，`terminal: true`，`usable_final: true`，`verdict: complete_ok_final`，`failed_stage_records: []`。
+
+这条 live smoke 是全员成功主路径，没有触发 reviewer-only backfill；reviewer-only 异常路径由 deterministic unittest 和 validate fixture 覆盖。
 
 ## 剩余风险
 

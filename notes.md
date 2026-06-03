@@ -557,4 +557,44 @@
 
 ### Commit
 
-- 待提交：`docs: clarify reviewer-only backfill reporting`
+- `56b2449 docs: clarify reviewer-only backfill reporting`
+
+## Stage 2 Reviewer-Only Backfill：Phase 5 final verification
+
+### 最终硬门验证
+
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`make test`（184 个 unittest）
+- 通过：`git diff --check main..HEAD`
+
+### Live smoke
+
+- 通过：`PYTHONPATH=src python3 -m llm_council_for_trae.cli doctor --json`
+  - `ok: true`
+  - runtime `traecli` version `0.120.32`
+  - warnings：MCP connecting、upgrade server timeout；无 doctor error。
+- 通过：`PYTHONPATH=src python3 -m llm_council_for_trae.cli models --recommend --json`
+  - runtime models：21 个
+  - recommendation members：Kimi-K2.6、MiniMax-M2.7、GPT-5.2、DeepSeek-V4-Pro
+  - chairman：Kimi-K2.6
+- 通过：`PYTHONPATH=src python3 -m llm_council_for_trae.cli run --input examples/question.md --default-models --run-id live-stage2-reviewer-only-20260603-final --timeout 180 --json`
+  - `status: ok`
+  - `degraded: false`
+  - `failures: []`
+  - HTML：`.llm-council-for-trae/runs/live-stage2-reviewer-only-20260603-final/html/index.html`
+- 通过：`PYTHONPATH=src python3 -m llm_council_for_trae.cli validate live-stage2-reviewer-only-20260603-final --json`
+  - `status: ok`
+  - `terminal: true`
+  - `usable_final: true`
+  - `verdict: complete_ok_final`
+  - `failed_stage_records: []`
+
+### 解释边界
+
+- 这条 live smoke 走的是全员成功主路径，没有触发 reviewer-only backfill。
+- reviewer-only 异常路径证据来自 deterministic unittest 和 validate fixture：
+  - `test_run_full_council_stage2_reviewer_failure_backfills_reviewer_only_when_stage1_quorum_met`
+  - `test_validate_accepts_stage2_reviewer_only_backfill`
+  - `test_validate_rejects_stage2_reviewer_only_backfill_in_subject_mapping`
+  - `test_html_summary_shows_stage2_reviewer_only_backfill_card`
+  - `test_html_stage2_tab_shows_reviewer_source_and_subject_count`
