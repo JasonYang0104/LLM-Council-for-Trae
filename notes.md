@@ -324,4 +324,36 @@
 
 ### Commit
 
-- 待提交：`docs: align skill workflow with auto-backfill`
+- `90ae5b7 docs: align skill workflow with auto-backfill`
+
+## Phase 7：Stale run / forbidden tool fail-fast 处理决定
+
+### 阶段目标
+
+- 评估是否把 stale run terminalization 和 forbidden tool fail-fast 纳入本轮。
+
+### 实现决定
+
+- 本轮不追加 Phase 7 代码实现，作为后续 PR 保留。
+- 理由：Phase 1 已覆盖 timeout / cancellation cleanup 和 termination metadata；Phase 3-6 已完成 auto-backfill 主路径、low quorum 可见性和 Skill 口径。Phase 7 属于额外 P1 防线，handoff 明确允许时间不足时后续处理，但必须在 `notes.md` 和最终 brief 写清。
+
+### 保留风险
+
+- Stale run：当前 validate 仍偏 read-only；对 interrupted run 的主动 terminalize 能力尚未落地。
+- Forbidden tool fail-fast：当前 provider 会检测 forbidden tool call 并把 attempt 标记 failed，但“发现后尽快终止模型进程”的更激进 fail-fast 仍未实现。
+
+### Commit
+
+- 无代码提交；风险进入最终 PM director brief。
+
+## Phase 8：最终 PM Director Brief
+
+### 阶段目标
+
+- 生成 `docs/lct-auto-backfill-implementation-brief-20260603.md`。
+- 生成 `docs/lct-auto-backfill-implementation-brief-20260603.html`。
+- 让读者在遗忘上下文的情况下，快速理解本轮为什么做、改了什么、如何验证、还剩什么风险。
+
+### Commit
+
+- 待提交：`docs: add auto-backfill implementation brief`

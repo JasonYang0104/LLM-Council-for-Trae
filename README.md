@@ -367,6 +367,7 @@ PYTHONPATH=src python3 -m llm_council_for_trae.cli run --input examples/question
 | `docs/lct-global-install-skill-test-plan-20260601.md` | 接手开发者 / reviewer | 全局安装与 Skill 的 TDD 切片和验收计划 |
 | `docs/lct-auto-backfill-quorum-design-20260603.md` | 接手开发者 / reviewer | 同 run auto-backfill、quorum、low quorum、Stage 2 reviewer eligibility 和可见性设计 |
 | `docs/lct-auto-backfill-implementation-handoff-20260603.md` | 新会话 Agent / 接手开发者 | auto-backfill 实施顺序、TDD 切片、subagent review 和验收约束 |
+| `docs/lct-auto-backfill-implementation-brief-20260603.md` | PM / director | 本轮 auto-backfill 实施背景、关键决策、测试证据和剩余风险 |
 | `docs/lct-validate-title-hardening-handoff-20260603.md` | 新会话 Agent / 接手开发者 | 下一轮 validate 判定硬化、中文报告标题契约、TDD 节奏和 handoff 约束 |
 | `docs/lct-validate-title-contract-design-20260603.md` | 接手开发者 / reviewer | validate 终局判定和中文报告标题契约设计 |
 | `docs/lct-validate-title-contract-test-plan-20260603.md` | 接手开发者 / reviewer | validate 状态字段、标题抽取和 Skill 硬规则的测试计划 |

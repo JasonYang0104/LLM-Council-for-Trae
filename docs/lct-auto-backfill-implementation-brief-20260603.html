@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LCT Auto-Backfill Implementation Director Brief</title>
+  <style>
+    :root {
+      --bg: #f5f4ed;
+      --paper: #efeee5;
+      --ink: #1f1d18;
+      --muted: #6b665b;
+      --accent: #1B365D;
+      --line: #d4d1c5;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "TsangerJinKai02 W04", "Noto Serif SC", Charter, "Times New Roman", serif;
+      font-size: 16px;
+      line-height: 1.55;
+    }
+    main {
+      width: min(940px, calc(100% - 32px));
+      margin: 36px auto;
+      padding: 44px 52px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      box-shadow: 0 0 0 1px var(--line);
+    }
+    header {
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 24px;
+      margin-bottom: 30px;
+    }
+    .kicker {
+      color: var(--accent);
+      font-family: Charter, "Times New Roman", serif;
+      font-style: italic;
+      letter-spacing: 0;
+      margin: 0 0 10px;
+    }
+    h1 {
+      margin: 0;
+      color: var(--ink);
+      font-size: 36px;
+      line-height: 1.18;
+      font-weight: 500;
+    }
+    .lede {
+      margin: 16px 0 0;
+      max-width: 72ch;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.5;
+    }
+    .meta {
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    h2 {
+      margin: 34px 0 12px;
+      color: var(--accent);
+      font-size: 22px;
+      font-weight: 500;
+      line-height: 1.25;
+      border-top: 1px solid var(--line);
+      padding-top: 18px;
+    }
+    h3 {
+      margin: 24px 0 8px;
+      color: var(--ink);
+      font-size: 18px;
+      font-weight: 500;
+      line-height: 1.3;
+    }
+    p {
+      max-width: 74ch;
+      margin: 0 0 12px;
+    }
+    ul {
+      max-width: 74ch;
+      margin: 0 0 14px;
+      padding-left: 22px;
+    }
+    li {
+      margin: 6px 0;
+    }
+    code {
+      padding: 1px 4px;
+      background: #f5f4ed;
+      border: 1px solid var(--line);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.92em;
+      color: var(--accent);
+    }
+    pre {
+      max-width: 74ch;
+      overflow-x: auto;
+      margin: 14px 0 18px;
+      padding: 14px 16px;
+      background: #f5f4ed;
+      border: 1px solid var(--line);
+      color: var(--ink);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .callout {
+      max-width: 74ch;
+      margin: 18px 0;
+      padding: 14px 18px;
+      border-left: 3px solid var(--accent);
+      background: #f5f4ed;
+    }
+    .commit {
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+    footer {
+      margin-top: 34px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 14px;
+    }
+    @media (max-width: 720px) {
+      main {
+        width: calc(100% - 20px);
+        margin: 10px auto;
+        padding: 26px 22px;
+      }
+      h1 {
+        font-size: 28px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="kicker">Director Brief</p>
+      <h1>LCT Auto-Backfill Implementation</h1>
+      <p class="lede">LCT 已经从“默认成员失败后靠外层 Agent 整轮重跑”推进到“同一个 run 内自动补位、可降级但必须说真话”的产品形态。本轮把自动交付、质量底线、失败清理和用户可见证据绑定成同一套 runtime contract。</p>
+      <p class="meta">日期：2026-06-03 · 分支：<code>codex/lct-auto-backfill-plan-20260603</code></p>
+    </header>
+
+    <h2>为什么这轮值得做</h2>
+    <p>旧机制的核心问题不是“失败后不能补救”，而是补救边界不清。默认模型失败时，外层 Skill 会倾向于用推荐阵容重新跑一整轮；这会浪费已经成功的 Stage 1 输出，也会让 2-member degraded result 的语义变得模糊。</p>
+    <div class="callout">这轮的判断：自动交付仍然是 LCT 的核心体验，但它不能靠模糊状态偷渡。低 quorum 可以交付，但必须在 manifest、validate、HTML、索引和最终汇报里显著可见。</div>
+
+    <h2>产品决策</h2>
+    <ul>
+      <li>默认目标仍是至少 3 个有效 Stage 1 成员，没有悄悄改成 2。</li>
+      <li>成员失败后的主恢复路径变为同一个 run 内 auto-backfill：保留已成功回答，只追加候补成员，不整轮重跑。</li>
+      <li>low quorum 是可用降级，不是健康成功；必须标记 <code>degraded_ok</code> 并展示有效成员数和 backfill 尝试。</li>
+      <li>主席模型失败时允许自动走备选链，但必须记录 <code>chairman_fallback_used</code>。</li>
+      <li><code>models --recommend --json</code> 现在是候补池来源，而不是另起一轮的指令。</li>
+    </ul>
+
+    <h2>关键实现</h2>
+    <h3>Runtime cleanup</h3>
+    <p>新增 <code>cancel_and_drain()</code>，让 Stage 1 / Stage 2 在 quorum checkpoint、timeout 或 cancellation 后等待 pending tasks 收口。provider timeout / cancel / tool-budget kill 路径现在会留下 termination metadata。</p>
+    <p class="commit">提交：<code>7d7fc53 fix: drain cancelled model tasks before backfill</code></p>
+
+    <h3>Backfill candidate pool</h3>
+    <p>候补池按显式 <code>--backfill-members</code>、同 vendor fallback、推荐成员、runtime safe models 的顺序生成，并过滤 primary、已尝试、主席、hard-banned、beta 和 hot queue 模型。</p>
+    <p class="commit">提交：<code>b0d09f6 feat: add deterministic backfill candidate selection</code></p>
+
+    <h3>Stage 1 auto-backfill</h3>
+    <p>Stage 1 成员失败后追加新 label，例如 <code>Response E</code>，而不是覆盖失败成员原 slot。manifest 写入 quorum provenance，包含候补、有效成员、normal quorum 和 low quorum 状态。</p>
+    <p class="commit">提交：<code>aba731c feat: backfill failed stage1 members in-run</code></p>
+
+    <h3>Stage 2 reviewer eligibility</h3>
+    <p>Stage 2 的 subjects 和 reviewers 默认来自有效 Stage 1 成员。reviewer 失败时，CLI 会先补一个 Stage 1 answer，再让该候补补交 review。</p>
+    <p class="commit">提交：<code>ce0c1ad feat: backfill stage2 reviewers from effective members</code></p>
+
+    <h3>Manifest / validate / HTML 可见性</h3>
+    <p>HTML summary 展示 quorum 状态、有效成员、auto-backfill 尝试和主席备选。validate 会拒绝 low quorum 却标成 <code>ok</code> 的伪健康结果。</p>
+    <p class="commit">提交：<code>bbf7ca1 feat: surface backfill and low-quorum provenance</code></p>
+
+    <h3>Skill / README 对齐</h3>
+    <p>README、canonical Skill 和 <code>.trae</code> Skill 删除整轮 recommended rerun 旧口径，改为同一个 run 内 auto-backfill；索引和汇报新增有效成员、quorum、backfill、reviewer 和主席备选字段。</p>
+    <p class="commit">提交：<code>90ae5b7 docs: align skill workflow with auto-backfill</code></p>
+
+    <h2>测试证据</h2>
+    <p>本轮新增覆盖 runtime cleanup、候补池过滤、Stage 1 / Stage 2 auto-backfill、low quorum validate、HTML 可见性和 Skill 文档契约。阶段全量测试已通过 179 个 unittest。</p>
+    <pre>PYTHONPATH=src python3 -m compileall src
+make test
+git diff --check</pre>
+
+    <h2>剩余风险</h2>
+    <ul>
+      <li>Stale run terminalization 未纳入本轮；validate 仍偏 read-only。</li>
+      <li>Forbidden tool fail-fast 的“发现后立即终止模型进程”仍是后续 PR。</li>
+      <li>旧 Stage 1 retry 语义仍可能复用原 slot；auto-backfill 已保证追加、不覆盖。</li>
+      <li>Stage 2 backfill reviewer 的 prompt sidecar 仍是共享文件；batch-specific prompt path 还不是第一版范围。</li>
+    </ul>
+
+    <h2>交付索引</h2>
+    <ul>
+      <li><code>docs/lct-auto-backfill-quorum-design-20260603.md</code></li>
+      <li><code>docs/lct-auto-backfill-implementation-handoff-20260603.md</code></li>
+      <li><code>notes.md</code></li>
+      <li><code>docs/lct-auto-backfill-implementation-brief-20260603.md</code></li>
+      <li><code>docs/lct-auto-backfill-implementation-brief-20260603.html</code></li>
+    </ul>
+
+    <footer>生成时间：2026-06-03。HTML 为单文件排版简报，不调用模型，不依赖运行 artifacts。</footer>
+  </main>
+</body>
+</html>
