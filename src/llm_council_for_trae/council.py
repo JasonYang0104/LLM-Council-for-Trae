@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import re
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +43,11 @@ class CouncilConfig:
     member_tool_mode: str = "search_enabled"
     member_runtime_cwd_mode: str = "isolated_temp"
     stage1_max_retries: int = 1
+    backfill_members: list[str] = field(default_factory=list)
+    stage1_auto_backfill: bool = True
+    stage2_auto_backfill: bool = True
+    allow_low_quorum: bool = True
+    low_quorum_floor: int = 2
 
     def agent_for_member(self, index: int) -> str | None:
         if not self.member_agents or index >= len(self.member_agents):
@@ -760,6 +765,11 @@ def config_to_json(config: CouncilConfig) -> dict[str, Any]:
         "member_tool_mode": config.member_tool_mode,
         "member_runtime_cwd_mode": config.member_runtime_cwd_mode,
         "stage1_max_retries": config.stage1_max_retries,
+        "backfill_members": config.backfill_members,
+        "stage1_auto_backfill": config.stage1_auto_backfill,
+        "stage2_auto_backfill": config.stage2_auto_backfill,
+        "allow_low_quorum": config.allow_low_quorum,
+        "low_quorum_floor": config.low_quorum_floor,
     }
 
 

@@ -75,4 +75,58 @@
 
 ### Commit
 
-- 待提交：`fix: drain cancelled model tasks before backfill`
+- `7d7fc53 fix: drain cancelled model tasks before backfill`
+
+## Phase 2：Backfill candidate pool
+
+### 阶段目标
+
+- 增加确定性的 backfill candidate pool，为后续 Stage 1 / Stage 2 同 run 补位提供候补来源。
+- 增加 CLI / config 字段，但本阶段不把候补池接入实际 run 流程。
+
+### 新增/修改的测试
+
+- 新增文件：`tests/test_auto_backfill_quorum.py`
+- 新增：`test_backfill_candidates_filter_runtime_models_and_prefer_same_vendor_fallback`
+  - 先红后绿；红态为 `build_backfill_candidates` 不存在。
+  - 断言候补只来自 runtime models，排除 hard-banned / beta / queue heat 过高 / primary / attempted，并让 `MiniMax-M2.7` 的同 vendor fallback `MiniMax-M2.5` 排在普通推荐候补前。
+- 新增：`test_explicit_backfill_candidates_keep_priority_but_still_filter_unsafe_and_attempted`
+  - 断言显式 `--backfill-members` 保序优先，但仍过滤 unsafe、primary 和 attempted。
+- 新增：`test_build_config_accepts_backfill_and_low_quorum_flags`
+  - 断言 CLI 接受 `--backfill-members`、`--no-auto-backfill`、`--low-quorum-floor`，并写入 `CouncilConfig`。
+
+### 实现决定
+
+- 在 `model_selection.py` 增加 `build_backfill_candidates()`，默认顺序为：
+  1. 失败模型的同 vendor fallback。
+  2. `recommend_model_choice()` 的推荐成员顺序。
+  3. 当前 runtime safe model 顺序。
+- 显式候补不作为 unsafe override；仍会过滤 hard-ban、beta、hot queue、primary、attempted 和 chairman。
+- 在 `CouncilConfig` 增加：
+  - `backfill_members`
+  - `stage1_auto_backfill`
+  - `stage2_auto_backfill`
+  - `allow_low_quorum`
+  - `low_quorum_floor`
+- CLI 新增：
+  - `--backfill-members`
+  - `--no-auto-backfill`
+  - `--low-quorum-floor`
+
+### 权衡与风险
+
+- 本阶段没有生成 `metadata.quorum`，因为还没有实际 Stage 1 / Stage 2 backfill outcome；Phase 3/4 再写 provenance。
+- 显式候补仍过滤 unsafe 模型，而不是允许用户强行 backfill 到 banned/beta/hot 模型；这保持了推荐体系的安全边界。
+- 当前把 `chairman` 排除在候补成员之外，避免主席专用模型意外进入 member backfill；如果未来需要 chairman 同时作为 member，应通过 primary roster 明确表达。
+
+### 阶段验证
+
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_auto_backfill_quorum -v`（3 个测试）
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_auto_backfill_quorum tests.test_lct_model_productization tests.test_core.CouncilCoreTests.test_build_config_defaults_to_search_enabled_without_yolo tests.test_runtime_hardening.RuntimeHardeningTests.test_build_config_accepts_stage2_and_chairman_timeouts -v`（16 个测试）
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`make test`（169 个 unittest 通过）
+- 通过：`git diff --check`
+
+### Commit
+
+- 待提交：`feat: add deterministic backfill candidate selection`

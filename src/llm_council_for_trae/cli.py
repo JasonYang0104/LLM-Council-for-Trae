@@ -60,6 +60,9 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--no-yolo", action="store_true", help="Compatibility no-op: default member runs already omit --yolo.")
     run_p.add_argument("--min-valid-members", type=int, default=3, help="Minimum valid members for quorum.")
     run_p.add_argument("--target-valid-members", type=int, default=8, help="Target valid members for quorum.")
+    run_p.add_argument("--backfill-members", help="Comma-separated backfill candidate models used before runtime recommendation candidates.")
+    run_p.add_argument("--no-auto-backfill", action="store_true", help="Disable automatic Stage 1 and Stage 2 backfill.")
+    run_p.add_argument("--low-quorum-floor", type=int, default=2, help="Minimum valid members required for low-quorum degraded delivery.")
     run_p.add_argument("--chairman-fallback", help="Comma-separated fallback chairman models.")
     run_p.add_argument("--member-mode", choices=["normal", "deep_research"], default="normal", help="Member execution mode.")
     run_p.add_argument("--member-tool-mode", choices=["answer_only", "search_enabled", "workspace_enabled"], default="search_enabled", help="Tool capability policy for direct member runtime.")
@@ -269,6 +272,11 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
         member_mode=getattr(args, "member_mode", "normal"),
         member_tool_mode=getattr(args, "member_tool_mode", "search_enabled"),
         member_runtime_cwd_mode=getattr(args, "member_runtime_cwd_mode", "isolated_temp"),
+        backfill_members=split_csv(getattr(args, "backfill_members", "") or ""),
+        stage1_auto_backfill=not getattr(args, "no_auto_backfill", False),
+        stage2_auto_backfill=not getattr(args, "no_auto_backfill", False),
+        allow_low_quorum=True,
+        low_quorum_floor=getattr(args, "low_quorum_floor", 2),
     )
 
 

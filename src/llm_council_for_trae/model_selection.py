@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, TextIO
 
 from .council import DEFAULT_CHAIRMAN, DEFAULT_MEMBERS
+from .roster import resolve_fallback
 
 
 PREFERRED_MEMBERS = [
@@ -79,6 +80,48 @@ def recommend_model_choice(models: list[dict[str, Any]]) -> ModelChoice:
         members[0],
     )
     return ModelChoice(members, chairman, "recommended")
+
+
+def build_backfill_candidates(
+    models: list[dict[str, Any]],
+    *,
+    primary_members: list[str],
+    attempted_models: list[str] | None = None,
+    failed_models: list[str] | None = None,
+    chairman: str | None = None,
+    explicit_members: list[str] | None = None,
+) -> list[str]:
+    safe_names = [
+        model["name"]
+        for model in _dedupe_named_models(models)
+        if not model_exclusion_reasons(model)
+    ]
+    safe_name_set = set(safe_names)
+    excluded = set(primary_members)
+    excluded.update(attempted_models or [])
+    if chairman:
+        excluded.add(chairman)
+
+    def add_candidate(target: list[str], name: str | None) -> None:
+        if not name or name not in safe_name_set or name in excluded or name in target:
+            return
+        target.append(name)
+
+    candidates: list[str] = []
+    if explicit_members:
+        for name in explicit_members:
+            add_candidate(candidates, name)
+        return candidates
+
+    for failed in failed_models or []:
+        add_candidate(candidates, resolve_fallback(failed))
+
+    recommendation = recommend_model_choice(models)
+    for name in recommendation.members:
+        add_candidate(candidates, name)
+    for name in safe_names:
+        add_candidate(candidates, name)
+    return candidates
 
 
 def is_auto_excluded_model(name: str) -> bool:
