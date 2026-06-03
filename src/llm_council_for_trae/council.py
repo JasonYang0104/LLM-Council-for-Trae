@@ -145,6 +145,8 @@ async def stage1_collect_responses(
                 "meta_path": f"stage1/{label}.meta.json",
                 "response_path": f"stage1/{label}.response.md",
                 "error": call.error,
+                "attempt_role": "primary",
+                "attempt_index": 1,
                 "tool_calls_count": call.tool_calls_count,
                 "turns_count": call.turns_count,
                 "tool_budget_status": call.tool_budget_status,
@@ -154,6 +156,80 @@ async def stage1_collect_responses(
             } | tool_policy_record(call)
         )
     return stage1_results
+
+
+async def backfill_stage1_responses(
+    user_query: str,
+    stage1_results: list[dict[str, Any]],
+    config: CouncilConfig,
+    provider: TraeCliProvider,
+    store: ArtifactStore,
+    runtime_models: list[dict[str, Any]],
+) -> tuple[list[str], list[str]]:
+    from .model_selection import build_backfill_candidates
+
+    if not config.stage1_auto_backfill:
+        return [], []
+
+    prompt = build_stage1_prompt(user_query)
+    output_dir = store.path("stage1")
+    attempted_models = [str(result.get("model")) for result in stage1_results if result.get("model")]
+    failed_models = [
+        str(result.get("model"))
+        for result in stage1_results
+        if result.get("model") and not stage1_record_is_valid(result)
+    ]
+    candidates = build_backfill_candidates(
+        runtime_models,
+        primary_members=config.members,
+        attempted_models=attempted_models,
+        failed_models=failed_models,
+        chairman=config.chairman,
+        explicit_members=config.backfill_members or None,
+    )
+    attempted_backfill: list[str] = []
+    for model in candidates:
+        if effective_stage1_count(stage1_results) >= config.min_valid_members:
+            break
+        label = chr(65 + len(stage1_results))
+        attempted_backfill.append(model)
+        store.event("stage1_backfill_attempt", {"model": model, "label": label})
+        call = await provider.query_model(
+            model=model,
+            prompt=prompt,
+            run_id=store.root.name,
+            stage="stage1",
+            label=label,
+            output_dir=output_dir,
+        )
+        if not (store.root / "stage1" / f"{label}.meta.json").exists():
+            store.write_json(f"stage1/{label}.meta.json", call.to_json() | {"captured_at": utc_now()})
+        store.write_text(f"stage1/{label}.response.md", call.response + "\n")
+        stage1_results.append(
+            {
+                "label": f"Response {label}",
+                "file_label": label,
+                "model": model,
+                "expected_model": call.expected_model,
+                "actual_model": call.actual_model,
+                "agent": call.agent,
+                "subagent_invocation": call.subagent_invocation,
+                "response": call.response,
+                "status": call.status,
+                "meta_path": f"stage1/{label}.meta.json",
+                "response_path": f"stage1/{label}.response.md",
+                "error": call.error,
+                "attempt_role": "backfill",
+                "attempt_index": 1,
+                "tool_calls_count": call.tool_calls_count,
+                "turns_count": call.turns_count,
+                "tool_budget_status": call.tool_budget_status,
+                "raw_partial_recoverable": call.raw_partial_recoverable,
+                "retried": call.retried,
+                "retry_error": call.retry_error,
+            } | tool_policy_record(call)
+        )
+    return candidates, attempted_backfill
 
 
 async def stage2_collect_rankings(
@@ -656,6 +732,8 @@ async def run_full_council(
                 "meta_path": f"stage1/{label}.meta.json",
                 "response_path": f"stage1/{label}.response.md",
                 "error": retry_call.error,
+                "attempt_role": "retry",
+                "attempt_index": retry_round + 1,
                 "tool_calls_count": retry_call.tool_calls_count,
                 "turns_count": retry_call.turns_count,
                 "tool_budget_status": retry_call.tool_budget_status,
@@ -666,8 +744,29 @@ async def run_full_council(
             store.write_text(f"stage1/{label}.response.md", retry_call.response + "\n")
             store.write_json(f"stage1/{label}.meta.json", retry_call.to_json() | {"captured_at": utc_now()})
 
+    backfill_candidates, backfill_attempted = await backfill_stage1_responses(
+        user_query,
+        stage1_results,
+        config,
+        provider,
+        store,
+        health.models,
+    )
     manifest["stages"]["stage1"] = stage1_results
     stage1_status = classify_stage1_status(stage1_results, config.min_valid_members, chairman_model=config.chairman)
+    quorum_metadata = stage1_quorum_metadata(
+        stage1_results,
+        config,
+        primary_members=config.members,
+        backfill_candidates=backfill_candidates,
+        backfill_attempted=backfill_attempted,
+    )
+    manifest["metadata"]["quorum"] = quorum_metadata
+    if stage1_status == "failed" and quorum_metadata["low_quorum_used"]:
+        stage1_status = "degraded_ok"
+        manifest["warnings"].append(
+            f"low quorum degraded result: {quorum_metadata['effective_valid_members']} / {config.min_valid_members} valid Stage 1 members"
+        )
     update_manifest_with_stage1_status(manifest, stage1_status)
     record_stage_failures(manifest, stage1_results)
     store.write_manifest(manifest)
@@ -809,6 +908,50 @@ def synthetic_failed_call(
         disallowed_tools=disallowed_tools,
         termination=termination or {},
     )
+
+
+def stage1_record_is_valid(record: dict[str, Any]) -> bool:
+    return record.get("status") == "ok" and not record.get("forbidden_tool_calls")
+
+
+def effective_stage1_count(stage1_results: list[dict[str, Any]]) -> int:
+    return sum(1 for result in stage1_results if stage1_record_is_valid(result))
+
+
+def stage1_quorum_metadata(
+    stage1_results: list[dict[str, Any]],
+    config: CouncilConfig,
+    *,
+    primary_members: list[str],
+    backfill_candidates: list[str],
+    backfill_attempted: list[str],
+) -> dict[str, Any]:
+    effective_members = [
+        str(result.get("model"))
+        for result in stage1_results
+        if result.get("model") and stage1_record_is_valid(result)
+    ]
+    effective_valid_members = len(effective_members)
+    normal_quorum_met = effective_valid_members >= config.min_valid_members
+    low_quorum_used = (
+        not normal_quorum_met
+        and config.allow_low_quorum
+        and effective_valid_members >= config.low_quorum_floor
+    )
+    return {
+        "min_valid_members": config.min_valid_members,
+        "target_valid_members": config.target_valid_members,
+        "low_quorum_floor": config.low_quorum_floor,
+        "effective_valid_members": effective_valid_members,
+        "normal_quorum_met": normal_quorum_met,
+        "low_quorum_used": low_quorum_used,
+        "backfill_used": bool(backfill_attempted),
+        "primary_members": list(primary_members),
+        "candidate_source": "explicit" if config.backfill_members else "traecli.models.filtered",
+        "backfill_candidates": backfill_candidates,
+        "backfill_attempted": backfill_attempted,
+        "effective_stage1_members": effective_members,
+    }
 
 
 def classify_stage1_status(results: list[dict[str, Any]], min_valid_members: int = 6, chairman_model: str | None = None) -> str:

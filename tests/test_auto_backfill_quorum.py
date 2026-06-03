@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 
 class AutoBackfillQuorumTests(unittest.TestCase):
@@ -70,6 +73,207 @@ class AutoBackfillQuorumTests(unittest.TestCase):
         self.assertFalse(config.stage2_auto_backfill)
         self.assertTrue(config.allow_low_quorum)
         self.assertEqual(config.low_quorum_floor, 2)
+
+    def test_run_full_council_stage1_backfill_appends_without_overwriting_failures(self):
+        async def _run():
+            from llm_council_for_trae.council import CouncilConfig, run_full_council
+            from llm_council_for_trae.provider import ModelCallResult
+            from llm_council_for_trae.store import ArtifactStore
+            import llm_council_for_trae.council as council_mod
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-stage1-backfill")
+            config = CouncilConfig(
+                members=["M1", "M2", "M3", "M4"],
+                chairman="Chair",
+                min_valid_members=3,
+                stage1_max_retries=0,
+                backfill_members=["M5", "M6"],
+                stage2_timeout=1,
+            )
+            seen_stage1 = []
+
+            class MockProvider:
+                def __init__(self, *args, **kwargs):
+                    pass
+
+                async def query_model(self, **kwargs):
+                    stage = kwargs["stage"]
+                    model = kwargs["model"]
+                    if stage == "stage1":
+                        seen_stage1.append((model, kwargs["label"]))
+                        status = "ok" if model in {"M1", "M2", "M5"} else "failed"
+                        return ModelCallResult(
+                            expected_model=model,
+                            actual_model=model if status == "ok" else None,
+                            response=f"answer {model}" if status == "ok" else "",
+                            status=status,
+                            session_id=f"s-{model}",
+                            command=["traecli"],
+                            exit_code=0 if status == "ok" else 1,
+                            stdout_path="out.jsonl",
+                            stderr_path="err.log",
+                            error=None if status == "ok" else "timeout",
+                        )
+                    return ModelCallResult(
+                        expected_model=model,
+                        actual_model=model,
+                        response="unused",
+                        status="ok",
+                        session_id="s",
+                        command=["traecli"],
+                        exit_code=0,
+                        stdout_path="out.jsonl",
+                        stderr_path="err.log",
+                    )
+
+            async def fake_stage2(user_query, stage1_results, config, provider, store):
+                label_to_model = {r["label"]: r["model"] for r in stage1_results}
+                return [], label_to_model
+
+            async def fake_stage3(user_query, stage1_results, stage2_results, config, provider, store, fallback_chain=None):
+                return {
+                    "model": "Chair",
+                    "expected_model": "Chair",
+                    "actual_model": "Chair",
+                    "response": "final",
+                    "status": "ok",
+                    "error": None,
+                    "prompt_path": "stage3/chairman.prompt.md",
+                    "response_path": "stage3/final.md",
+                    "json_path": "stage3/final.json",
+                }, {"attempted": ["Chair"], "used": "Chair", "fallback_from": None, "failed_attempts": []}
+
+            with patch.object(council_mod, "runtime_doctor") as mock_doctor:
+                mock_doctor.return_value = type("Health", (), {
+                    "ok": True,
+                    "command": "fake",
+                    "version": "1.0",
+                    "doctor_exit_code": 0,
+                    "doctor": {},
+                    "errors": [],
+                    "warnings": [],
+                    "ignored_errors": [],
+                    "models": [{"name": name} for name in ["M1", "M2", "M3", "M4", "M5", "M6", "Chair"]],
+                })()
+                with patch.object(council_mod, "require_models_available"):
+                    with patch.object(council_mod, "TraeCliProvider", MockProvider):
+                        with patch.object(council_mod, "stage2_collect_rankings", fake_stage2):
+                            with patch.object(council_mod, "stage3_synthesize_final", fake_stage3):
+                                manifest = await run_full_council("question", config, store)
+
+            stage1 = manifest["stages"]["stage1"]
+            self.assertEqual([(r["model"], r["file_label"], r["status"]) for r in stage1], [
+                ("M1", "A", "ok"),
+                ("M2", "B", "ok"),
+                ("M3", "C", "failed"),
+                ("M4", "D", "failed"),
+                ("M5", "E", "ok"),
+            ])
+            self.assertEqual(seen_stage1, [("M1", "A"), ("M2", "B"), ("M3", "C"), ("M4", "D"), ("M5", "E")])
+            self.assertEqual(stage1[-1]["attempt_role"], "backfill")
+            self.assertEqual(manifest["metadata"]["quorum"]["effective_stage1_members"], ["M1", "M2", "M5"])
+            self.assertTrue(manifest["metadata"]["quorum"]["normal_quorum_met"])
+            self.assertEqual(manifest["metadata"]["quorum"]["backfill_attempted"], ["M5"])
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_run_full_council_stage1_low_quorum_degraded_when_backfill_exhausted(self):
+        async def _run():
+            from llm_council_for_trae.council import CouncilConfig, run_full_council
+            from llm_council_for_trae.provider import ModelCallResult
+            from llm_council_for_trae.store import ArtifactStore
+            import llm_council_for_trae.council as council_mod
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-stage1-low-quorum")
+            config = CouncilConfig(
+                members=["M1", "M2", "M3", "M4"],
+                chairman="Chair",
+                min_valid_members=3,
+                stage1_max_retries=0,
+                backfill_members=["M5"],
+                low_quorum_floor=2,
+                stage2_timeout=1,
+            )
+
+            class MockProvider:
+                def __init__(self, *args, **kwargs):
+                    pass
+
+                async def query_model(self, **kwargs):
+                    model = kwargs["model"]
+                    status = "ok" if model in {"M1", "M2"} else "failed"
+                    return ModelCallResult(
+                        expected_model=model,
+                        actual_model=model if status == "ok" else None,
+                        response=f"answer {model}" if status == "ok" else "",
+                        status=status,
+                        session_id=f"s-{model}",
+                        command=["traecli"],
+                        exit_code=0 if status == "ok" else 1,
+                        stdout_path="out.jsonl",
+                        stderr_path="err.log",
+                        error=None if status == "ok" else "timeout",
+                    )
+
+            async def fake_stage2(user_query, stage1_results, config, provider, store):
+                label_to_model = {r["label"]: r["model"] for r in stage1_results}
+                reviews = [
+                    {
+                        "reviewer_label": r["file_label"],
+                        "model": r["model"],
+                        "expected_model": r["model"],
+                        "actual_model": r["model"],
+                        "ranking": "FINAL RANKING:\n1. Response A\n2. Response B",
+                        "parsed_ranking": ["Response A", "Response B"],
+                        "parse_status": "ok",
+                        "status": "ok",
+                        "error": None,
+                    }
+                    for r in stage1_results
+                ]
+                return reviews, label_to_model
+
+            async def fake_stage3(user_query, stage1_results, stage2_results, config, provider, store, fallback_chain=None):
+                return {
+                    "model": "Chair",
+                    "expected_model": "Chair",
+                    "actual_model": "Chair",
+                    "response": "final",
+                    "status": "ok",
+                    "error": None,
+                    "prompt_path": "stage3/chairman.prompt.md",
+                    "response_path": "stage3/final.md",
+                    "json_path": "stage3/final.json",
+                }, {"attempted": ["Chair"], "used": "Chair", "fallback_from": None, "failed_attempts": []}
+
+            with patch.object(council_mod, "runtime_doctor") as mock_doctor:
+                mock_doctor.return_value = type("Health", (), {
+                    "ok": True,
+                    "command": "fake",
+                    "version": "1.0",
+                    "doctor_exit_code": 0,
+                    "doctor": {},
+                    "errors": [],
+                    "warnings": [],
+                    "ignored_errors": [],
+                    "models": [{"name": name} for name in ["M1", "M2", "M3", "M4", "M5", "Chair"]],
+                })()
+                with patch.object(council_mod, "require_models_available"):
+                    with patch.object(council_mod, "TraeCliProvider", MockProvider):
+                        with patch.object(council_mod, "stage2_collect_rankings", fake_stage2):
+                            with patch.object(council_mod, "stage3_synthesize_final", fake_stage3):
+                                manifest = await run_full_council("question", config, store)
+
+            self.assertEqual(manifest["status"], "degraded_ok")
+            quorum = manifest["metadata"]["quorum"]
+            self.assertEqual(quorum["effective_valid_members"], 2)
+            self.assertFalse(quorum["normal_quorum_met"])
+            self.assertTrue(quorum["low_quorum_used"])
+            self.assertEqual(quorum["backfill_attempted"], ["M5"])
+
+        import asyncio
+        asyncio.run(_run())
 
 
 if __name__ == "__main__":

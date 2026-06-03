@@ -129,4 +129,58 @@
 
 ### Commit
 
-- 待提交：`feat: add deterministic backfill candidate selection`
+- `b0d09f6 feat: add deterministic backfill candidate selection`
+
+## Phase 3：Stage 1 auto-backfill
+
+### 阶段目标
+
+- 同一个 run 内保留已成功 Stage 1 输出。
+- 当有效成员低于 `min_valid_members` 时，用 Phase 2 候补池追加 backfill record，不覆盖原 primary failure。
+- backfill 耗尽但有效成员数达到 `low_quorum_floor` 时，允许继续 degraded，并写入 quorum metadata。
+
+### 新增/修改的测试
+
+- 新增：`test_run_full_council_stage1_backfill_appends_without_overwriting_failures`
+  - 先红后绿；红态证明 A/B 成功、C/D 失败时不会自动补 E。
+  - 绿态断言 C/D 失败 record 保留，E 作为 `Response E` 追加，`attempt_role=backfill`，且达到 normal quorum。
+- 新增：`test_run_full_council_stage1_low_quorum_degraded_when_backfill_exhausted`
+  - 先红后绿；红态为 2 个有效成员时直接 `failed`。
+  - 绿态断言最终 `degraded_ok`，`metadata.quorum.low_quorum_used=true`，且 `backfill_attempted` 可审计。
+
+### 实现决定
+
+- 新增 `backfill_stage1_responses()`：只在 `stage1_auto_backfill=True` 时执行；候补调用使用新的 file label，按当前 stage record 数递增。
+- Primary Stage 1 record 增加 `attempt_role=primary`、`attempt_index=1`；backfill record 增加 `attempt_role=backfill`。
+- 新增 `stage1_record_is_valid()`：有效 Stage 1 必须 `status=ok` 且没有 forbidden tool calls。
+- 新增 `metadata.quorum`：
+  - `min_valid_members`
+  - `target_valid_members`
+  - `low_quorum_floor`
+  - `effective_valid_members`
+  - `normal_quorum_met`
+  - `low_quorum_used`
+  - `backfill_used`
+  - `primary_members`
+  - `candidate_source`
+  - `backfill_candidates`
+  - `backfill_attempted`
+  - `effective_stage1_members`
+
+### 权衡与风险
+
+- 为了不打碎既有测试，本阶段保留旧的同模型 retry 行为；当 `stage1_max_retries>0` 时，同模型 retry 仍可能覆盖原 slot。新 backfill 语义已保证追加、不覆盖。是否把 retry 也改成 append 需要后续单独处理。
+- Phase 3 暂不改 Stage 2 reviewer eligibility；即使 Stage 1 有 backfill 成员，Stage 2 仍会在 Phase 4 前沿用旧 reviewer 行为。
+- `metadata.quorum` 已写入 manifest，但 validate / HTML 还不会强检查或展示；这留给 Phase 5。
+
+### 阶段验证
+
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_auto_backfill_quorum -v`（5 个测试）
+- 通过：旧 Stage 1/quorum 定向测试（5 个测试）
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`make test`（171 个 unittest 通过）
+- 通过：`git diff --check`
+
+### Commit
+
+- 待提交：`feat: backfill failed stage1 members in-run`
