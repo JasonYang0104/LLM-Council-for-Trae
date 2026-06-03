@@ -414,4 +414,30 @@
 
 ### Commit
 
-- 待提交：`docs: add reviewer-only backfill handoff`
+- `4748f0e docs: add reviewer-only backfill handoff`
+
+## Stage 2 Reviewer-Only Backfill：Phase 1 红测
+
+### 阶段目标
+
+- 用测试锁定 reviewer-only backfill 新语义：Stage 1 已满足 quorum 时，Stage 2 reviewer 失败只补 reviewer，不补 Stage 1 answer。
+
+### 测试变更
+
+- 修改旧测试 `test_run_full_council_stage2_reviewer_failure_backfills_new_reviewer`，重命名为 `test_run_full_council_stage2_reviewer_failure_backfills_reviewer_only_when_stage1_quorum_met`。
+- 新断言覆盖：
+  - calls 中不得出现 `("stage1", "M4", "D")`。
+  - calls 中必须出现 `("stage2", "M4", "R4")`。
+  - `manifest["stages"]["stage1"]` 仍只有 M1/M2/M3。
+  - `stage2/label_to_model.json` 仍只映射 Response A/B/C。
+  - M4 review record 标记 `reviewer_source=stage2_reviewer_backfill`。
+  - `metadata.quorum.effective_stage1_members` 不包含 M4。
+
+### 红测证据
+
+- 失败命令：`PYTHONPATH=src python3 -m unittest tests.test_auto_backfill_quorum.AutoBackfillQuorumTests.test_run_full_council_stage2_reviewer_failure_backfills_reviewer_only_when_stage1_quorum_met -v`
+- 失败原因：当前实现仍会调用 `("stage1", "M4", "D")`，然后调用 `("stage2", "M4", "D")`。
+
+### Commit
+
+- 待提交：`test: define stage2 reviewer-only backfill contract`

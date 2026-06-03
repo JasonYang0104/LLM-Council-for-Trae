@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -317,7 +318,7 @@ class AutoBackfillQuorumTests(unittest.TestCase):
         import asyncio
         asyncio.run(_run())
 
-    def test_run_full_council_stage2_reviewer_failure_backfills_new_reviewer(self):
+    def test_run_full_council_stage2_reviewer_failure_backfills_reviewer_only_when_stage1_quorum_met(self):
         async def _run():
             from llm_council_for_trae.council import CouncilConfig, run_full_council
             from llm_council_for_trae.provider import ModelCallResult
@@ -356,11 +357,7 @@ class AutoBackfillQuorumTests(unittest.TestCase):
                             stderr_path="err.log",
                         )
                     status = "failed" if stage == "stage2" and model == "M2" else "ok"
-                    ranking = (
-                        "FINAL RANKING:\n1. Response A\n2. Response B\n3. Response C\n4. Response D"
-                        if model == "M4"
-                        else "FINAL RANKING:\n1. Response A\n2. Response B\n3. Response C"
-                    )
+                    ranking = "FINAL RANKING:\n1. Response A\n2. Response B\n3. Response C"
                     return ModelCallResult(
                         expected_model=model,
                         actual_model=model if status == "ok" else None,
@@ -404,12 +401,30 @@ class AutoBackfillQuorumTests(unittest.TestCase):
                         with patch.object(council_mod, "stage3_synthesize_final", fake_stage3):
                             manifest = await run_full_council("question", config, store)
 
-            self.assertIn(("stage1", "M4", "D"), calls)
-            self.assertIn(("stage2", "M4", "D"), calls)
+            self.assertNotIn(("stage1", "M4", "D"), calls)
+            self.assertIn(("stage2", "M4", "R4"), calls)
+            self.assertEqual(
+                [(r["model"], r["file_label"]) for r in manifest["stages"]["stage1"]],
+                [("M1", "A"), ("M2", "B"), ("M3", "C")],
+            )
             self.assertEqual(manifest["metadata"]["stage2_reviewers"]["backfill_reviewers"], ["M4"])
+            self.assertEqual(manifest["metadata"]["stage2_reviewers"]["reviewer_only_backfill"], True)
+            self.assertEqual(manifest["metadata"]["stage2_reviewers"]["reviewer_backfill_attempted"], ["M4"])
+            self.assertEqual(manifest["metadata"]["stage2_reviewers"]["review_subject_count"], 3)
+            self.assertEqual(manifest["metadata"]["quorum"]["effective_stage1_members"], ["M1", "M2", "M3"])
             self.assertEqual(
                 [r["model"] for r in manifest["stages"]["stage2"]],
                 ["M1", "M2", "M3", "M4"],
+            )
+            backfill_review = manifest["stages"]["stage2"][-1]
+            self.assertEqual(backfill_review["reviewer_label"], "R4")
+            self.assertEqual(backfill_review["reviewer_source"], "stage2_reviewer_backfill")
+            self.assertEqual(backfill_review["attempt_role"], "reviewer_backfill")
+            self.assertEqual(backfill_review["parsed_ranking"], ["Response A", "Response B", "Response C"])
+            self.assertNotIn("Response D", backfill_review["ranking"])
+            self.assertEqual(
+                json.loads(store.path("stage2", "label_to_model.json").read_text(encoding="utf-8")),
+                {"Response A": "M1", "Response B": "M2", "Response C": "M3"},
             )
 
         import asyncio
