@@ -233,4 +233,56 @@
 
 ### Commit
 
-- 待提交：`feat: backfill stage2 reviewers from effective members`
+- `ce0c1ad feat: backfill stage2 reviewers from effective members`
+
+## Phase 5：Manifest / validation / HTML / final 可见性
+
+### 阶段目标
+
+- low quorum、backfill、主席备选不能只埋在 manifest 内部。
+- validate 能拒绝“low quorum 却标 ok”的伪健康结果。
+- HTML 首屏 summary / alert 显示有效成员数、backfill、主席备选。
+
+### 新增/修改的测试
+
+- 修改反向测试为正向测试：
+  - `test_html_summary_shows_quorum_status_card`
+  - `test_html_summary_shows_chairman_fallback_card`
+  - `test_html_low_quorum_degraded_banner_visible`
+- 新增：
+  - `test_validate_rejects_low_quorum_with_status_ok`
+  - `test_validate_accepts_low_quorum_when_marked_degraded`
+  - `test_validate_rejects_backfill_record_missing_attempt_role`
+
+### 实现决定
+
+- `render_summary_cards()` 读取 `metadata.quorum`：
+  - 显示 `effective_valid_members / min_valid_members`
+  - 显示 `low quorum` / `normal quorum`
+  - 显示 effective Stage 1 members
+  - 显示 auto-backfill attempted models
+- `render_summary_cards()` 读取 `metadata.chairman`：
+  - 如果 `fallback_used` 或 `fallback_from` 存在，显示“主席备选”卡片。
+- `render_alerts()` 接受完整 manifest：
+  - 当 `manifest.status=degraded_ok` 且 `low_quorum_used=true`，在 final answer 前显示 `Quorum 降级` warning banner。
+- `validate_run()` 增加 `quorum_semantic_checks()`：
+  - `low_quorum_used=true` 时，manifest status 必须是 `degraded_ok`。
+  - 存在 backfill attempted model 时，对应 Stage 1 record 必须有 `attempt_role=backfill`。
+  - 标记 `reviewer_eligible=true` 的 Stage 2 reviewer 必须拥有有效 Stage 1 answer。
+
+### 权衡与风险
+
+- 新 semantic checks 只在存在 `metadata.quorum` 时启用，避免旧 artifact 因缺新字段整体失败。
+- HTML title contract 未改；quorum/backfill/fallback 文案只进入 alert/summary，不进入 `<title>` 或最终答案正文。
+- `render_alerts()` 暂时只展示 low quorum banner，不展示所有 warning/failure，避免恢复旧版噪音型 failure 面板；具体 failure 仍在 evidence metadata 中可见。
+
+### 阶段验证
+
+- 通过：Phase 5 HTML / validate 定向测试（6 个测试）
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`make test`（176 个 unittest 通过）
+- 通过：`git diff --check`
+
+### Commit
+
+- 待提交：`feat: surface backfill and low-quorum provenance`

@@ -554,7 +554,7 @@ svg {{ width:100%; max-width:760px; height:auto; display:block; }}
       <textarea id="copy-fallback" class="copy-fallback" hidden aria-label="复制备用文本"></textarea>
     </div>
     </section>
-    {render_alerts(warnings, failures, manifest.get('status', 'ok'))}
+    {render_alerts(warnings, failures, manifest.get('status', 'ok'), manifest=manifest)}
     <section id="decision-summary" class="summary-strip" aria-label="决策摘要">
       {render_summary_cards(manifest, aggregate)}
     </section>
@@ -810,16 +810,44 @@ def render_ranking_matrix(aggregate: list[dict[str, Any]]) -> str:
 
 def render_summary_cards(manifest: dict[str, Any], aggregate: list[dict[str, Any]]) -> str:
     config = manifest.get("config") if isinstance(manifest.get("config"), dict) else {}
+    metadata = manifest.get("metadata") if isinstance(manifest.get("metadata"), dict) else {}
+    quorum = metadata.get("quorum") if isinstance(metadata.get("quorum"), dict) else {}
+    chairman = metadata.get("chairman") if isinstance(metadata.get("chairman"), dict) else {}
     top_model = aggregate[0].get("model") if aggregate and isinstance(aggregate[0], dict) else "暂无聚合排序"
     search = summarize_search_usage(manifest)
     search_text = f"允许：{yes_no(search['lct_search_allowed'])} · 实际使用：{yes_no(search['lct_search_used'])}"
     search_meta = f"Web 工具调用：{search['lct_web_tool_calls']} · 总工具调用：{search['tool_calls_count']}"
-    return (
+    cards = [
         f"<div class='summary-card'><h3>最高排序成员</h3><p>{esc(top_model)}</p></div>"
-        f"<div class='summary-card'><h3>成员模型</h3><p>{esc(', '.join(config.get('members') or []))}</p></div>"
-        f"<div class='summary-card'><h3>主席模型</h3><p>{esc(config.get('chairman'))}</p></div>"
-        f"<div class='summary-card'><h3>搜索工具</h3><p>{esc(search_text)}</p><p class='meta'>{esc(search_meta)}</p></div>"
-    )
+    ]
+    if quorum:
+        effective = quorum.get("effective_valid_members")
+        minimum = quorum.get("min_valid_members")
+        quorum_status = "low quorum" if quorum.get("low_quorum_used") else ("normal quorum" if quorum.get("normal_quorum_met") else "quorum failed")
+        members = ", ".join(str(item) for item in quorum.get("effective_stage1_members") or [])
+        backfill = ", ".join(str(item) for item in quorum.get("backfill_attempted") or [])
+        meta_parts = []
+        if members:
+            meta_parts.append(f"有效成员：{members}")
+        if backfill:
+            meta_parts.append(f"auto-backfill：{backfill}")
+        cards.append(
+            f"<div class='summary-card'><h3>Quorum 状态</h3><p>{esc(effective)} / {esc(minimum)} · {esc(quorum_status)}</p>"
+            f"<p class='meta'>{esc(' · '.join(meta_parts))}</p></div>"
+        )
+    else:
+        cards.append(f"<div class='summary-card'><h3>成员模型</h3><p>{esc(', '.join(config.get('members') or []))}</p></div>")
+
+    if chairman.get("fallback_used") or chairman.get("fallback_from"):
+        fallback_from = chairman.get("fallback_from") or config.get("chairman")
+        used = chairman.get("used")
+        cards.append(
+            f"<div class='summary-card'><h3>主席备选</h3><p>{esc(fallback_from)} -> {esc(used)}</p></div>"
+        )
+    else:
+        cards.append(f"<div class='summary-card'><h3>主席模型</h3><p>{esc(config.get('chairman'))}</p></div>")
+    cards.append(f"<div class='summary-card'><h3>搜索工具</h3><p>{esc(search_text)}</p><p class='meta'>{esc(search_meta)}</p></div>")
+    return "".join(cards)
 
 
 def summarize_search_usage(manifest: dict[str, Any]) -> dict[str, Any]:
@@ -951,8 +979,24 @@ def render_metadata(manifest: dict[str, Any], warnings: list[Any], failures: lis
     )
 
 
-def render_alerts(warnings: list[Any], failures: list[Any], manifest_status: str = "ok") -> str:
-    return ""
+def render_alerts(
+    warnings: list[Any],
+    failures: list[Any],
+    manifest_status: str = "ok",
+    manifest: dict[str, Any] | None = None,
+) -> str:
+    manifest = manifest or {}
+    metadata = manifest.get("metadata") if isinstance(manifest.get("metadata"), dict) else {}
+    quorum = metadata.get("quorum") if isinstance(metadata.get("quorum"), dict) else {}
+    alerts: list[str] = []
+    if manifest_status == "degraded_ok" and quorum.get("low_quorum_used"):
+        effective = quorum.get("effective_valid_members")
+        minimum = quorum.get("min_valid_members")
+        alerts.append(
+            "<section class='warning-banner'><strong>Quorum 降级</strong>"
+            f"<p>本报告为 degraded fallback：仅 {esc(effective)} 个有效成员参与最终综合，低于默认 {esc(minimum)}-member quorum。</p></section>"
+        )
+    return "".join(alerts)
 
 
 def render_trace(stage1: list[Any], stage2: list[Any], stage3: dict[str, Any] | None) -> str:

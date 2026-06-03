@@ -1182,6 +1182,102 @@ The user is not merely asking whether local inference hardware will improve they
             validation = validate_run(store)
             self.assertEqual(validation["status"], "degraded_ok")
 
+    def test_validate_rejects_low_quorum_with_status_ok(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-low-quorum-ok")
+            write_minimal_valid_direct_run(store)
+            manifest = store.read_manifest()
+            manifest["status"] = "ok"
+            manifest["metadata"]["quorum"] = {
+                "min_valid_members": 3,
+                "low_quorum_floor": 2,
+                "effective_valid_members": 2,
+                "normal_quorum_met": False,
+                "low_quorum_used": True,
+                "backfill_used": False,
+                "primary_members": ["M1", "M2", "M3"],
+                "candidate_source": "traecli.models.filtered",
+                "backfill_candidates": [],
+                "backfill_attempted": [],
+                "effective_stage1_members": ["M1", "M2"],
+            }
+            store.write_manifest(manifest)
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["status"], "failed")
+            self.assertEqual(validation["verdict"], "invalid_artifacts")
+            self.assertTrue(any(check["name"] == "quorum_low_status" for check in validation["failures"]))
+
+    def test_validate_accepts_low_quorum_when_marked_degraded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-low-quorum-degraded")
+            write_minimal_valid_direct_run(store)
+            manifest = store.read_manifest()
+            manifest["status"] = "degraded_ok"
+            manifest["metadata"]["quorum"] = {
+                "min_valid_members": 3,
+                "low_quorum_floor": 2,
+                "effective_valid_members": 2,
+                "normal_quorum_met": False,
+                "low_quorum_used": True,
+                "backfill_used": False,
+                "primary_members": ["M1", "M2", "M3"],
+                "candidate_source": "traecli.models.filtered",
+                "backfill_candidates": [],
+                "backfill_attempted": [],
+                "effective_stage1_members": ["M1", "M2"],
+            }
+            store.write_manifest(manifest)
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["status"], "degraded_ok", validation["failures"])
+            self.assertEqual(validation["verdict"], "usable_degraded_final")
+
+    def test_validate_rejects_backfill_record_missing_attempt_role(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-backfill-missing-role")
+            write_minimal_valid_direct_run(store)
+            manifest = store.read_manifest()
+            manifest["status"] = "degraded_ok"
+            manifest["stages"]["stage1"].append(
+                {
+                    "label": "Response B",
+                    "file_label": "B",
+                    "model": "Qwen3.6-Plus",
+                    "expected_model": "Qwen3.6-Plus",
+                    "actual_model": "Qwen3.6-Plus",
+                    "response": "B",
+                    "status": "ok",
+                    "meta_path": "stage1/B.meta.json",
+                    "response_path": "stage1/B.response.md",
+                    "error": None,
+                } | tool_policy_json()
+            )
+            manifest["metadata"]["quorum"] = {
+                "min_valid_members": 3,
+                "low_quorum_floor": 2,
+                "effective_valid_members": 2,
+                "normal_quorum_met": False,
+                "low_quorum_used": True,
+                "backfill_used": True,
+                "primary_members": ["GPT-5.4"],
+                "candidate_source": "explicit",
+                "backfill_candidates": ["Qwen3.6-Plus"],
+                "backfill_attempted": ["Qwen3.6-Plus"],
+                "effective_stage1_members": ["GPT-5.4", "Qwen3.6-Plus"],
+            }
+            store.write_manifest(manifest)
+            store.write_text("stage1/B.response.md", "B\n")
+            store.write_text("stage1/B.traecli.stream.jsonl", "{}\n")
+            write_json_text(store, "stage1/B.meta.json", stage_meta("Qwen3.6-Plus"))
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["status"], "failed")
+            self.assertTrue(any(check["name"] == "stage1_backfill_attempt_role_B" for check in validation["failures"]))
+
     def test_validate_reports_stage_collection_type_errors_without_crashing(self):
         cases = [
             ("stage1", {"bad": "shape"}, "schema:manifest.stages.stage1"),
@@ -2061,35 +2157,57 @@ The user is not merely asking whether local inference hardware will improve they
         import asyncio
         asyncio.run(_run())
 
-    def test_html_no_quorum_status_card(self):
+    def test_html_summary_shows_quorum_status_card(self):
         from llm_council_for_trae.html_export import render_summary_cards
         manifest = {
             "config": {"members": ["GPT-5.4"], "chairman": "GPT-5.4"},
-            "status": "ok",
+            "metadata": {
+                "quorum": {
+                    "effective_valid_members": 2,
+                    "min_valid_members": 3,
+                    "normal_quorum_met": False,
+                    "low_quorum_used": True,
+                    "effective_stage1_members": ["GPT-5.4", "Qwen3.6-Plus"],
+                    "backfill_used": True,
+                    "backfill_attempted": ["Qwen3.6-Plus"],
+                }
+            },
+            "status": "degraded_ok",
         }
         html = render_summary_cards(manifest, [])
-        self.assertNotIn("Quorum 状态", html)
+        self.assertIn("Quorum 状态", html)
+        self.assertIn("2 / 3", html)
+        self.assertIn("low quorum", html)
+        self.assertIn("Qwen3.6-Plus", html)
         self.assertIn("最高排序成员", html)
-        self.assertIn("成员模型", html)
-        self.assertIn("主席模型", html)
 
-    def test_html_no_chairman_fallback_card(self):
+    def test_html_summary_shows_chairman_fallback_card(self):
         from llm_council_for_trae.html_export import render_summary_cards
         manifest = {
             "config": {"members": ["GPT-5.4"], "chairman": "Qwen3.6-Plus"},
-            "metadata": {"chairman": {"fallback_from": "GPT-5.4", "used": "Qwen3.6-Plus"}},
-            "status": "ok",
+            "metadata": {"chairman": {"fallback_from": "GPT-5.4", "used": "Qwen3.6-Plus", "fallback_used": True}},
+            "status": "degraded_ok",
         }
         html = render_summary_cards(manifest, [])
-        self.assertNotIn("主席降级", html)
-        self.assertNotIn("fallback_from", html)
+        self.assertIn("主席备选", html)
+        self.assertIn("GPT-5.4", html)
+        self.assertIn("Qwen3.6-Plus", html)
 
-    def test_html_no_degraded_banner(self):
+    def test_html_low_quorum_degraded_banner_visible(self):
         from llm_council_for_trae.html_export import render_alerts
-        html = render_alerts([], [], manifest_status="degraded_ok")
-        self.assertNotIn("Quorum 降级", html)
-        self.assertNotIn("warning-banner", html)
-        self.assertEqual(html, "")
+        manifest = {
+            "metadata": {
+                "quorum": {
+                    "effective_valid_members": 2,
+                    "min_valid_members": 3,
+                    "low_quorum_used": True,
+                }
+            }
+        }
+        html = render_alerts([], [], manifest_status="degraded_ok", manifest=manifest)
+        self.assertIn("Quorum 降级", html)
+        self.assertIn("仅 2 个有效成员", html)
+        self.assertIn("warning-banner", html)
 
     def test_html_summary_cards_above_final_answer(self):
         with tempfile.TemporaryDirectory() as tmp:
