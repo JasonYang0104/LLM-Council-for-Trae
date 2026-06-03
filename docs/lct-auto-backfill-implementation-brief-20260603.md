@@ -29,6 +29,8 @@ LCT 已经从“默认成员失败后靠外层 Agent 整轮重跑”推进到“
 
 第五，Skill 和 README 必须跟 CLI 行为一致。外层 Agent 不再把推荐阵容整轮 rerun 当成第一补救动作；`models --recommend --json` 现在是候补池来源，而不是另起一轮的指令。
 
+第六，Stage 1 和 Stage 2 的补位语义必须分开。Stage 1 是 member backfill，只有 Stage 1 quorum 不足时才新增候选答案；Stage 2 在 quorum 已满足时是 reviewer-only backfill，只补交 review，不新增候选答案。
+
 ## 关键实现
 
 ### Runtime cleanup
@@ -49,23 +51,25 @@ Stage 1 成员失败后，CLI 会在同一个 run 内追加新 label，例如 `R
 
 对应提交：`aba731c feat: backfill failed stage1 members in-run`
 
-### Stage 2 reviewer eligibility
+### Stage 2 reviewer-only backfill
 
-Stage 2 的 review subjects 和 reviewers 默认来自有效 Stage 1 成员。失败或 contaminated 的 Stage 1 成员不再默认参与 reviewer。如果 Stage 2 reviewer 失败，CLI 会先补一个新的 Stage 1 answer，再让该候补补交 review，并把 reviewer provenance 写入 `metadata.stage2_reviewers`。
+Stage 2 的 review subjects 和 reviewers 默认来自有效 Stage 1 成员。失败或 contaminated 的 Stage 1 成员不再默认参与 reviewer。如果 Stage 1 quorum 已经满足但 Stage 2 reviewer 失败，CLI 会做 reviewer-only backfill：候补模型使用 `R4` 这类 reviewer-only label，只评审既有有效 Stage 1 answers，不新增候选答案，不写 `stage1/D.response.md`，也不会进入 `stage2/label_to_model.json` 的 subject mapping。
 
-对应提交：`ce0c1ad feat: backfill stage2 reviewers from effective members`
+manifest 写入 `metadata.stage2_reviewers`，区分 `stage1_backfill_members`、`stage2_reviewer_backfill`、`review_subject_count` 和 `reviewer_count`。
+
+对应提交：`9284e82 feat: backfill stage2 reviewers without adding stage1 answers`
 
 ### Manifest / validate / HTML 可见性
 
-HTML summary 现在展示 quorum 状态、有效成员、auto-backfill 尝试和主席备选。low quorum 会在 final answer 前显示 warning banner。validate 增加 quorum semantic checks：low quorum 不能标成 `ok`，backfill record 必须有 `attempt_role=backfill`，eligible reviewer 必须有有效 Stage 1 answer。
+HTML summary 现在展示 quorum 状态、有效成员、auto-backfill 尝试、Stage 2 reviewer-only backfill 和主席备选。low quorum 会在 final answer 前显示 warning banner。validate 增加 quorum semantic checks：low quorum 不能标成 `ok`，member backfill record 必须有 `attempt_role=backfill`；reviewer-only backfill 可以没有 Stage 1 answer，但必须只排序既有 subject labels，且不能混入 subject mapping。
 
-对应提交：`bbf7ca1 feat: surface backfill and low-quorum provenance`
+对应提交：`27a53c1 feat: validate and display reviewer-only backfill provenance`
 
 ### Skill / README 对齐
 
-README、canonical Skill 和 `.trae` Skill 已删除整轮 recommended rerun 旧口径，改为同一个 run 内 auto-backfill。索引和汇报要求新增：`valid_stage1_models`、`quorum_default`、`quorum_effective`、`low_quorum_used`、`backfill_attempts`、`stage2_reviewers`、`chairman_fallback_used`。fact pack 必须直接嵌入 `_lct_question.md`；`notes.md` 只由外层 Agent 维护，模型不要创建或修改 notes。
+README、canonical Skill 和 `.trae` Skill 已删除整轮 recommended rerun 旧口径，改为同一个 run 内 auto-backfill。索引和汇报要求新增：`valid_stage1_models`、`quorum_default`、`quorum_effective`、`low_quorum_used`、`backfill_attempts`、`stage2_reviewers`、`stage1_backfill_members`、`stage2_reviewer_backfill`、`review_subject_count`、`reviewer_count`、`chairman_fallback_used`。fact pack 必须直接嵌入 `_lct_question.md`；`notes.md` 只由外层 Agent 维护，模型不要创建或修改 notes。
 
-对应提交：`90ae5b7 docs: align skill workflow with auto-backfill`
+对应提交：待本轮 reviewer-only 文档提交
 
 ## 测试证据
 
@@ -74,9 +78,9 @@ README、canonical Skill 和 `.trae` Skill 已删除整轮 recommended rerun 旧
 - Stage 1 / Stage 2 cancellation drain 和 provider termination metadata。
 - backfill candidates 的过滤、排序和 CLI config。
 - Stage 1 backfill append、不覆盖 primary failure、low quorum degraded。
-- Stage 2 reviewer eligibility 和 reviewer backfill。
-- validate 对 low quorum / backfill semantic 的拒绝与接受。
-- HTML 对 quorum、chairman fallback、low quorum banner 的展示。
+- Stage 2 reviewer-only backfill，不新增候选答案、不污染 subject mapping。
+- validate 对 low quorum / member backfill / reviewer-only backfill semantic 的拒绝与接受。
+- HTML 对 quorum、chairman fallback、low quorum banner 和 reviewer-only provenance 的展示。
 - README / Skill 文档契约，防止旧 recommended rerun 流程回流。
 
 本轮阶段验证已通过：
@@ -84,10 +88,10 @@ README、canonical Skill 和 `.trae` Skill 已删除整轮 recommended rerun 旧
 ```bash
 PYTHONPATH=src python3 -m compileall src
 make test
-git diff --check
+git diff --check main..HEAD
 ```
 
-当前全量测试结果：`make test` 通过 179 个 unittest。
+当前最终全量验证结果以 `notes.md` 最后一节为准；不得再用 clean worktree 上的空 `git diff --check` 代替 branch-level whitespace check。
 
 补充 live smoke 也已通过：
 
@@ -103,7 +107,7 @@ Phase 7 没有纳入本轮实现，作为后续 PR 保留：
 - Stale run terminalization：当前 validate 仍偏 read-only；对 interrupted run 主动 terminalize 的命令或写回策略尚未实现。
 - Forbidden tool fail-fast：当前 provider 能检测 forbidden tool call 并把 attempt 标记 failed，但“发现后立即终止模型进程”的更激进 fail-fast 还没落地。
 - Stage 1 旧 retry 语义仍保留；当 `stage1_max_retries>0` 时，同模型 retry 仍可能复用原 slot。auto-backfill 已保证追加、不覆盖，但 retry append 化需要单独处理。
-- Stage 2 backfill reviewer 的 prompt sidecar 仍是共享 prompt 文件；manifest/stage records 可审计，但 batch-specific prompt path 还不是第一版范围。
+- Stage 2 reviewer-only backfill 的 prompt sidecar 仍是共享 prompt 文件；manifest/stage records 可审计，但 batch-specific prompt path 还不是第一版范围。
 
 这些不是隐藏故障，而是本轮刻意保留的边界。主路径已经完成：同 run auto-backfill、low quorum 可见性、runtime cleanup、validate/HTML/Skill 对齐均有测试覆盖。
 

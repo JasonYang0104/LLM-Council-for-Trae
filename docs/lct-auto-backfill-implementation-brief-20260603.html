@@ -162,6 +162,7 @@
       <li>low quorum 是可用降级，不是健康成功；必须标记 <code>degraded_ok</code> 并展示有效成员数和 backfill 尝试。</li>
       <li>主席模型失败时允许自动走备选链，但必须记录 <code>chairman_fallback_used</code>。</li>
       <li><code>models --recommend --json</code> 现在是候补池来源，而不是另起一轮的指令。</li>
+      <li>补位语义分两类：Stage 1 是 member backfill，只有 Stage 1 quorum 不足时才新增候选答案；Stage 2 是 reviewer-only backfill，不新增候选答案。</li>
     </ul>
 
     <h2>关键实现</h2>
@@ -177,23 +178,24 @@
     <p>Stage 1 成员失败后追加新 label，例如 <code>Response E</code>，而不是覆盖失败成员原 slot。manifest 写入 quorum provenance，包含候补、有效成员、normal quorum 和 low quorum 状态。</p>
     <p class="commit">提交：<code>aba731c feat: backfill failed stage1 members in-run</code></p>
 
-    <h3>Stage 2 reviewer eligibility</h3>
-    <p>Stage 2 的 subjects 和 reviewers 默认来自有效 Stage 1 成员。reviewer 失败时，CLI 会先补一个 Stage 1 answer，再让该候补补交 review。</p>
-    <p class="commit">提交：<code>ce0c1ad feat: backfill stage2 reviewers from effective members</code></p>
+    <h3>Stage 2 reviewer-only backfill</h3>
+    <p>Stage 2 的 subjects 和 reviewers 默认来自有效 Stage 1 成员。Stage 1 quorum 已经满足但 reviewer 失败时，CLI 只补 reviewer：候补模型使用 <code>R4</code> 这类 reviewer-only label，只评审既有有效 Stage 1 answers，不写 <code>stage1/D.response.md</code>，也不会进入 subject mapping。</p>
+    <p>manifest 明确区分 <code>stage1_backfill_members</code>、<code>stage2_reviewer_backfill</code>、<code>review_subject_count</code> 和 <code>reviewer_count</code>。</p>
+    <p class="commit">提交：<code>9284e82 feat: backfill stage2 reviewers without adding stage1 answers</code></p>
 
     <h3>Manifest / validate / HTML 可见性</h3>
-    <p>HTML summary 展示 quorum 状态、有效成员、auto-backfill 尝试和主席备选。validate 会拒绝 low quorum 却标成 <code>ok</code> 的伪健康结果。</p>
-    <p class="commit">提交：<code>bbf7ca1 feat: surface backfill and low-quorum provenance</code></p>
+    <p>HTML summary 展示 quorum 状态、有效成员、auto-backfill 尝试、Stage 2 reviewer-only backfill 和主席备选。validate 会拒绝 low quorum 却标成 <code>ok</code> 的伪健康结果，也会拒绝 reviewer-only backfill 混入 subject mapping。</p>
+    <p class="commit">提交：<code>27a53c1 feat: validate and display reviewer-only backfill provenance</code></p>
 
     <h3>Skill / README 对齐</h3>
-    <p>README、canonical Skill 和 <code>.trae</code> Skill 删除整轮 recommended rerun 旧口径，改为同一个 run 内 auto-backfill；索引和汇报新增有效成员、quorum、backfill、reviewer 和主席备选字段。</p>
-    <p class="commit">提交：<code>90ae5b7 docs: align skill workflow with auto-backfill</code></p>
+    <p>README、canonical Skill 和 <code>.trae</code> Skill 删除整轮 recommended rerun 旧口径，改为同一个 run 内 auto-backfill；索引和汇报新增有效成员、quorum、member backfill、reviewer-only backfill、review subjects、reviewers 和主席备选字段。</p>
+    <p class="commit">提交：待本轮 reviewer-only 文档提交</p>
 
     <h2>测试证据</h2>
-    <p>本轮新增覆盖 runtime cleanup、候补池过滤、Stage 1 / Stage 2 auto-backfill、low quorum validate、HTML 可见性和 Skill 文档契约。阶段全量测试已通过 179 个 unittest。</p>
+    <p>本轮新增覆盖 runtime cleanup、候补池过滤、Stage 1 member backfill、Stage 2 reviewer-only backfill、low quorum validate、HTML 可见性和 Skill 文档契约。最终全量验证结果以 <code>notes.md</code> 最后一节为准。</p>
     <pre>PYTHONPATH=src python3 -m compileall src
 make test
-git diff --check</pre>
+git diff --check main..HEAD</pre>
     <p>补充 live smoke 也已通过：<code>doctor --json</code> 返回 <code>ok: true</code>；<code>models --recommend --json</code> 看到 21 个 runtime models，推荐成员为 Kimi-K2.6、MiniMax-M2.7、GPT-5.2、DeepSeek-V4-Pro，主席为 Kimi-K2.6；run <code>live-auto-backfill-20260603-final</code> 返回 <code>status: ok</code>、<code>degraded: false</code>、<code>failures: []</code>；validate 返回 <code>verdict: complete_ok_final</code>、<code>usable_final: true</code>。</p>
 
     <h2>剩余风险</h2>
@@ -201,7 +203,7 @@ git diff --check</pre>
       <li>Stale run terminalization 未纳入本轮；validate 仍偏 read-only。</li>
       <li>Forbidden tool fail-fast 的“发现后立即终止模型进程”仍是后续 PR。</li>
       <li>旧 Stage 1 retry 语义仍可能复用原 slot；auto-backfill 已保证追加、不覆盖。</li>
-      <li>Stage 2 backfill reviewer 的 prompt sidecar 仍是共享文件；batch-specific prompt path 还不是第一版范围。</li>
+      <li>Stage 2 reviewer-only backfill 的 prompt sidecar 仍是共享文件；batch-specific prompt path 还不是第一版范围。</li>
     </ul>
 
     <h2>交付索引</h2>

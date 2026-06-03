@@ -88,6 +88,8 @@ chairman: Kimi-K2.6
 
 `models --recommend --json` 只给本次 run 一个可审计候选来源。默认 primary members 仍来自 `--default-models`；CLI 会在同一个 run 内用 auto-backfill 和 backfill candidates 补足有效成员，不整轮重跑。显式候补优先级通过 `--backfill-members` 传入。
 
+补位语义必须拆开：Stage 1 是 member backfill，只有 Stage 1 quorum 不足时才新增候选答案；Stage 2 是 reviewer-only backfill，当 Stage 1 quorum 已经满足但 reviewer 失败或不足时，候补模型只评审既有有效 Stage 1 answers，不新增候选答案。
+
 ## Step 2: 准备问题文件
 
 将用户问题写入 `.md` 文件。中文问题直接写，英文问题保持原文。原始问题下方追加一行 `Report topic: <中文议题>`，让 HTML 标题稳定生成为 `<中文议题>：多模型智囊团评估`。
@@ -167,6 +169,10 @@ $LCT run \
 - `metadata.quorum.low_quorum_used`: low_quorum_used
 - `metadata.quorum.backfill_attempted`: backfill_attempts
 - `metadata.stage2_reviewers`: stage2_reviewers
+- `metadata.stage2_reviewers.stage1_backfill_members`: stage1_backfill_members
+- `metadata.stage2_reviewers.stage2_reviewer_backfill`: stage2_reviewer_backfill
+- `metadata.stage2_reviewers.review_subject_count`: review_subject_count
+- `metadata.stage2_reviewers.reviewer_count`: reviewer_count
 - `metadata.chairman.fallback_used`: chairman_fallback_used
 
 ## Step 4: 验证结果
@@ -230,5 +236,9 @@ quorum_effective: <number>
 low_quorum_used: true|false
 backfill_attempts: <models or none>
 stage2_reviewers: <models or none>
+stage1_backfill_members: <models or none>
+stage2_reviewer_backfill: <models or none>
+review_subject_count: <number>
+reviewer_count: <number>
 chairman_fallback_used: true|false
 ```

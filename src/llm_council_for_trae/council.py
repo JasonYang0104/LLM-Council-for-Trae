@@ -885,11 +885,26 @@ async def run_full_council(
     aggregate_rankings = calculate_aggregate_rankings(valid_stage2_rankings(stage2_results), label_to_model)
     manifest["metadata"]["label_to_model"] = label_to_model
     manifest["metadata"]["aggregate_rankings"] = aggregate_rankings
+    valid_reviewer_models = [r["model"] for r in stage2_results if r.get("status") == "ok"]
+    failed_reviewer_models = [r["model"] for r in stage2_results if r.get("status") != "ok"]
+    stage1_backfill_members = [
+        r["model"]
+        for r in valid_stage1
+        if r.get("attempt_role") == "backfill"
+    ]
+    stage2_reviewer_backfill = [
+        r["model"]
+        for r in stage2_results
+        if r.get("reviewer_source") == "stage2_reviewer_backfill"
+    ]
     manifest["metadata"]["stage2_reviewers"] = {
         "reviewer_target": stage2_reviewer_target,
         "review_subject_count": len(valid_stage1),
-        "valid_reviewers": [r["model"] for r in stage2_results if r.get("status") == "ok"],
-        "failed_reviewers": [r["model"] for r in stage2_results if r.get("status") != "ok"],
+        "review_subject_labels": [r["label"] for r in valid_stage1],
+        "review_subject_models": [r["model"] for r in valid_stage1],
+        "reviewer_count": len(valid_reviewer_models),
+        "valid_reviewers": valid_reviewer_models,
+        "failed_reviewers": failed_reviewer_models,
         "backfill_reviewers": [
             r["model"]
             for r in stage2_results
@@ -899,10 +914,9 @@ async def run_full_council(
         "reviewer_backfill_candidates": stage2_backfill_candidates,
         "reviewer_backfill_attempted": stage2_backfill_attempted,
         "member_backfill_attempted": backfill_attempted,
-        "reviewer_only_backfill": any(
-            r.get("reviewer_source") == "stage2_reviewer_backfill"
-            for r in stage2_results
-        ),
+        "stage1_backfill_members": stage1_backfill_members,
+        "stage2_reviewer_backfill": stage2_reviewer_backfill,
+        "reviewer_only_backfill": bool(stage2_reviewer_backfill),
     }
     manifest["stages"]["stage2"] = stage2_results
     record_stage_failures(manifest, stage2_results)

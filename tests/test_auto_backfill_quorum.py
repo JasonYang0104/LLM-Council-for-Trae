@@ -411,6 +411,9 @@ class AutoBackfillQuorumTests(unittest.TestCase):
             self.assertEqual(manifest["metadata"]["stage2_reviewers"]["reviewer_only_backfill"], True)
             self.assertEqual(manifest["metadata"]["stage2_reviewers"]["reviewer_backfill_attempted"], ["M4"])
             self.assertEqual(manifest["metadata"]["stage2_reviewers"]["review_subject_count"], 3)
+            self.assertEqual(manifest["metadata"]["stage2_reviewers"]["reviewer_count"], 3)
+            self.assertEqual(manifest["metadata"]["stage2_reviewers"]["stage1_backfill_members"], [])
+            self.assertEqual(manifest["metadata"]["stage2_reviewers"]["stage2_reviewer_backfill"], ["M4"])
             self.assertEqual(manifest["metadata"]["quorum"]["effective_stage1_members"], ["M1", "M2", "M3"])
             self.assertEqual(
                 [r["model"] for r in manifest["stages"]["stage2"]],

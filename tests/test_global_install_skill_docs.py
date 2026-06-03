@@ -114,6 +114,28 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
                 for term in required_terms:
                     self.assertIn(term, text)
 
+    def test_docs_distinguish_stage1_member_and_stage2_reviewer_backfill(self):
+        required_terms = [
+            "member backfill",
+            "reviewer-only backfill",
+            "stage1_backfill_members",
+            "stage2_reviewer_backfill",
+            "review_subject_count",
+            "reviewer_count",
+            "只有 Stage 1 quorum 不足",
+            "不新增候选答案",
+        ]
+        for relative in [
+            "README.md",
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+            "docs/lct-auto-backfill-implementation-brief-20260603.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+
     def test_skills_require_fact_pack_inline_and_notes_md_boundary(self):
         required_terms = [
             "fact pack",

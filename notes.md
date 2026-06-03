@@ -516,4 +516,45 @@
 
 ### Commit
 
-- 待提交：`feat: validate and display reviewer-only backfill provenance`
+- `27a53c1 feat: validate and display reviewer-only backfill provenance`
+
+## Stage 2 Reviewer-Only Backfill：Phase 4 docs / report fields
+
+### 阶段目标
+
+- 让 manifest、README、canonical Skill、`.trae` Skill 和 PM brief 都明确区分 Stage 1 member backfill 与 Stage 2 reviewer-only backfill。
+- 修正旧 brief 中“Stage 2 reviewer 失败先补 Stage 1 answer”的过时表述。
+- 把 whitespace 验证口径固定为 branch-level `git diff --check main..HEAD`。
+
+### 红灯
+
+- 新增 report field 断言后，相关行为测试先失败于 `KeyError: 'reviewer_count'`。
+- 新增文档契约测试后，README、`.trae` Skill 和 brief 都缺少 `member backfill` / `reviewer-only backfill` 等新口径。
+
+### 实现变更
+
+- `metadata.stage2_reviewers` 新增：
+  - `review_subject_labels`
+  - `review_subject_models`
+  - `reviewer_count`
+  - `stage1_backfill_members`
+  - `stage2_reviewer_backfill`
+- README 增加 reviewer-only backfill 路径说明和 Project Docs 入口。
+- canonical Skill 与 `.trae` Skill 增加交付索引字段：
+  - `stage1_backfill_members`
+  - `stage2_reviewer_backfill`
+  - `review_subject_count`
+  - `reviewer_count`
+- Markdown / HTML director brief 改为 reviewer-only 语义，并删除 clean worktree `git diff --check` 作为最终证据的旧口径。
+
+### 阶段验证
+
+- 通过：新增 report field + docs 契约定向测试（2 个测试）
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_auto_backfill_quorum tests.test_global_install_skill_docs -v`（24 个测试）
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`git diff --check main..HEAD`
+- 通过：`git diff --check`
+
+### Commit
+
+- 待提交：`docs: clarify reviewer-only backfill reporting`

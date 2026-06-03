@@ -65,6 +65,10 @@ quorum_effective: <number>
 low_quorum_used: true|false
 backfill_attempts: <models or none>
 stage2_reviewers: <models or none>
+stage1_backfill_members: <models or none>
+stage2_reviewer_backfill: <models or none>
+review_subject_count: <number>
+reviewer_count: <number>
 chairman_fallback_used: true|false
 ```
 
@@ -92,6 +96,8 @@ chairman: Kimi-K2.6
 
 推荐阵容不改变 primary default members；它只是 backfill candidates 的可审计输入。CLI 默认会在同一个 run 内 auto-backfill，不整轮重跑。
 
+补位语义必须拆开：Stage 1 是 member backfill，只有 Stage 1 quorum 不足时才新增候选答案；Stage 2 是 reviewer-only backfill，当 Stage 1 quorum 已经满足但 reviewer 失败或不足时，候补模型只评审既有有效 Stage 1 answers，不新增候选答案。
+
 4. 执行非交互 run。默认启用 auto-backfill；如第 3 步的推荐结果里有适合作为候补的模型，可在命令中追加 `--backfill-members "<comma-separated candidates>"` 显式给出优先级：
 
 ```bash
@@ -111,6 +117,10 @@ default_attempt_run_id: <RUN_ID or none>
 default_attempt_failure_reason: <reason or none>
 backfill_candidates: <models or none>
 backfill_attempts: <models or none>
+stage1_backfill_members: <models or none>
+stage2_reviewer_backfill: <models or none>
+review_subject_count: <number>
+reviewer_count: <number>
 ```
 
 5. 如果 run 表面返回 `failed`、默认模型缺失、apparent hang、run JSON 为空，或中途目录看起来缺 Stage 2 / Stage 3，先读取 terminal manifest 并执行：
@@ -137,7 +147,7 @@ cat ".llm-council-for-trae/runs/$FINAL_RUN_ID/stage3/final.md"
 
 8. 在当前 workspace 根目录写出：
    - `$RUN_ID-final.md`：主席最终答案。
-   - `$RUN_ID-index.md`：run id、run status、validate status、HTML 路径、Input mode、lct_search_allowed、lct_search_used、lct_web_tool_calls、agent_external_search_allowed、agent_external_search_used、agent_sources、agent_fact_pack_path、agent_added_context、final_answer_source、valid_stage1_models、quorum_default、quorum_effective、low_quorum_used、backfill_attempts、stage2_reviewers、chairman_fallback_used、default attempt 状态、失败模型或 timeout。
+   - `$RUN_ID-index.md`：run id、run status、validate status、HTML 路径、Input mode、lct_search_allowed、lct_search_used、lct_web_tool_calls、agent_external_search_allowed、agent_external_search_used、agent_sources、agent_fact_pack_path、agent_added_context、final_answer_source、valid_stage1_models、quorum_default、quorum_effective、low_quorum_used、backfill_attempts、stage2_reviewers、stage1_backfill_members、stage2_reviewer_backfill、review_subject_count、reviewer_count、chairman_fallback_used、default attempt 状态、失败模型或 timeout。
 
 ## Report
 
@@ -162,6 +172,10 @@ cat ".llm-council-for-trae/runs/$FINAL_RUN_ID/stage3/final.md"
 - low_quorum_used：是否使用 low quorum 降级继续
 - backfill_attempts：同一个 run 内 auto-backfill 实际尝试过的候补模型
 - stage2_reviewers：实际参与 Stage 2 的 reviewer
+- stage1_backfill_members：生成过新增 Stage 1 候选答案的 member backfill 模型
+- stage2_reviewer_backfill：只补交 Stage 2 review 的 reviewer-only backfill 模型
+- review_subject_count：Stage 2 实际被评审的有效 Stage 1 answers 数量
+- reviewer_count：Stage 2 有效 reviewer 数量
 - chairman_fallback_used：主席是否使用备选链
 - failed models / timeout
 - live `traecli` 是否可用
@@ -176,6 +190,7 @@ cat ".llm-council-for-trae/runs/$FINAL_RUN_ID/stage3/final.md"
 - 必须使用 `--json`：外层 Agent 需要结构化输出。
 - 必须运行 `validate`：run 完成不等于 artifact 可信。
 - 默认恢复路径是 CLI 在同一个 run 内 auto-backfill；不要把推荐阵容另起整轮 run 当成主恢复路径。
+- 只有 Stage 1 quorum 不足时才使用 member backfill 新增候选答案；Stage 2 reviewer-only backfill 不新增候选答案。
 - 显式候补只能通过 `--backfill-members` 提供优先级；不要把 unsafe、banned、beta 或 hot queue 模型伪装成可用候补。
 - 不要在问题 workspace 中 clone LCT 仓库。
 - 不要在 LCT 源码 repo 中跑用户问题；切换到干净问题 workspace。
