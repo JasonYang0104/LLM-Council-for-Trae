@@ -1,7 +1,7 @@
 # LCT Auto-Backfill Implementation Handoff
 
-日期：2026-06-03  
-目标分支：`codex/lct-auto-backfill-plan-20260603`  
+日期：2026-06-03
+目标分支：`codex/lct-auto-backfill-plan-20260603`
 当前仓库：`/Users/bytedance/Documents/AI Coder/COCO-llm-council`
 
 ## 这份交接是干什么的
@@ -143,7 +143,6 @@ PYTHONPATH=src python3 -m compileall src
 make test
 git diff --check
 ```
-
 - 如已有测试失败，先记录到 `notes.md`，不要把失败归因成新实现导致。
 - 提交：`docs: add auto-backfill implementation plan`
 
@@ -416,4 +415,3 @@ PYTHONPATH=src python3 -m compileall src
 make test
 git diff --check
 ```
-

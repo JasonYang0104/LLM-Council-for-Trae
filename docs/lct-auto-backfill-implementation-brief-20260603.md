@@ -1,6 +1,6 @@
 # LCT Auto-Backfill Implementation Director Brief
 
-日期：2026-06-03  
+日期：2026-06-03
 分支：`codex/lct-auto-backfill-plan-20260603`
 
 ## 一句话结论
