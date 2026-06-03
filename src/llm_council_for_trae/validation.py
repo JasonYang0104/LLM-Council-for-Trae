@@ -62,6 +62,12 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
             "run_id": None,
             "status": "failed",
             "manifest_status": None,
+            "terminal": False,
+            "usable_final": False,
+            "stage3_final_exists": nonempty_file(store.root / "stage3" / "final.md"),
+            "html_exists": nonempty_file(store.root / "html" / "index.html"),
+            "failed_stage_records": [],
+            "verdict": "invalid_artifacts",
             "checks": checks,
             "failures": failures,
         }
@@ -88,6 +94,12 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
             "run_id": manifest.get("run_id"),
             "status": "running",
             "manifest_status": manifest_status,
+            "terminal": False,
+            "usable_final": False,
+            "stage3_final_exists": nonempty_file(store.root / "stage3" / "final.md"),
+            "html_exists": nonempty_file(store.root / "html" / "index.html"),
+            "failed_stage_records": collect_failed_stage_records(manifest),
+            "verdict": "in_progress",
             "checks": checks,
             "failures": failures,
         }
@@ -196,13 +208,103 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
         final_status = manifest_status
     else:
         final_status = "failed"
+    stage3_final_exists = nonempty_file(store.root / "stage3" / "final.md")
+    html_exists = nonempty_file(store.root / "html" / "index.html")
+    terminal = manifest_status in ("ok", "degraded_ok", "failed")
+    usable_final = bool(terminal and manifest_status in ("ok", "degraded_ok") and stage3_final_exists and html_exists and not failures)
     return {
         "run_id": manifest.get("run_id"),
         "status": final_status,
         "manifest_status": manifest_status,
+        "terminal": terminal,
+        "usable_final": usable_final,
+        "stage3_final_exists": stage3_final_exists,
+        "html_exists": html_exists,
+        "failed_stage_records": collect_failed_stage_records(manifest),
+        "verdict": validation_verdict(manifest_status, usable_final, failures, stage3_final_exists),
         "checks": checks,
         "failures": failures,
     }
+
+
+def nonempty_file(path: Path) -> bool:
+    return path.exists() and path.stat().st_size > 0
+
+
+def validation_verdict(manifest_status: Any, usable_final: bool, failures: list[dict[str, Any]], stage3_final_exists: bool) -> str:
+    if manifest_status == "running":
+        return "in_progress"
+    if usable_final and manifest_status == "ok":
+        return "complete_ok_final"
+    if usable_final and manifest_status == "degraded_ok":
+        return "usable_degraded_final"
+    if manifest_status in ("ok", "degraded_ok") and failures:
+        return "invalid_artifacts"
+    if manifest_status == "failed" or not stage3_final_exists:
+        return "failed_no_final"
+    return "invalid_artifacts"
+
+
+def collect_failed_stage_records(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    stages = manifest.get("stages") if isinstance(manifest.get("stages"), dict) else {}
+    for stage_name in ("stage1", "stage2"):
+        stage_items_raw = stages.get(stage_name)
+        if isinstance(stage_items_raw, list):
+            for item in stage_items_raw:
+                if isinstance(item, dict) and is_failed_stage_record(item):
+                    records.append(compact_failed_stage_record(item, stage_name))
+    stage3 = stages.get("stage3")
+    if isinstance(stage3, dict) and is_failed_stage_record(stage3):
+        records.append(compact_failed_stage_record(stage3, "stage3"))
+
+    manifest_failures = manifest.get("failures")
+    if isinstance(manifest_failures, list):
+        for item in manifest_failures:
+            if isinstance(item, dict):
+                records.append(compact_failed_stage_record(item, item.get("stage")))
+            else:
+                records.append({"stage": "manifest", "status": "failed", "error": str(item)})
+
+    deduped: list[dict[str, Any]] = []
+    seen: set[tuple[tuple[str, Any], ...]] = set()
+    for record in records:
+        key = tuple(sorted(record.items()))
+        if key not in seen:
+            seen.add(key)
+            deduped.append(record)
+    return deduped
+
+
+def is_failed_stage_record(item: dict[str, Any]) -> bool:
+    status = item.get("status")
+    return isinstance(status, str) and status not in ("ok", "degraded_ok", "running")
+
+
+def compact_failed_stage_record(item: dict[str, Any], stage_name: Any = None) -> dict[str, Any]:
+    compact: dict[str, Any] = {}
+    stage = stage_name or item.get("stage")
+    if stage:
+        compact["stage"] = stage
+    for field in (
+        "label",
+        "reviewer_label",
+        "file_label",
+        "stage_record",
+        "model",
+        "expected_model",
+        "actual_model",
+        "status",
+        "error",
+        "parse_status",
+        "agent",
+    ):
+        value = item.get(field)
+        if value is not None:
+            compact[field] = value
+    if "status" not in compact:
+        compact["status"] = "failed"
+    return compact
 
 
 def tool_contamination_checks(

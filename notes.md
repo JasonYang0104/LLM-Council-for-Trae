@@ -9,6 +9,7 @@
 - v6 E2E evidence confirms the default run was usable `degraded_ok`; the original failed classification came from inspecting in-progress artifacts before terminal validate.
 - Subagent review confirmed the main risk areas and flagged `--skip-html` compatibility. Decision: keep existing `validate` status semantics and treat missing HTML as not a complete report handoff; do not overload `status` with the new `verdict`.
 - RED tests added for validate verdict fields, title source/filtered suffix behavior, and README/Skill hard rules. Targeted RED run failed as expected on missing `terminal`/`verdict` fields, old input-based title extraction, and missing docs terms.
+- Implementation GREEN added `validate` contract fields without changing old `status`, and changed HTML title derivation to use explicit topic, final-answer Chinese heading, structured topic, then raw input. Targeted validate/title tests and full `tests.test_core` passed.
 
 ## 2026-06-01 LCT Global Install And Skill Iteration
 

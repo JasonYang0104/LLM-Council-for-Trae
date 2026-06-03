@@ -1025,9 +1025,10 @@ The user is not merely asking whether local inference hardware will improve; the
             )
 
             html = render_html(root, {"run_id": "run-generic-heading", "status": "ok", "config": {}, "stages": {}, "metadata": {}})
+            hero_heading = html.split('<section class="archive-hero"', 1)[1].split("<h1>", 1)[1].split("</h1>", 1)[0]
 
             self.assertIn("<h1>本地AI推理硬件消费化窗口：多模型智囊团评估</h1>", html)
-            self.assertNotIn("<h1>我真正理解你的需求", html)
+            self.assertNotIn("我真正理解你的需求", hero_heading)
 
     def test_html_title_truncates_topic_without_truncating_fixed_suffix(self):
         with tempfile.TemporaryDirectory() as tmp:
