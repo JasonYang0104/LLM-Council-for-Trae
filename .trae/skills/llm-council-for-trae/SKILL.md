@@ -86,11 +86,13 @@ members: Kimi-K2.6, MiniMax-M2.7, GPT-5.2, DeepSeek-V4-Pro
 chairman: Kimi-K2.6
 ```
 
-`models --recommend --json` 只给外层 Agent 一个可审计候选。fallback 编排只属于 Skill / 外层 Agent，不属于 CLI 内部自动行为。
+`models --recommend --json` 只给本次 run 一个可审计候选来源。默认 primary members 仍来自 `--default-models`；CLI 会在同一个 run 内用 auto-backfill 和 backfill candidates 补足有效成员，不整轮重跑。显式候补优先级通过 `--backfill-members` 传入。
 
 ## Step 2: 准备问题文件
 
 将用户问题写入 `.md` 文件。中文问题直接写，英文问题保持原文。原始问题下方追加一行 `Report topic: <中文议题>`，让 HTML 标题稳定生成为 `<中文议题>：多模型智囊团评估`。
+
+如果外层 Agent 需要补充事实背景，fact pack 必须直接嵌入 _lct_question.md，放在用户原始输入之后并标注来源；不要要求模型读取额外 sidecar 文件。`notes.md` 只由外层 Agent 维护，用来记录执行过程、测试和风险；模型不要创建或修改 notes，也不要把 notes 当成 council 输入。
 
 ```bash
 cat > /tmp/council-question.md << 'EOF'
@@ -104,7 +106,7 @@ EOF
 
 ### 3a. 非交互终端（Agent 场景）— 默认路径
 
-必须先使用 `--default-models`。这是最常用的 default attempt：
+必须先使用 `--default-models`。这是最常用的 default attempt。需要显式候补优先级时，在命令中追加 `--backfill-members "<comma-separated candidates>"`：
 
 ```bash
 $LCT run \
@@ -114,20 +116,9 @@ $LCT run \
   --json
 ```
 
-记录 `default_attempt_status`、`default_attempt_run_id`、`default_attempt_failure_reason`。
+记录 `default_attempt_status`、`default_attempt_run_id`、`default_attempt_failure_reason`、`backfill_candidates`、`backfill_attempts`。
 
-如果 default attempt 表面失败、默认模型缺失、apparent hang、run JSON 为空，或中途目录看起来缺 Stage 2 / Stage 3，先读取 terminal manifest 并执行 `validate <run_id> --json`。不要用自然语言观察判 failed。`degraded_ok 是可用结果`，成员失败不等于 run 失败。只有 validate JSON 显示无可用 final，才用 Step 1 的推荐阵容显式重跑：
-
-```bash
-$LCT run \
-  --input /tmp/council-question.md \
-  --members "Kimi-K2.6,MiniMax-M2.7,GPT-5.2,DeepSeek-V4-Pro" \
-  --chairman "Kimi-K2.6" \
-  --timeout 180 \
-  --json
-```
-
-记录 `recommended_rerun_status`、`recommended_rerun_run_id`、`recommended_members`、`recommended_chairman`。
+如果 default attempt 表面失败、默认模型缺失、apparent hang、run JSON 为空，或中途目录看起来缺 Stage 2 / Stage 3，先读取 terminal manifest 并执行 `validate <run_id> --json`。不要用自然语言观察判 failed。`degraded_ok 是可用结果`，成员失败不等于 run 失败。如果 validate JSON 显示 `usable_final: true`，交付同一个 run；如果没有可用 final，报告阻断点和已尝试的 auto-backfill，不要另起整轮推荐阵容 run。
 
 ### 3b. 交互终端 — 可省略模型参数
 
@@ -170,6 +161,13 @@ $LCT run \
 - `html`: HTML 报告路径
 - `failures`: 失败成员列表及原因
 - `recommendations`: 针对失败的改进建议
+- `metadata.quorum.effective_stage1_members`: valid_stage1_models
+- `metadata.quorum.min_valid_members`: quorum_default
+- `metadata.quorum.effective_valid_members`: quorum_effective
+- `metadata.quorum.low_quorum_used`: low_quorum_used
+- `metadata.quorum.backfill_attempted`: backfill_attempts
+- `metadata.stage2_reviewers`: stage2_reviewers
+- `metadata.chairman.fallback_used`: chairman_fallback_used
 
 ## Step 4: 验证结果
 
@@ -203,7 +201,7 @@ $LCT run \
 
 ### 模型不可用
 
-如果 `traecli models --json` 中缺少某些默认模型，使用 `--members` 显式指定可用模型。
+如果 `traecli models --json` 中缺少某些默认模型，优先使用 `--backfill-members` 指定可用 backfill candidates；只有用户明确要自定义 primary roster 时才使用 `--members`。
 
 ### 产物存储
 
@@ -226,4 +224,11 @@ agent_sources: <URLs or none>
 agent_fact_pack_path: <path or none>
 agent_added_context: true|false
 final_answer_source: stage3/final.md
+valid_stage1_models: <comma-separated models or none>
+quorum_default: <number>
+quorum_effective: <number>
+low_quorum_used: true|false
+backfill_attempts: <models or none>
+stage2_reviewers: <models or none>
+chairman_fallback_used: true|false
 ```

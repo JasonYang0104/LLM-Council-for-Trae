@@ -53,7 +53,7 @@ make -C ~/.LCT install-global
 使用 LCT，回答："""<你的问题>"""
 ```
 
-Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo（出现 `src/llm_council_for_trae/`、`.trae/agents/` 或 `profiles/subagents.json` 时停止）→ 确认 `traecli` 和 `llm-council-for-trae` 可用 → 把问题写入 `_lct_question.md`，并在原始问题下方写一行 `Report topic: <中文议题>`，供 HTML 标题稳定生成 `<中文议题>：多模型智囊团评估` → 先记录 `models --recommend --json` 的推荐阵容 → 使用 `--default-models` 和 `--json` 非交互运行 → 如果默认阵容失败或不可用，先读取 terminal manifest 并执行 `llm-council-for-trae validate <run_id> --json`，再由外层 Agent 使用推荐阵容显式传 `--members/--chairman` 重跑；fallback 编排只属于 Skill / 外层 Agent，不属于 CLI 内部自动行为 → `validate` 校验 → 只有 validate JSON 显示 `usable_final: true` 时读取 `stage3/final.md` → 在问题 workspace 根目录写出 `<run_id>-final.md` 和 `<run_id>-index.md`（必须包含 run status、validate status、validate verdict、HTML path、Input mode、lct_search_allowed、lct_search_used、lct_web_tool_calls、agent_external_search_allowed、agent_external_search_used、agent_sources、agent_fact_pack_path、agent_added_context、final_answer_source、failed models / timeout）→ 返回 run status、validate status、最终答案路径和 HTML 报告路径。`degraded_ok 是可用结果`；成员失败不等于 run 失败。
+Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo（出现 `src/llm_council_for_trae/`、`.trae/agents/` 或 `profiles/subagents.json` 时停止）→ 确认 `traecli` 和 `llm-council-for-trae` 可用 → 把问题写入 `_lct_question.md`，并在原始问题下方写一行 `Report topic: <中文议题>`，供 HTML 标题稳定生成 `<中文议题>：多模型智囊团评估` → 先记录 `models --recommend --json`，作为本次 run 的 backfill candidates **（注释：补位候选模型，用于在成员失败时补足有效人数）** 来源 → 使用 `--default-models`、`--json` 非交互运行，auto-backfill **（注释：自动补位，指 CLI 在同一次运行里追加候补模型而不是重新跑整轮）** 默认启用，必要时可用 `--backfill-members` 显式提供候补优先级 → 如果默认成员失败、超时或不可用，CLI 在同一个 run 内追加 backfill 成员补足 quorum，不整轮重跑，不覆盖已成功 Stage 1 输出 → 先读取 terminal manifest 并执行 `llm-council-for-trae validate <run_id> --json` → 只有 validate JSON 显示 `usable_final: true` 时读取 `stage3/final.md` → 在问题 workspace 根目录写出 `<run_id>-final.md` 和 `<run_id>-index.md`（必须包含 run status、validate status、validate verdict、HTML path、Input mode、lct_search_allowed、lct_search_used、lct_web_tool_calls、agent_external_search_allowed、agent_external_search_used、agent_sources、agent_fact_pack_path、agent_added_context、final_answer_source、valid_stage1_models、quorum_default、quorum_effective、low_quorum_used、backfill_attempts、stage2_reviewers、chairman_fallback_used、failed models / timeout）→ 返回 run status、validate status、最终答案路径和 HTML 报告路径。`degraded_ok 是可用结果`；成员失败不等于 run 失败。
 
 ### 1. 确认 traecli 可用
 
@@ -156,7 +156,7 @@ members: Kimi-K2.6, MiniMax-M2.7, GPT-5.2, DeepSeek-V4-Pro
 chairman: Kimi-K2.6
 ```
 
-`--default-models` 始终使用这套静态默认阵容。`models --recommend --json` 只负责给外层 Agent 一个可审计候选：默认失败时，外层 Agent 可以显式传 `--members` / `--chairman` 重跑；CLI 内部不会把默认失败自动改成推荐阵容。
+`--default-models` 始终使用这套静态默认阵容。run 内 auto-backfill 默认启用：CLI 会从 `--backfill-members`、同 vendor fallback、`models --recommend --json` 和当前 runtime safe models 生成 backfill candidates，在同一个 run 内追加候补补足有效成员；它不整轮重跑，也不会把已成功 Stage 1 输出替换掉。
 
 LCT 的模型询问是 CLI 自己的终端输入，不依赖 Agent 的 AskUserQuestion **（注释：Agent 用来向用户发起澄清问题的工具能力）**。如果外层 Agent 不能交互式输入，使用 `--default-models`、`--members/--chairman` 或 `--profile`。
 
@@ -306,6 +306,8 @@ html/export.json
 
 `validate <run_id> --json` 会输出终局判定字段：`terminal`、`usable_final`、`stage3_final_exists`、`html_exists`、`failed_stage_records`、`verdict`。`verdict` 取值为 `complete_ok_final`、`usable_degraded_final`、`in_progress`、`failed_no_final`、`invalid_artifacts`。交付或写 `<run_id>-index.md` 前，状态必须来自 terminal manifest 加 validate JSON；不要用中途目录为空、run JSON 为空或自然语言观察判 failed。`degraded_ok 是可用结果`，成员失败不等于 run 失败。
 
+带 auto-backfill 的 run 还会在 manifest / validate / HTML 中暴露 quorum 和补位 provenance **（注释：来源证据，指结果由哪些模型、哪些补位和哪些降级规则组成）**。索引和汇报至少记录：`valid_stage1_models`、`quorum_default`、`quorum_effective`、`low_quorum_used`、`backfill_attempts`、`stage2_reviewers`、`chairman_fallback_used`。
+
 坏 artifact 不应该让 `validate` 崩溃。类型错误会返回结构化 failure，例如：
 
 ```text
@@ -316,7 +318,7 @@ schema:stage3.final.response
 schema:html.export.format
 ```
 
-`run --json` 在失败时会额外输出 `recommendations`。例如某个模型出现 timeout、`context deadline exceeded` 或 `traecli result error`，CLI 会提示提高 `--timeout`，或先用本次 Stage 1 已成功响应的模型组合重跑。
+`run --json` 在失败时会额外输出 `recommendations`。例如某个模型出现 timeout、`context deadline exceeded` 或 `traecli result error`，CLI 会提示提高 `--timeout`、检查 backfill candidates，或说明 auto-backfill 耗尽后仍无法达到可用 quorum。
 
 ## HTML Export
 
@@ -363,6 +365,8 @@ PYTHONPATH=src python3 -m llm_council_for_trae.cli run --input examples/question
 | `docs/lct-deployment-guide-20260601.md` | Agent / 用户安装者 | `~/.LCT` 全局安装、用户级 Skill、干净问题 workspace 和 live smoke 边界 |
 | `docs/lct-global-install-skill-design-20260601.md` | 接手开发者 / reviewer | 全局安装、Skill 模板、安装器和验证边界设计 |
 | `docs/lct-global-install-skill-test-plan-20260601.md` | 接手开发者 / reviewer | 全局安装与 Skill 的 TDD 切片和验收计划 |
+| `docs/lct-auto-backfill-quorum-design-20260603.md` | 接手开发者 / reviewer | 同 run auto-backfill、quorum、low quorum、Stage 2 reviewer eligibility 和可见性设计 |
+| `docs/lct-auto-backfill-implementation-handoff-20260603.md` | 新会话 Agent / 接手开发者 | auto-backfill 实施顺序、TDD 切片、subagent review 和验收约束 |
 | `docs/lct-validate-title-hardening-handoff-20260603.md` | 新会话 Agent / 接手开发者 | 下一轮 validate 判定硬化、中文报告标题契约、TDD 节奏和 handoff 约束 |
 | `docs/lct-validate-title-contract-design-20260603.md` | 接手开发者 / reviewer | validate 终局判定和中文报告标题契约设计 |
 | `docs/lct-validate-title-contract-test-plan-20260603.md` | 接手开发者 / reviewer | validate 状态字段、标题抽取和 Skill 硬规则的测试计划 |

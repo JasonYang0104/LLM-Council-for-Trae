@@ -285,4 +285,43 @@
 
 ### Commit
 
-- 待提交：`feat: surface backfill and low-quorum provenance`
+- `bbf7ca1 feat: surface backfill and low-quorum provenance`
+
+## Phase 6：README / Skill 工作流对齐
+
+### 阶段目标
+
+- 删除 README 和两份 Skill 文档里的“默认失败后整轮 recommended rerun”旧口径。
+- 把用户级 LCT 工作流改为同一个 run 内 auto-backfill，并明确 `--backfill-members`、backfill candidates、low quorum 和主席备选的汇报字段。
+- 明确 fact pack / notes.md 边界：fact pack 直接嵌入 _lct_question.md；`notes.md` 只由外层 Agent 维护，模型不要创建或修改 notes。
+
+### 新增/修改的测试
+
+- 新增：`test_skills_no_longer_instruct_full_recommended_rerun_as_primary_recovery`
+  - 先红后绿；红态证明 README / canonical Skill / `.trae` Skill 仍包含 `$RUN_ID-recommended`、recommended rerun 字段和旧的“不是 CLI 内部行为”口径。
+  - 绿态断言三份文档都包含“同一个 run”、`auto-backfill`、`backfill candidates`、`--backfill-members`、`不整轮重跑`。
+- 新增：`test_skills_require_auto_backfill_and_effective_member_reporting`
+  - 锁定三份文档必须要求记录 `valid_stage1_models`、`quorum_default`、`quorum_effective`、`low_quorum_used`、`backfill_attempts`、`stage2_reviewers`、`chairman_fallback_used`。
+- 新增：`test_skills_require_fact_pack_inline_and_notes_md_boundary`
+  - 锁定两份 Skill 必须要求 fact pack 直接嵌入 _lct_question.md，`notes.md` 只由外层 Agent 维护，模型不要创建或修改 notes。
+
+### 实现决定
+
+- README Quickstart 改为：先记录 `models --recommend --json` 作为 backfill candidates 来源，run 使用 `--default-models` / `--json`，auto-backfill 默认启用；默认成员失败时 CLI 在同一个 run 内追加候补，不整轮重跑。
+- canonical Skill 的 Run / Report / Hard Constraints 改为同 run auto-backfill 主路径；删除整轮推荐阵容 run 的命令和输出字段。
+- `.trae` Skill 同步更新 Step 1 / 2 / 3 / 结果解读 / 产物索引，避免项目级 Skill 和全局 Skill 口径分叉。
+- README Project Docs 增加 auto-backfill design / handoff 入口。
+
+### 权衡与风险
+
+- 文档中保留 `models --recommend --json`，但它现在只是候补来源，不再代表默认失败后的新 run。
+- `--members` 仍作为用户明确自定义 primary roster 时的能力保留；默认恢复路径不使用它。
+
+### 阶段验证
+
+- 通过：新增 Phase 6 文档契约测试（3 个测试）
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_global_install_skill_docs -v`（16 个测试）
+
+### Commit
+
+- 待提交：`docs: align skill workflow with auto-backfill`
