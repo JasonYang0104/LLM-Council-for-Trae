@@ -216,6 +216,7 @@ class RuntimeHardeningTests(unittest.TestCase):
                 try:
                     await asyncio.sleep(60)
                 except asyncio.CancelledError:
+                    (store.root / "stage1" / "B.traecli.stream.jsonl").write_text("", encoding="utf-8")
                     await asyncio.sleep(0.01)
                     cleanup_done.append(kwargs["model"])
                     raise
@@ -244,6 +245,243 @@ class RuntimeHardeningTests(unittest.TestCase):
             meta = (store.root / "stage1" / "B.meta.json").read_text(encoding="utf-8")
             self.assertIn('"status": "failed"', meta)
             self.assertIn("cancelled_by_stage_timeout", meta)
+            stream = (store.root / "stage1" / "B.traecli.stream.jsonl").read_text(encoding="utf-8")
+            self.assertIn("cancelled_by_stage_timeout", stream)
+            self.assertIn("M2", stream)
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_run_full_council_validate_accepts_cancelled_stage1_sidecar(self):
+        async def _run():
+            import asyncio
+            import llm_council_for_trae.council as council_mod
+            from llm_council_for_trae.council import CouncilConfig, run_full_council
+            from llm_council_for_trae.html_export import export_html
+            from llm_council_for_trae.provider import ModelCallResult, tool_policy_for_mode
+            from llm_council_for_trae.store import ArtifactStore
+            from llm_council_for_trae.validation import validate_run
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-stage1-cancelled-sidecar")
+            config = CouncilConfig(
+                members=["M1", "M2", "M3"],
+                chairman="Chair",
+                min_valid_members=2,
+                target_valid_members=2,
+                member_soft_checkpoint=999,
+                member_quorum_checkpoint=0,
+                member_hard_timeout=30,
+                stage1_max_retries=0,
+                stage2_timeout=5,
+            )
+
+            class MockProvider:
+                def __init__(self, *args, **kwargs):
+                    pass
+
+                async def query_model(self, **kwargs):
+                    stage = kwargs["stage"]
+                    model = kwargs["model"]
+                    if stage == "stage1" and model == "M3":
+                        await asyncio.sleep(60)
+                    response = {
+                        "stage1": f"answer {model}",
+                        "stage2": "FINAL RANKING:\n1. Response A\n2. Response B",
+                        "stage3": "final",
+                    }[stage]
+                    allowed_tools, disallowed_tools = tool_policy_for_mode(config.member_tool_mode)
+                    return ModelCallResult(
+                        expected_model=model,
+                        actual_model=model,
+                        response=response,
+                        status="ok",
+                        session_id=f"s-{model}",
+                        command=["traecli"],
+                        exit_code=0,
+                        stdout_path=f"{kwargs['label']}.traecli.stream.jsonl",
+                        stderr_path=f"{kwargs['label']}.traecli.stderr.log",
+                        member_tool_mode=config.member_tool_mode,
+                        allowed_tools=allowed_tools,
+                        disallowed_tools=disallowed_tools,
+                        forbidden_tool_calls=[],
+                    )
+
+            with patch.object(council_mod, "runtime_doctor") as mock_doctor:
+                mock_doctor.return_value = type("Health", (), {
+                    "ok": True,
+                    "command": "fake",
+                    "version": "1.0",
+                    "doctor_exit_code": 0,
+                    "doctor": {},
+                    "errors": [],
+                    "warnings": [],
+                    "ignored_errors": [],
+                    "models": [{"name": name} for name in ["M1", "M2", "M3", "Chair"]],
+                })()
+                with patch.object(council_mod, "require_models_available"):
+                    with patch.object(council_mod, "TraeCliProvider", MockProvider):
+                        manifest = await run_full_council("question", config, store)
+
+            self.assertEqual(manifest["status"], "degraded_ok")
+            stream = (store.root / "stage1" / "C.traecli.stream.jsonl").read_text(encoding="utf-8")
+            self.assertIn("cancelled_by_stage_timeout", stream)
+            tool_policy = {
+                "member_tool_mode": config.member_tool_mode,
+                "allowed_tools": tool_policy_for_mode(config.member_tool_mode)[0],
+                "disallowed_tools": tool_policy_for_mode(config.member_tool_mode)[1],
+                "forbidden_tool_calls": [],
+            }
+            stage3 = manifest["stages"]["stage3"]
+            store.write_json("stage3/final.meta.json", {
+                "expected_model": stage3["expected_model"],
+                "actual_model": stage3["actual_model"],
+                "response_chars": len(stage3["response"]),
+                "status": stage3["status"],
+                "session_id": "s-Chair",
+                "command": ["traecli"],
+                "exit_code": 0,
+                "stdout_path": "final.traecli.stream.jsonl",
+                "stderr_path": "final.traecli.stderr.log",
+                "copied_session_files": {},
+                "raw_model_markers": [],
+                "error": None,
+                "captured_at": "2026-06-04T00:00:00Z",
+            } | tool_policy)
+            store.write_text("stage3/final.traecli.stream.jsonl", "{}\n")
+            export_html(store)
+            validation = validate_run(store)
+            self.assertEqual(validation["status"], "degraded_ok", validation["failures"])
+            self.assertEqual(validation["verdict"], "usable_degraded_final")
+            self.assertTrue(validation["usable_final"])
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_run_full_council_validate_accepts_retry_empty_stage1_sidecar(self):
+        async def _run():
+            import llm_council_for_trae.council as council_mod
+            from llm_council_for_trae.council import CouncilConfig, run_full_council
+            from llm_council_for_trae.html_export import export_html
+            from llm_council_for_trae.provider import ModelCallResult, tool_policy_for_mode
+            from llm_council_for_trae.store import ArtifactStore
+            from llm_council_for_trae.validation import validate_run
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-stage1-retry-empty-sidecar")
+            config = CouncilConfig(
+                members=["M1", "M2", "M3"],
+                chairman="Chair",
+                min_valid_members=2,
+                target_valid_members=2,
+                member_quorum_checkpoint=999,
+                member_hard_timeout=30,
+                stage1_max_retries=1,
+                stage2_timeout=5,
+            )
+            stage1_attempts = {}
+
+            class MockProvider:
+                def __init__(self, *args, **kwargs):
+                    pass
+
+                async def query_model(self, **kwargs):
+                    stage = kwargs["stage"]
+                    model = kwargs["model"]
+                    label = kwargs["label"]
+                    response = ""
+                    status = "ok"
+                    actual_model = model
+                    error = None
+                    exit_code = 0
+                    if stage == "stage1":
+                        attempt = stage1_attempts.get(model, 0) + 1
+                        stage1_attempts[model] = attempt
+                        if model == "M1":
+                            response = "answer M1"
+                        elif model == "M2":
+                            status = "failed"
+                            actual_model = None
+                            error = "timeout"
+                            exit_code = 1
+                            if attempt == 2:
+                                (Path(kwargs["output_dir"]) / f"{label}.traecli.stream.jsonl").write_text("", encoding="utf-8")
+                        elif model == "M3" and attempt == 1:
+                            status = "failed"
+                            actual_model = None
+                            error = "timeout"
+                            exit_code = 1
+                        else:
+                            response = "answer M3"
+                    else:
+                        response = {
+                            "stage2": "FINAL RANKING:\n1. Response A\n2. Response C",
+                            "stage3": "final",
+                        }[stage]
+
+                    allowed_tools, disallowed_tools = tool_policy_for_mode(config.member_tool_mode)
+                    return ModelCallResult(
+                        expected_model=model,
+                        actual_model=actual_model,
+                        response=response,
+                        status=status,
+                        session_id=f"s-{model}-{stage}",
+                        command=["traecli"],
+                        exit_code=exit_code,
+                        stdout_path=f"{label}.traecli.stream.jsonl",
+                        stderr_path=f"{label}.traecli.stderr.log",
+                        error=error,
+                        member_tool_mode=config.member_tool_mode,
+                        allowed_tools=allowed_tools,
+                        disallowed_tools=disallowed_tools,
+                        forbidden_tool_calls=[],
+                    )
+
+            with patch.object(council_mod, "runtime_doctor") as mock_doctor:
+                mock_doctor.return_value = type("Health", (), {
+                    "ok": True,
+                    "command": "fake",
+                    "version": "1.0",
+                    "doctor_exit_code": 0,
+                    "doctor": {},
+                    "errors": [],
+                    "warnings": [],
+                    "ignored_errors": [],
+                    "models": [{"name": name} for name in ["M1", "M2", "M3", "Chair"]],
+                })()
+                with patch.object(council_mod, "require_models_available"):
+                    with patch.object(council_mod, "TraeCliProvider", MockProvider):
+                        manifest = await run_full_council("question", config, store)
+
+            self.assertEqual(manifest["status"], "degraded_ok")
+            stream_path = store.root / "stage1" / "B.traecli.stream.jsonl"
+            self.assertGreater(stream_path.stat().st_size, 0)
+            self.assertIn("timeout", stream_path.read_text(encoding="utf-8"))
+            tool_policy = {
+                "member_tool_mode": config.member_tool_mode,
+                "allowed_tools": tool_policy_for_mode(config.member_tool_mode)[0],
+                "disallowed_tools": tool_policy_for_mode(config.member_tool_mode)[1],
+                "forbidden_tool_calls": [],
+            }
+            stage3 = manifest["stages"]["stage3"]
+            store.write_json("stage3/final.meta.json", {
+                "expected_model": stage3["expected_model"],
+                "actual_model": stage3["actual_model"],
+                "response_chars": len(stage3["response"]),
+                "status": stage3["status"],
+                "session_id": "s-Chair",
+                "command": ["traecli"],
+                "exit_code": 0,
+                "stdout_path": "final.traecli.stream.jsonl",
+                "stderr_path": "final.traecli.stderr.log",
+                "copied_session_files": {},
+                "raw_model_markers": [],
+                "error": None,
+                "captured_at": "2026-06-04T00:00:00Z",
+            } | tool_policy)
+            store.write_text("stage3/final.traecli.stream.jsonl", "{}\n")
+            export_html(store)
+            validation = validate_run(store)
+            self.assertEqual(validation["verdict"], "usable_degraded_final", validation["failures"])
+            self.assertTrue(validation["usable_final"])
 
         import asyncio
         asyncio.run(_run())
