@@ -11,6 +11,7 @@ from .utils import read_text, utc_now
 
 
 WEB_SEARCH_TOOLS = {"WebSearch", "WebFetch"}
+TITLE_SUFFIX = "多模型智囊团评估"
 GENERIC_INPUT_TITLES = {
     "original input",
     "input",
@@ -24,6 +25,23 @@ GENERIC_INPUT_TITLES = {
     "原始输入",
     "原始问题",
 }
+GENERIC_REPORT_TITLES = {
+    "final answer",
+    "answer",
+    "summary",
+    "conclusion",
+    "analysis",
+    "最终答案",
+    "最终回答",
+    "结论",
+    "最终判断",
+    "正面信号",
+    "负面信号",
+    "核心结论",
+    "综合判断",
+    "系统性评估",
+    "我真正理解你的需求",
+}
 PREFERRED_TOPIC_SECTIONS = {
     "agent interpretation",
     "agent interpretation / framing",
@@ -34,6 +52,18 @@ PREFERRED_TOPIC_SECTIONS = {
     "任务理解",
     "议题概括",
     "讨论焦点",
+}
+EXPLICIT_TOPIC_LABELS = {
+    "report topic",
+    "topic",
+    "title",
+    "report title",
+    "报告题名",
+    "报告标题",
+    "题名",
+    "标题",
+    "议题",
+    "中文议题",
 }
 
 ARTIFACT_PROMPT = """traecli-llm-council HTML artifact rendering contract.
@@ -64,21 +94,56 @@ def export_html(store: ArtifactStore) -> dict[str, Any]:
     return export_record
 
 
-def _extract_title(input_text: str, max_chars: int = 60) -> str:
-    if not input_text:
-        return "最终答案"
-    lines = input_text.strip().splitlines()
-    first_line = _clean_title_candidate(lines[0]) if lines else ""
-    first_heading = _heading_text(lines[0]) if lines else None
-    if first_heading and not _is_generic_input_title(first_heading):
-        title = first_heading
-    elif first_line and not _is_generic_input_title(first_line):
-        title = first_line
-    else:
-        title = _extract_preferred_topic(lines) or _extract_first_content_line(lines) or "最终答案"
-    if len(title) > max_chars:
-        title = title[:max_chars].rstrip() + "…"
+def _extract_title(input_text: str, max_chars: int = 60, final_text: str = "") -> str:
+    input_lines = input_text.strip().splitlines() if input_text else []
+    final_lines = final_text.strip().splitlines() if final_text else []
+    topic = (
+        _extract_explicit_topic(input_lines)
+        or _extract_final_answer_topic(final_lines)
+        or _extract_preferred_topic(input_lines)
+        or _extract_first_content_line(input_lines)
+        or "最终答案"
+    )
+    return _format_report_title(topic, max_chars=max_chars)
+
+
+def _format_report_title(topic: str, max_chars: int = 60) -> str:
+    topic = _strip_title_suffix(_clean_title_candidate(topic)) or "最终答案"
+    if len(topic) > max_chars:
+        topic = topic[:max_chars].rstrip() + "…"
+    return f"{topic}：{TITLE_SUFFIX}"
+
+
+def _strip_title_suffix(title: str) -> str:
+    normalized_suffix = f"：{TITLE_SUFFIX}"
+    if title.endswith(normalized_suffix):
+        return title[: -len(normalized_suffix)].rstrip()
+    if title.endswith(TITLE_SUFFIX):
+        return title[: -len(TITLE_SUFFIX)].rstrip(" :：-")
     return title
+
+
+def _extract_explicit_topic(lines: list[str]) -> str | None:
+    for line in lines:
+        label_match = re.match(r"^\s*([A-Za-z][A-Za-z /_-]{1,80}|[\u4e00-\u9fff][^:：]{0,30})\s*[:：]\s*(.+)$", line)
+        if label_match and _normalize_title(label_match.group(1)) in EXPLICIT_TOPIC_LABELS:
+            candidate = _clean_title_candidate(label_match.group(2))
+            if _usable_topic(candidate, allow_english=True):
+                return candidate
+    return None
+
+
+def _extract_final_answer_topic(lines: list[str]) -> str | None:
+    for line in lines:
+        if _is_section_separator(line):
+            return None
+        core_question = _core_question_topic(line)
+        if core_question and _usable_topic(core_question, require_chinese=True):
+            return core_question
+        heading = _heading_text(line)
+        if heading and _usable_topic(heading, require_chinese=True):
+            return heading
+    return None
 
 
 def _extract_preferred_topic(lines: list[str]) -> str | None:
@@ -86,12 +151,12 @@ def _extract_preferred_topic(lines: list[str]) -> str | None:
         heading = _heading_text(line)
         if heading and _normalize_title(heading) in PREFERRED_TOPIC_SECTIONS:
             candidate = _first_content_after(lines, index + 1)
-            if candidate:
+            if candidate and _usable_topic(candidate, allow_english=True):
                 return candidate
         label_match = re.match(r"^\s*([A-Za-z][A-Za-z /_-]{2,80}|[\u4e00-\u9fff][^:：]{1,30})\s*[:：]\s*(.+)$", line)
         if label_match and _normalize_title(label_match.group(1)) in PREFERRED_TOPIC_SECTIONS:
             candidate = _clean_title_candidate(label_match.group(2))
-            if candidate:
+            if candidate and _usable_topic(candidate, allow_english=True):
                 return candidate
     return None
 
@@ -99,7 +164,7 @@ def _extract_preferred_topic(lines: list[str]) -> str | None:
 def _extract_first_content_line(lines: list[str]) -> str | None:
     for line in lines:
         candidate = _clean_title_candidate(line)
-        if candidate and not _is_generic_input_title(candidate):
+        if candidate and _usable_topic(candidate, allow_english=True):
             return candidate
     return None
 
@@ -109,7 +174,7 @@ def _first_content_after(lines: list[str], start: int) -> str | None:
         if _heading_text(line):
             return None
         candidate = _clean_title_candidate(line)
-        if candidate and not _is_generic_input_title(candidate):
+        if candidate and _usable_topic(candidate, allow_english=True):
             return candidate
     return None
 
@@ -121,11 +186,23 @@ def _heading_text(line: str) -> str | None:
     return _clean_title_candidate(heading.group(1))
 
 
+def _is_section_separator(line: str) -> bool:
+    return bool(re.match(r"^\s*-{3,}\s*$", line.strip()))
+
+
+def _core_question_topic(line: str) -> str | None:
+    match = re.search(r"核心问题是\s*[:：]\s*(.+)$", line)
+    if not match:
+        return None
+    return _clean_title_candidate(match.group(1)).rstrip("。")
+
+
 def _clean_title_candidate(line: str) -> str:
     text = line.strip()
     text = re.sub(r"^#{1,6}\s+", "", text)
     text = re.sub(r"^[-*+]\s+", "", text)
     text = re.sub(r"^\d+[.)]\s+", "", text)
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
     text = text.strip("`*_ \t")
     text = re.sub(r"\s+", " ", text)
     return text
@@ -133,6 +210,38 @@ def _clean_title_candidate(line: str) -> str:
 
 def _is_generic_input_title(title: str) -> bool:
     return _normalize_title(title) in GENERIC_INPUT_TITLES
+
+
+def _is_generic_report_title(title: str) -> bool:
+    return _normalize_title(title) in GENERIC_REPORT_TITLES
+
+
+def _usable_topic(candidate: str, allow_english: bool = False, require_chinese: bool = False) -> bool:
+    if not candidate:
+        return False
+    normalized = _normalize_title(candidate)
+    if (
+        _is_generic_input_title(candidate)
+        or _is_generic_report_title(candidate)
+        or normalized in PREFERRED_TOPIC_SECTIONS
+        or normalized in EXPLICIT_TOPIC_LABELS
+    ):
+        return False
+    has_chinese = bool(re.search(r"[\u4e00-\u9fff]", candidate))
+    if require_chinese and not has_chinese:
+        return False
+    if not has_chinese and not allow_english:
+        return False
+    if _looks_like_english_long_sentence(candidate):
+        return False
+    return True
+
+
+def _looks_like_english_long_sentence(candidate: str) -> bool:
+    if re.search(r"[\u4e00-\u9fff]", candidate):
+        return False
+    words = re.findall(r"[A-Za-z]+", candidate)
+    return len(words) >= 9
 
 
 def _normalize_title(title: str) -> str:
@@ -143,7 +252,7 @@ def _normalize_title(title: str) -> str:
 def render_html(root: Path, manifest: dict[str, Any]) -> str:
     input_text = safe_read(root / "input.md")
     final_text = safe_read(root / "stage3" / "final.md")
-    page_title = _extract_title(input_text)
+    page_title = _extract_title(input_text, final_text=final_text)
     chairman_prompt = safe_read(root / "stage3" / "chairman.prompt.md")
     markdown_export = build_markdown_export(manifest, input_text, final_text)
     json_export = json.dumps(manifest, ensure_ascii=False, indent=2)
@@ -199,7 +308,7 @@ def render_html(root: Path, manifest: dict[str, Any]) -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{esc(page_title)} · LLM Council for Trae</title>
+<title>{esc(page_title)}</title>
 <style>
 :root {{
   --bg:#e9e0cf;

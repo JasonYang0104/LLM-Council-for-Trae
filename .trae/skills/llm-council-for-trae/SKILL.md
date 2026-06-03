@@ -12,6 +12,14 @@ description: |
 
 ## 前置条件
 
+确认当前目录不是 LCT 源码 repo。出现以下任一标记时停止，除非用户明确说正在做 LCT 开发：
+
+- `src/llm_council_for_trae/`
+- `.trae/agents/`
+- `profiles/subagents.json`
+
+日常使用应在干净问题 workspace 中调用全局 CLI，不要在 LCT 源码 repo 中跑用户问题。
+
 确认以下条件满足后再开始：
 
 ```bash
@@ -38,7 +46,7 @@ Step 5: 交付 HTML 报告
 
 ## Step 0: 定位或自举 LCT CLI
 
-在仓库根目录执行。新 clone 的 workspace 可能还没有安装 `llm-council-for-trae` wrapper，先选择可用命令：
+在干净问题 workspace 中执行。新环境可能还没有安装 `llm-council-for-trae` wrapper，先选择可用命令：
 
 ```bash
 if command -v llm-council-for-trae >/dev/null 2>&1; then
@@ -82,7 +90,7 @@ chairman: Kimi-K2.6
 
 ## Step 2: 准备问题文件
 
-将用户问题写入 `.md` 文件。中文问题直接写，英文问题保持原文。
+将用户问题写入 `.md` 文件。中文问题直接写，英文问题保持原文。原始问题下方追加一行 `Report topic: <中文议题>`，让 HTML 标题稳定生成为 `<中文议题>：多模型智囊团评估`。
 
 ```bash
 cat > /tmp/council-question.md << 'EOF'
@@ -108,7 +116,7 @@ $LCT run \
 
 记录 `default_attempt_status`、`default_attempt_run_id`、`default_attempt_failure_reason`。
 
-如果 default attempt 失败、默认模型缺失，或没有产生可 validate artifacts，再用 Step 1 的推荐阵容显式重跑：
+如果 default attempt 表面失败、默认模型缺失、apparent hang、run JSON 为空，或中途目录看起来缺 Stage 2 / Stage 3，先读取 terminal manifest 并执行 `validate <run_id> --json`。不要用自然语言观察判 failed。`degraded_ok 是可用结果`，成员失败不等于 run 失败。只有 validate JSON 显示无可用 final，才用 Step 1 的推荐阵容显式重跑：
 
 ```bash
 $LCT run \
@@ -169,7 +177,7 @@ $LCT run \
 $LCT validate <run_id> --json
 ```
 
-确认 `status: "ok"` 或 `status: "degraded_ok"`。
+确认 validate JSON：`terminal`、`usable_final`、`stage3_final_exists`、`html_exists`、`failed_stage_records`、`verdict`。`verdict` 取值为 `complete_ok_final`、`usable_degraded_final`、`in_progress`、`failed_no_final`、`invalid_artifacts`。只有 `usable_final: true` 才能交付最终答案；`$RUN_ID-index.md` 的 run status / validate status / verdict 必须来自 validate JSON。`degraded_ok 是可用结果`，成员失败不等于 run 失败。
 
 ## Step 5: 交付 HTML 报告
 

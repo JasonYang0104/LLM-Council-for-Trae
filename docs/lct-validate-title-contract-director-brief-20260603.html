@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LCT validate 与报告标题契约：PM Director Brief</title>
+<style>
+:root {
+  --paper:#f5f4ed;
+  --paper-2:#efeee5;
+  --ink:#1f1d18;
+  --muted:#6b665b;
+  --rule:#d4d1c5;
+  --accent:#1B365D;
+  --font-cn:"TsangerJinKai02 W04","Noto Serif SC","Songti SC",serif;
+  --font-en:Charter,"Source Serif Pro","Iowan Old Style",serif;
+}
+* { box-sizing:border-box; }
+html { background:var(--paper-2); }
+body {
+  margin:0;
+  color:var(--ink);
+  background:var(--paper);
+  font:17px/1.55 var(--font-cn);
+}
+.page {
+  max-width:980px;
+  margin:0 auto;
+  padding:52px 64px 58px;
+  min-height:100vh;
+  box-shadow:0 0 0 1px var(--rule);
+}
+.folio {
+  display:flex;
+  justify-content:space-between;
+  gap:18px;
+  padding-bottom:12px;
+  border-bottom:1px solid var(--rule);
+  color:var(--muted);
+  font:13px/1.35 var(--font-en);
+}
+.kicker {
+  margin:34px 0 14px;
+  color:var(--accent);
+  font:14px/1.3 var(--font-en);
+  letter-spacing:.04em;
+}
+h1 {
+  margin:0;
+  max-width:13ch;
+  font-weight:500;
+  font-size:48px;
+  line-height:1.14;
+}
+.lede {
+  margin:24px 0 30px;
+  max-width:68ch;
+  font-size:20px;
+  line-height:1.48;
+}
+.meta {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:0;
+  margin:28px 0 36px;
+  border:1px solid var(--rule);
+  background:var(--paper-2);
+}
+.meta div {
+  padding:14px 16px;
+  border-right:1px solid var(--rule);
+}
+.meta div:last-child { border-right:0; }
+.meta span {
+  display:block;
+  color:var(--muted);
+  font-size:13px;
+}
+.meta strong {
+  display:block;
+  margin-top:4px;
+  font-weight:500;
+  overflow-wrap:anywhere;
+}
+h2 {
+  margin:34px 0 12px;
+  padding-top:18px;
+  border-top:1px solid var(--rule);
+  color:var(--accent);
+  font-weight:500;
+  font-size:24px;
+}
+p { margin:0 0 13px; }
+ul {
+  margin:8px 0 18px;
+  padding-left:1.2em;
+}
+li { margin:6px 0; }
+code {
+  font-family:"SFMono-Regular",Menlo,Consolas,monospace;
+  font-size:.88em;
+  background:var(--paper-2);
+  padding:1px 4px;
+}
+.callout {
+  margin:24px 0;
+  padding:16px 18px;
+  border-left:4px solid var(--accent);
+  background:var(--paper-2);
+}
+.cols {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:26px;
+}
+footer {
+  margin-top:44px;
+  padding-top:14px;
+  border-top:1px solid var(--rule);
+  color:var(--muted);
+  font-size:13px;
+}
+@media (max-width:760px) {
+  .page { padding:34px 24px 42px; }
+  h1 { font-size:38px; max-width:none; }
+  .meta, .cols { grid-template-columns:1fr; }
+  .meta div { border-right:0; border-bottom:1px solid var(--rule); }
+  .meta div:last-child { border-bottom:0; }
+}
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="folio">
+    <span>LLM-Council-for-Trae</span>
+    <span>2026-06-03</span>
+  </header>
+
+  <p class="kicker">PM Director Brief</p>
+  <h1>LCT validate 与报告标题契约</h1>
+  <p class="lede">这轮把 LCT 从“能跑出结果”推进到“外层 Agent 更难误报结果状态、HTML 报告标题更像可交付报告”。</p>
+
+  <section class="meta">
+    <div><span>Branch</span><strong><code>codex/lct-validate-title-contract-20260603</code></strong></div>
+    <div><span>Scope</span><strong>validate 状态契约 / HTML 标题 / Skill 工作流</strong></div>
+    <div><span>Verification</span><strong>compileall + 161 tests + live smoke</strong></div>
+  </section>
+
+  <section class="callout">
+    <p><strong>一句话结论：</strong><code>validate</code> 现在输出 terminal / usable / verdict 字段；HTML 标题稳定为中文 <code>&lt;topic&gt;：多模型智囊团评估</code>；Skill 明确要求 failed 判定必须来自 terminal manifest 加 <code>validate &lt;run_id&gt; --json</code>。</p>
+  </section>
+
+  <h2>为什么要做</h2>
+  <p>v6 live E2E 的默认 run 实际是 <code>degraded_ok</code>：DeepSeek-V4-Pro 在 Stage 1 失败，但 quorum 成立，Stage 2、Stage 3、HTML 和 validate 都完成。执行 Agent 最初把它写成 failed，是因为它在 run 尚未沉淀完成时看到空目录和空 JSON，提前下结论。</p>
+  <p>这说明问题不只是单点 bug，而是 CLI 输出、Skill 工作流和外层 Agent 记录之间的产品契约不够硬。</p>
+
+  <h2>本轮解决</h2>
+  <div class="cols">
+    <div>
+      <p><strong>状态契约</strong></p>
+      <ul>
+        <li><code>terminal</code></li>
+        <li><code>usable_final</code></li>
+        <li><code>stage3_final_exists</code></li>
+        <li><code>html_exists</code></li>
+        <li><code>failed_stage_records</code></li>
+        <li><code>verdict</code></li>
+      </ul>
+    </div>
+    <div>
+      <p><strong>verdict 枚举</strong></p>
+      <ul>
+        <li><code>complete_ok_final</code></li>
+        <li><code>usable_degraded_final</code></li>
+        <li><code>in_progress</code></li>
+        <li><code>failed_no_final</code></li>
+        <li><code>invalid_artifacts</code></li>
+      </ul>
+    </div>
+  </div>
+  <p>旧的 <code>status</code> 语义不变：<code>ok</code> 和 <code>degraded_ok</code> 仍是可成功退出的状态。新增字段只负责让外层 Agent 更明确地知道“有没有可交付最终答案”。</p>
+
+  <h2>标题契约</h2>
+  <p>HTML 报告标题现在按确定性优先级生成：显式 topic、Stage 3 中文 heading、结构化输入里的中文议题、原始输入中文内容，最后兜底 <code>最终答案：多模型智囊团评估</code>。</p>
+  <p>固定后缀不重复，过长时只截断 topic，不截断后缀。英文长解释句和通用章节名不会再进入 HTML <code>&lt;title&gt;</code> 或 hero <code>&lt;h1&gt;</code>。</p>
+
+  <h2>风险收敛</h2>
+  <ul>
+    <li>按 TDD 执行：设计与测试计划、RED 测试、实现、review fix 分阶段提交。</li>
+    <li>review 发现的三个 P2 已修复：重复失败记录、<code>.trae</code> Skill 源码仓库误导、无标点英文长句入标题。</li>
+    <li>Skill / README 写硬：failed 判定前必须读取 terminal manifest 并执行 <code>validate &lt;run_id&gt; --json</code>。</li>
+  </ul>
+
+  <h2>证据</h2>
+  <ul>
+    <li><code>PYTHONPATH=src python3 -m compileall src</code>：pass。</li>
+    <li><code>make test</code>：pass，161 tests。</li>
+    <li><code>git diff --check</code> 与 <code>git diff --check origin/main..HEAD</code>：pass。</li>
+    <li>live smoke run <code>lct-validate-title-smoke-20260603</code>：真实 <code>traecli</code>，run status <code>ok</code>，validate verdict <code>complete_ok_final</code>。</li>
+    <li>HTML 标题：<code>LCT validate 状态契约 smoke：多模型智囊团评估</code>。</li>
+  </ul>
+
+  <h2>不在本轮</h2>
+  <ul>
+    <li>不调整模型阵容。</li>
+    <li>不实现自动 fallback。</li>
+    <li>不改变 runtime 并发、timeout 或 retry 策略。</li>
+    <li>不把 HTML export 和 Stage 3 synthesis 混成一步。</li>
+  </ul>
+
+  <h2>剩余问题</h2>
+  <p>合并后仍需要刷新 <code>~/.LCT</code> 和用户级 Skill symlink，否则外层 Agent 可能继续使用旧 Skill 规则。</p>
+  <p><code>--skip-html</code> 仍会产生没有 HTML 的 run。本轮延续当前口径：完整报告交付必须有 HTML，因此 <code>usable_final</code> 只对具备 Stage 3 final 和 HTML 的报告为 true。</p>
+
+  <footer>Generated for LCT validate/title hardening, 2026-06-03.</footer>
+</main>
+</body>
+</html>

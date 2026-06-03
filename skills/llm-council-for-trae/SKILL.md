@@ -61,7 +61,7 @@ final_answer_source: stage3/final.md
 
 ## Run
 
-1. 按 Input Preparation 规则将用户问题写入当前 workspace 的临时 Markdown 文件，例如 `_lct_question.md`。
+1. 按 Input Preparation 规则将用户问题写入当前 workspace 的临时 Markdown 文件，例如 `_lct_question.md`。默认保留用户原文；在原始问题下方追加一行 `Report topic: <中文议题>`，让 HTML 标题稳定生成为 `<中文议题>：多模型智囊团评估`。
 2. 设置 run id：
 
 ```bash
@@ -102,7 +102,13 @@ default_attempt_run_id: <RUN_ID or none>
 default_attempt_failure_reason: <reason or none>
 ```
 
-5. 如果 default attempt 返回 `failed`、默认模型缺失，或没有产生可 validate 的 artifacts，用第 3 步推荐阵容显式重跑：
+5. 如果 default attempt 表面返回 `failed`、默认模型缺失、apparent hang、run JSON 为空，或中途目录看起来缺 Stage 2 / Stage 3，先读取 terminal manifest 并执行：
+
+```bash
+llm-council-for-trae validate <run_id> --json
+```
+
+不要用自然语言观察判 failed。`degraded_ok 是可用结果`，成员失败不等于 run 失败。只有 validate JSON 显示无可用 final，才用第 3 步推荐阵容显式重跑：
 
 ```bash
 llm-council-for-trae run \
@@ -129,6 +135,8 @@ recommended_chairman: <model or none>
 llm-council-for-trae validate "$FINAL_RUN_ID" --json
 ```
 
+validate JSON 必须记录 `terminal`、`usable_final`、`stage3_final_exists`、`html_exists`、`failed_stage_records` 和 `verdict`。`verdict` 取值为 `complete_ok_final`、`usable_degraded_final`、`in_progress`、`failed_no_final`、`invalid_artifacts`。只有 `usable_final: true` 才能交付最终答案；`$RUN_ID-index.md` 的 run status / validate status / verdict 必须来自 validate JSON。
+
 7. 从 artifacts 读取最终答案：
 
 ```bash
@@ -146,6 +154,7 @@ cat ".llm-council-for-trae/runs/$FINAL_RUN_ID/stage3/final.md"
 - run id
 - run status
 - validate status
+- validate verdict
 - final answer path
 - HTML report path
 - Input mode: `raw original input` 或 `structured by Agent`
@@ -182,3 +191,4 @@ cat ".llm-council-for-trae/runs/$FINAL_RUN_ID/stage3/final.md"
 - run 超时：报告 timeout，建议调大 `--timeout` 后重试。
 - quorum 不够：报告哪些模型失败以及失败原因。
 - validate 失败：报告具体 schema、模型一致性或 contamination 检查失败项。
+- apparent hang / interruption：先读取 terminal manifest 并执行 `validate <run_id> --json`；如果 `verdict` 是 `complete_ok_final` 或 `usable_degraded_final`，不要 fallback。

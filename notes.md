@@ -1,5 +1,21 @@
 # Notes
 
+## 2026-06-03 LCT Validate And Title Contract Hardening
+
+- Source handoff read from `/Users/bytedance/Documents/AI Coder/COCO-llm-council-runtime-status-title-20260602/docs/lct-validate-title-hardening-handoff-20260603.md`.
+- Implementation worktree created at `/Users/bytedance/Documents/AI Coder/COCO-llm-council-validate-title-contract-20260603` on branch `codex/lct-validate-title-contract-20260603`, starting from `origin/main` commit `fdf83ff`.
+- The latest main worktree still has user handoff edits (`README.md` plus the handoff doc). I will not overwrite or depend on that dirty tree for implementation.
+- Scope frozen to validate machine-readable terminal verdict, deterministic Chinese report title, and Skill/README workflow rules. Runtime execution, fallback orchestration, and Stage 3 synthesis are out of scope.
+- v6 E2E evidence confirms the default run was usable `degraded_ok`; the original failed classification came from inspecting in-progress artifacts before terminal validate.
+- Subagent review confirmed the main risk areas and flagged `--skip-html` compatibility. Decision: keep existing `validate` status semantics and treat missing HTML as not a complete report handoff; do not overload `status` with the new `verdict`.
+- RED tests added for validate verdict fields, title source/filtered suffix behavior, and README/Skill hard rules. Targeted RED run failed as expected on missing `terminal`/`verdict` fields, old input-based title extraction, and missing docs terms.
+- Implementation GREEN added `validate` contract fields without changing old `status`, and changed HTML title derivation to use explicit topic, final-answer Chinese heading, structured topic, then raw input. Targeted validate/title tests and full `tests.test_core` passed.
+- Skill/docs GREEN updated README, canonical Skill, and `.trae` Skill so failed classification requires terminal manifest plus `validate <run_id> --json`; `degraded_ok` is documented as usable and member failure is not run failure.
+- Final subagent review found three P2 issues: duplicate `failed_stage_records` for real manifest failure shape, `.trae` Skill still implying source repo execution, and unpunctuated English long sentences entering titles. Review-fix tests now cover all three and pass.
+- Final verification after review-fix: `PYTHONPATH=src python3 -m compileall src` passed; `make test` passed with 161 tests; `git diff --check` and `git diff --check origin/main..HEAD` passed.
+- Live smoke used real `traecli` via this branch's `PYTHONPATH=src` in `/tmp/lct-validate-title-smoke-20260603`. Run `lct-validate-title-smoke-20260603` returned `status: ok`; validate returned `terminal: true`, `usable_final: true`, `stage3_final_exists: true`, `html_exists: true`, `verdict: complete_ok_final`, and no failures. HTML `<title>` and hero `<h1>` were both `LCT validate 状态契约 smoke：多模型智囊团评估`.
+- Post-completion review found one additional title fallback risk: without an explicit `Report topic`, the v6 artifact could select a later Stage 3 section heading (`如果这一天已经来了：宏观推演`) instead of a topic summary. The fix adds Skill / README requirements for `Report topic: <中文议题>` and changes deterministic fallback to prefer an early `核心问题是：...` sentence before crossing a section separator.
+
 ## 2026-06-01 LCT Global Install And Skill Iteration
 
 - Started from a separate worktree on `origin/main` because the original workspace had unrelated dirty/untracked PR skill files and deleted `.codex/skills/*` files. Those files are not part of this branch.
