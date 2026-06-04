@@ -23,9 +23,12 @@ description: 当用户要求使用 LCT、跑 LCT、council run、用委员会回
 
 ## Input Preparation
 
-LCT CLI 只消费 `_lct_question.md`；是否做轻量意图理解和 prompt shaping 是外层 Agent 行为。
+LCT CLI 只消费 `_lct_question.md`；是否做轻量意图理解和 prompt shaping 是外层 Agent 行为。先区分两层输入：
 
-默认使用 `structured by Agent` 模式：
+- `council input`：用户真正要委员会回答的问题、必要事实背景、输出要求，以及 `Report topic: <中文议题>`。`Report topic` 是报告元数据，不是成员任务指令。
+- `operator envelope`：使用 LCT、运行 validate、写 final/index、生成 HTML、维护 notes.md、Git/PR/测试职责、开 branch、提交代码等外层执行职责。外层执行指令不得写入 _lct_question.md。
+
+默认保留用户原始实质问题。只有当用户明确要求思考真实意图、拆解问题、重构输入、加入事实包或结构化输出时，才使用 `structured by Agent` 模式：
 
 1. 保留用户原始输入，使用清晰标题标注为 `Original input`。
 2. 可以补充 `Agent interpretation` 和 `Suggested council focus`，用于拆解约束、成功标准、需要正反论证的维度。
@@ -33,7 +36,7 @@ LCT CLI 只消费 `_lct_question.md`；是否做轻量意图理解和 prompt sha
 
 如果用户明确说 `按原始输入`、`不要改写`、`只用原文`、`我要评估 LCT 对原始问题的理解` 或类似表达，必须使用 `raw original input` 模式：`_lct_question.md` 只写用户原文，不加结构化增强。
 
-如果外层 Agent 需要补充事实背景，fact pack 必须直接嵌入 _lct_question.md，放在用户原始输入之后并清楚标注来源；不要让模型去读取另一个 sidecar 文件。`notes.md` 只由外层 Agent 维护，用来记录执行过程、测试和风险；模型不要创建或修改 notes，也不要把 notes 当成 council 输入。
+如果外层 Agent 需要补充事实背景，fact pack 必须直接嵌入 _lct_question.md，放在用户原始输入之后并清楚标注来源。fact pack 只包含事实背景和来源，不能包含执行指令；不要要求成员读取 sidecar 文件，也不要让模型去读取另一个 sidecar 文件。`notes.md` 只由外层 Agent 维护，用来记录执行过程、测试和风险；如果用户要求维护 notes.md，调用 Agent 应执行这个要求，但不得把它写入 council input。不要要求 council 成员创建、读取、修改或维护 notes.md，模型不要创建或修改 notes，也不要把 notes 当成 council 输入。
 
 无论哪种模式，最终根目录 `$RUN_ID-index.md` 和对用户汇报都必须写明 `Input mode` 和证据字段；输入模式取值为：
 
@@ -97,6 +100,8 @@ chairman: Kimi-K2.6
 推荐阵容不改变 primary default members；它只是 backfill candidates 的可审计输入。CLI 默认会在同一个 run 内 auto-backfill，不整轮重跑。
 
 补位语义必须拆开：Stage 1 是 member backfill，只有 Stage 1 quorum 不足时才新增候选答案；Stage 2 是 reviewer-only backfill，当 Stage 1 quorum 已经满足但 reviewer 失败或不足时，候补模型只评审既有有效 Stage 1 answers，不新增候选答案。
+
+工具模式由外层 Agent 基于任务判断。answer_only 是可选工具模式，不强制 answer_only；外层 Agent 可以自行判断让 LCT 成员在 `search_enabled` 下内部搜索、先由外层 Agent 补 fact pack、使用 answer_only，或在只读代码/文件问题中使用 workspace_enabled。search_enabled 只表示搜索被允许，不表示模型实际搜索了；索引必须继续拆开记录 `lct_search_used` 和 `agent_external_search_used`。
 
 4. 执行非交互 run。默认启用 auto-backfill；如第 3 步的推荐结果里有适合作为候补的模型，可在命令中追加 `--backfill-members "<comma-separated candidates>"` 显式给出优先级：
 

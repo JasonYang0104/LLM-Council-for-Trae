@@ -53,7 +53,9 @@ make -C ~/.LCT install-global
 使用 LCT，回答："""<你的问题>"""
 ```
 
-Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo（出现 `src/llm_council_for_trae/`、`.trae/agents/` 或 `profiles/subagents.json` 时停止）→ 确认 `traecli` 和 `llm-council-for-trae` 可用 → 把问题写入 `_lct_question.md`，并在原始问题下方写一行 `Report topic: <中文议题>`，供 HTML 标题稳定生成 `<中文议题>：多模型智囊团评估` → 先记录 `models --recommend --json`，作为本次 run 的 backfill candidates **（注释：补位候选模型，用于在成员失败时补足有效人数）** 来源 → 使用 `--default-models`、`--json` 非交互运行，auto-backfill **（注释：自动补位，指 CLI 在同一次运行里追加候补模型而不是重新跑整轮）** 默认启用，必要时可用 `--backfill-members` 显式提供候补优先级 → 如果默认成员失败、超时或不可用，CLI 在同一个 run 内追加 backfill 成员补足 quorum，不整轮重跑，不覆盖已成功 Stage 1 输出 → 如果 Stage 1 quorum 已满足但 Stage 2 reviewer 失败，CLI 只做 reviewer-only backfill **（注释：仅评审者补位，指候补模型只补交 Stage 2 评审，不新增 Stage 1 候选答案）** → 先读取 terminal manifest 并执行 `llm-council-for-trae validate <run_id> --json` → 只有 validate JSON 显示 `usable_final: true` 时读取 `stage3/final.md` → 在问题 workspace 根目录写出 `<run_id>-final.md` 和 `<run_id>-index.md`（必须包含 run status、validate status、validate verdict、HTML path、Input mode、lct_search_allowed、lct_search_used、lct_web_tool_calls、agent_external_search_allowed、agent_external_search_used、agent_sources、agent_fact_pack_path、agent_added_context、final_answer_source、valid_stage1_models、quorum_default、quorum_effective、low_quorum_used、backfill_attempts、stage2_reviewers、stage1_backfill_members、stage2_reviewer_backfill、review_subject_count、reviewer_count、chairman_fallback_used、failed models / timeout）→ 返回 run status、validate status、最终答案路径和 HTML 报告路径。`degraded_ok 是可用结果`；成员失败不等于 run 失败。
+Agent 应先确认 `_lct_question.md` 的输入边界：它只写 council-facing 问题、必要事实背景、输出要求和 `Report topic: <中文议题>`。`Report topic` 是报告元数据，供 HTML 标题稳定生成 `<中文议题>：多模型智囊团评估`，不是成员任务指令。外层执行指令不得写入 _lct_question.md：包括维护 notes.md、运行 validate、写 final/index、生成 HTML、Git/PR/测试职责、开 branch 或提交代码。
+
+Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo（出现 `src/llm_council_for_trae/`、`.trae/agents/` 或 `profiles/subagents.json` 时停止）→ 确认 `traecli` 和 `llm-council-for-trae` 可用 → 准备 `_lct_question.md` → 先记录 `models --recommend --json`，作为本次 run 的 backfill candidates **（注释：补位候选模型，用于在成员失败时补足有效人数）** 来源 → 使用 `--default-models`、`--json` 非交互运行，auto-backfill **（注释：自动补位，指 CLI 在同一次运行里追加候补模型而不是重新跑整轮）** 默认启用，必要时可用 `--backfill-members` 显式提供候补优先级 → 如果默认成员失败、超时或不可用，CLI 在同一个 run 内追加 backfill 成员补足 quorum，不整轮重跑，不覆盖已成功 Stage 1 输出 → 如果 Stage 1 quorum 已满足但 Stage 2 reviewer 失败，CLI 只做 reviewer-only backfill **（注释：仅评审者补位，指候补模型只补交 Stage 2 评审，不新增 Stage 1 候选答案）** → 先读取 terminal manifest 并执行 `llm-council-for-trae validate <run_id> --json` → 只有 validate JSON 显示 `usable_final: true` 时读取 `stage3/final.md` → 在问题 workspace 根目录写出 `<run_id>-final.md` 和 `<run_id>-index.md`（必须包含 run status、validate status、validate verdict、HTML path、Input mode、lct_search_allowed、lct_search_used、lct_web_tool_calls、agent_external_search_allowed、agent_external_search_used、agent_sources、agent_fact_pack_path、agent_added_context、final_answer_source、valid_stage1_models、quorum_default、quorum_effective、low_quorum_used、backfill_attempts、stage2_reviewers、stage1_backfill_members、stage2_reviewer_backfill、review_subject_count、reviewer_count、chairman_fallback_used、failed models / timeout）→ 返回 run status、validate status、最终答案路径和 HTML 报告路径。`degraded_ok 是可用结果`；成员失败不等于 run 失败。
 
 ### 1. 确认 traecli 可用
 
@@ -115,7 +117,7 @@ llm-council-for-trae run \
   --json
 ```
 
-默认 direct run 不再传 `--yolo`，并使用 `--member-tool-mode search_enabled`：成员模型可使用 `WebSearch` / `WebFetch`，但 `Skill`、`Agent`、workspace 读写和 shell 会被禁止并由 provider 做污染检测。`search_enabled` 只表示搜索被允许，不表示模型实际搜索了；HTML 和索引应分开记录 `lct_search_allowed` 与 `lct_search_used`，并用 `agent_external_search_*` 单独记录外层 Agent 是否自己做了外部检索。只有明确需要绕过权限时才传 `--yolo`；普通 council 成员不应使用它。
+默认 direct run 不再传 `--yolo`，并使用 `--member-tool-mode search_enabled`：成员模型可使用 `WebSearch` / `WebFetch`，但 `Skill`、`Agent`、workspace 读写和 shell 会被禁止并由 provider 做污染检测。search_enabled 只表示搜索被允许，不表示模型实际搜索了；HTML 和索引应分开记录 `lct_search_allowed` 与 `lct_search_used`，并用 `agent_external_search_*` 单独记录外层 Agent 是否自己做了外部检索。只有明确需要绕过权限时才传 `--yolo`；普通 council 成员不应使用它。
 
 可选工具模式：
 
@@ -124,6 +126,8 @@ llm-council-for-trae run --input _lct_question.md --default-models --member-tool
 llm-council-for-trae run --input _lct_question.md --default-models --member-tool-mode search_enabled
 llm-council-for-trae run --input _lct_question.md --default-models --member-tool-mode workspace_enabled
 ```
+
+answer_only 是可选工具模式，不强制 answer_only。外层 Agent 可以自行判断使用 LCT 内部搜索、先补 fact pack、使用 answer_only，或在只读代码/文件问题中使用 workspace_enabled；无论哪种路径，都必须在索引里保留 `agent_external_search_used` 等外层检索证据字段。
 
 如果没有传 `--members`、`--chairman`、`--profile` 或 `--default-models`，LCT 会先列出当前 traecli 可用模型，并给出推荐套装（仅限交互终端）。在 Agent 或脚本等非交互场景，必须显式指定 `--default-models`、`--members/--chairman` 或 `--profile`：
 

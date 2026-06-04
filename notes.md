@@ -607,3 +607,9 @@
 - 不把 `answer_only` 写成默认或强制策略。`answer_only` 是可选工具模式，适合某些收窄输入后的运行；默认是否允许成员搜索仍应由外层 Agent 基于任务判断。
 - 本轮需要同步 `README.md`、`skills/llm-council-for-trae/SKILL.md` 和 `.trae/skills/llm-council-for-trae/SKILL.md`，并用 docs contract 测试约束三者口径。
 - 红灯测试阶段如果单独提交会让分支处于故意失败状态，我会先记录红灯证据，再在同一测试提交前补齐实现，保证提交历史不留下破坏全量测试的节点。
+
+## Phase 2：红灯测试证据
+
+- 新增 `tests/test_global_install_skill_docs.py` 的 input-boundary 文档契约测试后，运行 `PYTHONPATH=src python3 -m unittest tests.test_global_install_skill_docs`。
+- 红灯结果：22 个测试中失败 10 个 subtest。主要失败点是 README/Skill 缺少 `answer_only 是可选工具模式` 等判断权口径，`.trae` Skill 缺少 `council input` / `operator envelope`，canonical Skill 仍写着“默认使用 `structured by Agent` 模式”。
+- 这证明旧口径不足以阻止外层执行指令进入 `_lct_question.md`；后续实现只改 README 和 Skill 文档，不改 runtime。
