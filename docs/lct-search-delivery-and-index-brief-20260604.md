@@ -1,7 +1,7 @@
 # LCT 搜索生效计数与索引补位候选修正简报
 
-日期：2026-06-04  
-分支：`codex/lct-search-delivery-index-20260604`  
+日期：2026-06-04
+分支：`codex/lct-search-delivery-index-20260604`
 置信度：高
 
 ## 结论

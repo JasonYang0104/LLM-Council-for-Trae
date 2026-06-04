@@ -1,7 +1,7 @@
 # LCT 搜索生效计数与索引补位候选修正交接
 
-创建日期：2026-06-04  
-目标执行方式：新会话、新分支、`/goal` 长线程执行  
+创建日期：2026-06-04
+目标执行方式：新会话、新分支、`/goal` 长线程执行
 建议分支名：`codex/lct-search-delivery-index-20260604`
 
 ## 1. 这次要解决什么
@@ -416,4 +416,3 @@ Subagent 输出不要直接改文件，先返回 findings；主 Agent 决定是�
 - 不改写 v10 已有 run artifact。
 - 不删除 `.llm-council-for-trae/` 里的用户运行产物。
 - 不把 HTML export 和 chairman synthesis 混成一步。
-

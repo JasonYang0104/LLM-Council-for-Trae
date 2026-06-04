@@ -172,4 +172,3 @@ backfill_candidates: not recorded
 - session log conversion error 当前没有 tool_use_id，只能按同一 stage call 的逻辑错误次数扣减。若未来 runtime 提供 per-call conversion id，可把公式升级为逐 id 匹配。
 - legacy artifact 的生效次数会偏保守为 0。相比误报“调用全部生效”，这更符合审计目标。
 - validate warning 不阻断 final，是因为搜索交付缺陷可能只影响某个成员的证据质量，不必然导致 Stage 3 final 不可用。
-
