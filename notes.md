@@ -48,4 +48,35 @@
 
 ### Commit
 
-- 待提交：`docs: start search delivery handoff notes`
+- `0dea435 docs: start search delivery handoff notes`
+
+## 阶段 1：设计方案与测试方案
+
+### 阶段目标
+
+- 正式沉淀搜索调用 / 生效计数的数据定义。
+- 明确 conversion error 不应把 run 判成不可用。
+- 明确 HTML、manifest、validate、Skill / README 的数据流和兼容策略。
+- 先写测试方案，后续实现按红绿切片推进。
+
+### 关键证据
+
+- v10 `lct-20260604-114802` 的 D 成员有 9 次 `WebSearch` tool call。
+- 同一 stream JSON 有 9 个 matching `tool_result` event。
+- 同一 session log 有 9 次 `failed to convert ADK output to model format`，tool 为 `WebSearch`。
+- 因此 `tool_result` 只能证明输出回到 traecli 事件流，不能单独证明模型成功消费。第一版必须结合 session log conversion error 扣减。
+
+### 规范未覆盖但需要明确的执行决定
+
+- `lct_web_tool_effective_calls = min(lct_web_tool_calls, max(0, matched_web_tool_results - conversion_errors))`。
+- conversion error 逻辑计数优先使用 `failed to convert ADK output to model format`，避免和 `unsupported tool output conversion` / `BuildNotification failed` 重复计数。
+- legacy artifact 缺少搜索交付字段时，HTML 生效次数保守显示 0；不把调用次数复制成生效次数。
+- validate warning 不改变 `complete_ok_final` 或 `usable_degraded_final`。
+
+### 阶段验证
+
+- 通过：`git diff --check`
+
+### Commit
+
+- 待提交：`docs: design search delivery and index provenance`
