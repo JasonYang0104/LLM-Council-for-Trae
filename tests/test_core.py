@@ -354,6 +354,44 @@ FINAL RANKING:
         aggregate = calculate_aggregate_rankings(stage2, {"Response A": "GPT-5.4", "Response B": "GLM-5.1"})
         self.assertEqual({item["model"]: item["average_rank"] for item in aggregate}, {"GLM-5.1": 1.5, "GPT-5.4": 1.5})
 
+    def test_stage3_prompt_includes_aggregate_rankings_and_copy_constraints(self):
+        question = "Should local personal agents reach mass adoption in 2026H2?"
+        stage1_results = [
+            {"label": "Response A", "model": "Kimi-K2.6", "response": "A says early adoption."},
+            {"label": "Response B", "model": "DeepSeek-V4-Pro", "response": "B says developer adoption first."},
+            {"label": "Response C", "model": "GPT-5.2", "response": "C says mass adoption lags."},
+        ]
+        stage2_results = [
+            {
+                "model": "Reviewer",
+                "ranking": "FINAL RANKING:\n1. Response C\n2. Response B\n3. Response A",
+                "parsed_ranking": ["Response C", "Response B", "Response A"],
+                "status": "ok",
+                "parse_status": "ok",
+            }
+        ]
+        aggregate_rankings = [
+            {"label": "Response C", "model": "GPT-5.2", "average_rank": 1.0, "rankings_count": 3, "positions": [1, 1, 1]},
+            {"label": "Response B", "model": "DeepSeek-V4-Pro", "average_rank": 2.0, "rankings_count": 3, "positions": [2, 2, 2]},
+            {"label": "Response A", "model": "Kimi-K2.6", "average_rank": 3.0, "rankings_count": 3, "positions": [3, 3, 3]},
+        ]
+
+        stage3_prompt = build_stage3_prompt(
+            question,
+            stage1_results,
+            stage2_results,
+            aggregate_rankings=aggregate_rankings,
+        )
+
+        self.assertIn("Stage 2 综合排序", stage3_prompt)
+        self.assertIn("1. Response C | model=GPT-5.2 | average_rank=1.0 | rankings_count=3 | positions=[1, 1, 1]", stage3_prompt)
+        self.assertIn("2. Response B | model=DeepSeek-V4-Pro | average_rank=2.0 | rankings_count=3 | positions=[2, 2, 2]", stage3_prompt)
+        self.assertIn("3. Response A | model=Kimi-K2.6 | average_rank=3.0 | rankings_count=3 | positions=[3, 3, 3]", stage3_prompt)
+        self.assertLess(stage3_prompt.index("1. Response C"), stage3_prompt.index("2. Response B"))
+        self.assertLess(stage3_prompt.index("2. Response B"), stage3_prompt.index("3. Response A"))
+        self.assertIn("不得逐字或近似复用任何 Stage 1 回答", stage3_prompt)
+        self.assertIn("必须显式融合 top-ranked responses", stage3_prompt)
+
     def test_default_prompts_are_chinese_reader_facing(self):
         question = "Explain one practical tradeoff."
         stage1_prompt = build_stage1_prompt(question)
@@ -687,9 +725,9 @@ FINAL RANKING:
             self.assertNotIn('<details id="input-prompt" class="question-context" open>', html)
             self.assertNotIn('<p class="question-context">', html)
             self.assertIn("附录 A · 阶段 1 候选回答", html)
-            self.assertIn("搜索工具", html)
-            self.assertIn("调用次数：0", html)
-            self.assertIn("调用生效次数：0", html)
+            self.assertNotIn("搜索工具", html)
+            self.assertNotIn("调用次数：0", html)
+            self.assertNotIn("调用生效次数：0", html)
             self.assertNotIn("允许：是 · 实际使用：否", html)
             self.assertIn("已验证<br>阶段 3", html)
             self.assertIn("复制 Markdown", html)
@@ -2033,6 +2071,180 @@ The user is not merely asking whether local inference hardware will improve they
         import asyncio
         asyncio.run(_run())
 
+    def test_stage3_retries_when_final_copies_stage1_response(self):
+        async def _run():
+            from llm_council_for_trae.council import stage3_synthesize_final, CouncilConfig
+            from llm_council_for_trae.provider import ModelCallResult, TraeCliProvider
+            from llm_council_for_trae.store import ArtifactStore
+            from unittest.mock import AsyncMock
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s3-copy-retry")
+            config = CouncilConfig(members=["Kimi-K2.6", "GPT-5.2"], chairman="Kimi-K2.6")
+            copied_response = ("Stage 1 source sentence with distinctive evidence. " * 80).strip()
+            rewritten_response = "综合结论：本地个人 agent 更可能先进入开发者和 prosumer 早期采用，而不是 2026H2 普通家庭爆发。"
+            first_call = ModelCallResult(
+                expected_model="Kimi-K2.6", actual_model="Kimi-K2.6", response=copied_response,
+                status="ok", session_id="s1", command=["traecli"], exit_code=0,
+                stdout_path="out.jsonl", stderr_path="err.log",
+            )
+            retry_call = ModelCallResult(
+                expected_model="Kimi-K2.6", actual_model="Kimi-K2.6", response=rewritten_response,
+                status="ok", session_id="s2", command=["traecli"], exit_code=0,
+                stdout_path="retry.jsonl", stderr_path="retry.err.log",
+            )
+            provider = TraeCliProvider.__new__(TraeCliProvider)
+            provider.query_model = AsyncMock(side_effect=[first_call, retry_call])
+
+            final, meta = await stage3_synthesize_final(
+                "test query",
+                [
+                    {"label": "Response A", "model": "Kimi-K2.6", "response": copied_response, "status": "ok"},
+                    {"label": "Response B", "model": "GPT-5.2", "response": "Different evidence and conclusion.", "status": "ok"},
+                ],
+                [
+                    {
+                        "model": "Reviewer",
+                        "ranking": "FINAL RANKING:\n1. Response B\n2. Response A",
+                        "parsed_ranking": ["Response B", "Response A"],
+                        "status": "ok",
+                        "parse_status": "ok",
+                    }
+                ],
+                config, provider, store,
+            )
+
+            self.assertEqual(provider.query_model.await_count, 2)
+            self.assertEqual(final["response"], rewritten_response)
+            self.assertEqual(final["prompt_path"], "stage3/chairman.copy_retry.prompt.md")
+            self.assertEqual(final["original_prompt_path"], "stage3/chairman.prompt.md")
+            self.assertEqual(store.path("stage3/final.md").read_text().strip(), rewritten_response)
+            self.assertTrue(final["chairman_copy_check"]["triggered"])
+            self.assertTrue(final["chairman_copy_check"]["retry_attempted"])
+            self.assertTrue(final["chairman_copy_check"]["resolved"])
+            self.assertEqual(final["chairman_copy_check"]["matched_stage1"][0]["label"], "Response A")
+            self.assertEqual(meta["copy_check"], final["chairman_copy_check"])
+            retry_prompt = provider.query_model.await_args_list[1].kwargs["prompt"]
+            self.assertIn("ANTI-COPY RETRY", retry_prompt)
+            self.assertIn("Response A", retry_prompt)
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_stage3_records_unresolved_copy_check_when_retry_still_copies(self):
+        async def _run():
+            from llm_council_for_trae.council import stage3_synthesize_final, CouncilConfig
+            from llm_council_for_trae.provider import ModelCallResult, TraeCliProvider
+            from llm_council_for_trae.store import ArtifactStore
+            from unittest.mock import AsyncMock
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s3-copy-unresolved")
+            config = CouncilConfig(members=["Kimi-K2.6"], chairman="Kimi-K2.6")
+            copied_response = ("Copied Stage 1 answer. " * 90).strip()
+            copy_call = ModelCallResult(
+                expected_model="Kimi-K2.6", actual_model="Kimi-K2.6", response=copied_response,
+                status="ok", session_id="s1", command=["traecli"], exit_code=0,
+                stdout_path="out.jsonl", stderr_path="err.log",
+            )
+            copy_retry = ModelCallResult(
+                expected_model="Kimi-K2.6", actual_model="Kimi-K2.6", response=copied_response,
+                status="ok", session_id="s2", command=["traecli"], exit_code=0,
+                stdout_path="retry.jsonl", stderr_path="retry.err.log",
+            )
+            provider = TraeCliProvider.__new__(TraeCliProvider)
+            provider.query_model = AsyncMock(side_effect=[copy_call, copy_retry])
+
+            final, meta = await stage3_synthesize_final(
+                "test query",
+                [{"label": "Response A", "model": "Kimi-K2.6", "response": copied_response, "status": "ok"}],
+                [{"model": "Reviewer", "ranking": "FINAL RANKING:\n1. Response A", "parsed_ranking": ["Response A"], "status": "ok", "parse_status": "ok"}],
+                config, provider, store,
+            )
+
+            self.assertEqual(provider.query_model.await_count, 2)
+            self.assertEqual(final["response"], copied_response)
+            self.assertTrue(final["chairman_copy_check"]["triggered"])
+            self.assertTrue(final["chairman_copy_check"]["retry_attempted"])
+            self.assertFalse(final["chairman_copy_check"]["resolved"])
+            self.assertEqual(final["chairman_copy_check"]["unresolved_reason"], "retry_still_copies_stage1")
+            self.assertEqual(meta["copy_check"], final["chairman_copy_check"])
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_run_full_council_warns_when_stage3_copy_check_unresolved(self):
+        async def _run():
+            from llm_council_for_trae.council import run_full_council, CouncilConfig
+            from llm_council_for_trae.provider import ModelCallResult
+
+            import llm_council_for_trae.council as council_mod
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s3-copy-warning")
+            source_response = ("Stage 1 answer copied by the chairman. " * 90).strip()
+            second_response = ("Independent answer with a different structure and conclusion. " * 40).strip()
+            config = CouncilConfig(
+                members=["M1", "M2"],
+                chairman="Chair",
+                min_valid_members=2,
+                stage1_auto_backfill=False,
+                stage2_auto_backfill=False,
+            )
+
+            class MockProvider:
+                def __init__(self, *args, **kwargs):
+                    pass
+
+                async def query_model(self, **kwargs):
+                    stage = kwargs["stage"]
+                    label = kwargs["label"]
+                    model = kwargs["model"]
+                    if stage == "stage1":
+                        response = source_response if label == "A" else second_response
+                    elif stage == "stage2":
+                        response = "FINAL RANKING:\n1. Response B\n2. Response A"
+                    elif stage == "stage3":
+                        response = source_response
+                    else:
+                        response = "unused"
+                    return ModelCallResult(
+                        expected_model=model,
+                        actual_model=model,
+                        response=response,
+                        status="ok",
+                        session_id=f"s-{stage}-{label}",
+                        command=["traecli"],
+                        exit_code=0,
+                        stdout_path=f"{label}.jsonl",
+                        stderr_path=f"{label}.err.log",
+                    )
+
+            with patch.object(council_mod, "runtime_doctor") as mock_doctor:
+                mock_doctor.return_value = type("Health", (), {
+                    "ok": True,
+                    "command": "fake",
+                    "version": "1.0",
+                    "doctor_exit_code": 0,
+                    "doctor": {},
+                    "errors": [],
+                    "warnings": [],
+                    "ignored_errors": [],
+                    "models": [{"name": name} for name in ["M1", "M2", "Chair"]],
+                })()
+                with patch.object(council_mod, "require_models_available"):
+                    with patch.object(council_mod, "TraeCliProvider", MockProvider):
+                        manifest = await run_full_council("test query", config, store)
+
+            copy_check = manifest["stages"]["stage3"]["chairman_copy_check"]
+            self.assertTrue(copy_check["triggered"])
+            self.assertFalse(copy_check["resolved"])
+            self.assertEqual(copy_check["matched_stage1"][0]["label"], "Response A")
+            self.assertEqual(manifest["metadata"]["chairman"]["copy_check"], copy_check)
+            warnings = "\n".join(manifest["warnings"])
+            self.assertIn("stage3_copy_risk", warnings)
+            self.assertIn("Response A", warnings)
+
+        import asyncio
+        asyncio.run(_run())
+
     def test_stage3_fallback_records_in_metadata(self):
         async def _run():
             from llm_council_for_trae.council import stage3_synthesize_final, CouncilConfig
@@ -2550,7 +2762,7 @@ The user is not merely asking whether local inference hardware will improve they
         self.assertIn("reviewer-only", html)
         self.assertIn("subjects：3", html)
 
-    def test_html_search_card_shows_calls_and_effective_calls(self):
+    def test_html_search_card_shows_only_calls_when_web_tools_called(self):
         from llm_council_for_trae.html_export import render_summary_cards
         manifest = {
             "config": {"members": ["M1"], "chairman": "Chair"},
@@ -2576,10 +2788,32 @@ The user is not merely asking whether local inference hardware will improve they
 
         self.assertIn("搜索工具", html)
         self.assertIn("调用次数：2", html)
-        self.assertIn("调用生效次数：0", html)
+        self.assertNotIn("调用生效次数", html)
         self.assertNotIn("允许：", html)
         self.assertNotIn("实际使用：", html)
         self.assertNotIn("Web 工具调用：", html)
+
+    def test_html_search_card_hidden_without_web_tool_calls(self):
+        from llm_council_for_trae.html_export import render_summary_cards
+        manifest = {
+            "config": {"members": ["M1"], "chairman": "Chair"},
+            "stages": {
+                "stage1": [
+                    {
+                        "allowed_tools": ["WebSearch", "WebFetch"],
+                        "tool_calls": [],
+                    }
+                ],
+                "stage2": [],
+                "stage3": {},
+            },
+            "status": "ok",
+        }
+
+        html = render_summary_cards(manifest, [])
+
+        self.assertNotIn("搜索工具", html)
+        self.assertNotIn("调用次数：0", html)
 
     def test_html_stage2_tab_shows_reviewer_source_and_subject_count(self):
         manifest = {
