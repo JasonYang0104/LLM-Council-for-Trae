@@ -86,13 +86,13 @@ CLI 参数建议：
 
 不建议要求 `--allow-low-quorum` 才能降到 2，因为用户已明确“自动交付”是刚需，低 quorum 不应被封死。更合理的是：允许自动低 quorum fallback，但必须在输出里强标记。
 
-`backfill_members` 的默认候选池不应是手写静态列表。建议生成顺序：
+`backfill_members` 的默认候选池必须来自已批准的成员整体优先级。当前生成顺序：
 
-1. 当次 `traecli models --json` 中可用模型。
-2. 过滤 hard-banned / beta / queue heat 过高模型，复用 `model_selection.py` 的安全排除逻辑。
-3. 优先失败模型的同 vendor fallback，例如 `MiniMax-M2.7 -> MiniMax-M2.5`。
-4. 再按推荐模型偏好补足候选。
-5. 排除已经作为 primary member、已尝试失败、或主席专用且不适合做 member 的模型。
+1. 读取当次 `traecli models --json`，只作为可用性和安全过滤依据。
+2. 遍历 `model_selection.py` 的成员整体优先级。
+3. 过滤 hard-banned / beta / queue heat 过高模型，复用 `model_selection.py` 的安全排除逻辑。
+4. 排除已经作为 primary member、已尝试失败、或主席专用且不适合做 member 的模型。
+5. 不追加未批准的 runtime safe models，不再默认插入同 vendor fallback。
 
 ### Stage 1 流程
 
@@ -195,11 +195,11 @@ primary chairman failed
   "normal_quorum_met": true,
   "low_quorum_used": false,
   "backfill_used": true,
-  "primary_members": ["Kimi-K2.6", "MiniMax-M2.7", "GPT-5.2", "DeepSeek-V4-Pro"],
-  "candidate_source": "traecli.models.filtered",
-  "backfill_candidates": ["Qwen3.6-Plus", "Gemini-3.1-Pro-Preview", "MiniMax-M2.5"],
+  "primary_members": ["DeepSeek-V4-Pro", "openrouter-1o", "GPT-5.4", "Gemini-3.1-Pro-Preview"],
+  "candidate_source": "member_priority.filtered",
+  "backfill_candidates": ["GPT-5.2", "openrouter-1", "Kimi-K2.6", "DeepSeek-V4-Flash", "MiniMax-M2.7", "Qwen3.6-Plus"],
   "backfill_attempted": ["Qwen3.6-Plus"],
-  "effective_stage1_members": ["MiniMax-M2.7", "GPT-5.2", "Qwen3.6-Plus"]
+  "effective_stage1_members": ["DeepSeek-V4-Pro", "openrouter-1o", "Qwen3.6-Plus"]
 }
 ```
 
@@ -393,7 +393,7 @@ chairman_fallback_used: true|false
 - 全局 process sweeping 或杀未知 `traecli`/`coco` 进程。
 - 自动让 validate 修改 manifest。
 - 强制禁止低 quorum。
-- 追求补到 `target_valid_members=8`。
+- 追求补到超过当前默认 direct roster 的目标人数。
 - 复杂质量加权、模型信誉分或 Bayesian 排名。
 
 ## Best-Practice 测试方案
@@ -451,9 +451,9 @@ export_html -> 对需要 HTML 检查的测试使用真实 export，其余可 pat
 
 候补池选择：
 
-1. `test_backfill_candidates_use_current_traecli_models`：候补只来自当次 runtime models。
+1. `test_backfill_candidates_use_defined_member_roster_only`：候补只来自已批准的成员整体优先级，并且仍受当次 runtime 可用性过滤。
 2. `test_backfill_candidates_filter_hard_banned_beta_hot_queue`：复用 hard-ban / beta / queue heat 过滤。
-3. `test_backfill_candidates_prefer_same_vendor_fallback`：例如 `MiniMax-M2.7` 失败时优先 `MiniMax-M2.5`。
+3. `test_backfill_candidates_exclude_unapproved_runtime_safe_models`：即使 `openrouter-3o`、`Kimi-K2.5` 等模型安全可用，也不得进入默认候补池。
 4. `test_backfill_candidates_exclude_primary_and_attempted_models`：不重复尝试同一模型。
 5. `test_backfill_candidates_are_deterministic`：相同 models 输入得到相同候补顺序。
 

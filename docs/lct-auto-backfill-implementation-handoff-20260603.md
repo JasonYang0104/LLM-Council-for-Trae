@@ -173,9 +173,9 @@ git diff --check
 先写测试：
 
 - 显式 `--backfill-members` 优先。
-- 无显式候补时，从当前 `models --recommend --json` 或可用模型清单生成候选。
+- 无显式候补时，从成员整体优先级中生成候选，并用当前 `models --recommend --json` / `models --json` 结果做可用性参考。
 - 排除 primary members、已尝试失败成员、主席专用模型、禁用模型。
-- 同 vendor fallback 优先；然后按推荐顺序补齐。
+- 不追加未批准的 runtime safe models；默认候补顺序必须保持成员整体优先级。
 - 候补列表写入 manifest provenance。
 
 实现建议：

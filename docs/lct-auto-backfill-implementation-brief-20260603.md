@@ -27,7 +27,7 @@ LCT 已经从“默认成员失败后靠外层 Agent 整轮重跑”推进到“
 
 第四，主席模型失败时允许自动走备选链；不需要打断用户，但必须记录 `chairman_fallback_used`。
 
-第五，Skill 和 README 必须跟 CLI 行为一致。外层 Agent 不再把推荐阵容整轮 rerun 当成第一补救动作；`models --recommend --json` 现在是候补池来源，而不是另起一轮的指令。
+第五，Skill 和 README 必须跟 CLI 行为一致。外层 Agent 不再把推荐阵容整轮 rerun 当成第一补救动作；`models --recommend --json` 只作为当前模型可用性和安全过滤参考，默认候补池来自成员整体优先级，最终以 terminal manifest 的 `metadata.quorum.backfill_candidates` 为准。
 
 第六，Stage 1 和 Stage 2 的补位语义必须分开。Stage 1 是 member backfill，只有 Stage 1 quorum 不足时才新增候选答案；Stage 2 在 quorum 已满足时是 reviewer-only backfill，只补交 review，不新增候选答案。
 
@@ -41,7 +41,7 @@ LCT 已经从“默认成员失败后靠外层 Agent 整轮重跑”推进到“
 
 ### Backfill candidate pool
 
-新增确定性候补池：显式 `--backfill-members` 优先，然后同 vendor fallback，再用 `models --recommend --json` 和当前 runtime safe models 补齐。候补池会过滤 primary members、已尝试成员、主席、hard-banned、beta 和 hot queue 模型。
+新增确定性候补池：显式 `--backfill-members` 优先；未显式提供时，只从已批准的成员整体优先级中选择剩余候补，并用当前 runtime 模型列表过滤不可用、hard-banned、beta 和 hot queue 模型。候补池会过滤 primary members、已尝试成员和主席，不追加未批准的 runtime safe models。
 
 对应提交：`b0d09f6 feat: add deterministic backfill candidate selection`
 

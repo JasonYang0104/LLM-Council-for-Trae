@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from typing import Any, TextIO
 
 from .council import DEFAULT_CHAIRMAN, DEFAULT_MEMBERS
-from .roster import resolve_fallback
 
 
 PREFERRED_MEMBERS = [
@@ -58,7 +57,6 @@ def recommend_model_choice(models: list[dict[str, Any]]) -> ModelChoice:
         return ModelChoice([], "", "no-safe-candidates")
 
     safe_names = [model["name"] for model in safe_models]
-    usable = safe_names
 
     members: list[str] = []
     for preferred in PREFERRED_MEMBERS:
@@ -66,11 +64,9 @@ def recommend_model_choice(models: list[dict[str, Any]]) -> ModelChoice:
             members.append(preferred)
         if len(members) >= 4:
             break
-    for name in usable:
-        if len(members) >= 4:
-            break
-        if name not in members:
-            members.append(name)
+
+    if not members:
+        return ModelChoice([], "", "no-approved-candidates")
 
     chairman = next(
         (name for name in PREFERRED_CHAIRMEN if name in safe_names),
@@ -110,13 +106,7 @@ def build_backfill_candidates(
             add_candidate(candidates, name)
         return candidates
 
-    for failed in failed_models or []:
-        add_candidate(candidates, resolve_fallback(failed))
-
-    recommendation = recommend_model_choice(models)
-    for name in recommendation.members:
-        add_candidate(candidates, name)
-    for name in safe_names:
+    for name in PREFERRED_MEMBERS:
         add_candidate(candidates, name)
     return candidates
 
@@ -262,7 +252,7 @@ def write_model_menu(stderr: TextIO, models: list[dict[str, Any]], recommendatio
     stderr.write("\n推荐 council 模型套：\n")
     stderr.write(f"  members: {', '.join(recommendation.members)}\n")
     stderr.write(f"  chairman: {recommendation.chairman}\n")
-    stderr.write("推荐逻辑：硬排除 Seed/Doubao/GLM/GPT-5.5、Beta 和 Queue heat 过高模型；按配置优先级选择成员。主席优先级：DeepSeek、Kimi、DeepSeek Flash、GPT、OpenRouter。\n")
+    stderr.write("推荐逻辑：只从成员整体优先级中推荐可用模型；硬排除 Seed/Doubao/GLM/GPT-5.5、Beta 和 Queue heat 过高模型。主席优先级：DeepSeek、Kimi、DeepSeek Flash、GPT、OpenRouter。\n")
     if names:
         stderr.write("\n")
     stderr.flush()

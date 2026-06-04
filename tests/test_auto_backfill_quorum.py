@@ -8,7 +8,40 @@ from unittest.mock import patch
 
 
 class AutoBackfillQuorumTests(unittest.TestCase):
-    def test_backfill_candidates_filter_runtime_models_and_prefer_same_vendor_fallback(self):
+    def test_default_backfill_candidates_use_defined_member_roster_only(self):
+        from llm_council_for_trae.model_selection import build_backfill_candidates
+
+        candidates = build_backfill_candidates(
+            [
+                {"name": "DeepSeek-V4-Pro"},
+                {"name": "openrouter-1o"},
+                {"name": "GPT-5.4"},
+                {"name": "Gemini-3.1-Pro-Preview"},
+                {"name": "GPT-5.2"},
+                {"name": "openrouter-1"},
+                {"name": "Kimi-K2.6"},
+                {"name": "DeepSeek-V4-Flash"},
+                {"name": "MiniMax-M2.7"},
+                {"name": "Qwen3.6-Plus"},
+                {"name": "openrouter-3o"},
+                {"name": "openrouter-2o"},
+                {"name": "Kimi-K2.5"},
+                {"name": "MiniMax-M2.5"},
+            ],
+            primary_members=["DeepSeek-V4-Pro", "openrouter-1o", "GPT-5.4", "Gemini-3.1-Pro-Preview"],
+            chairman="DeepSeek-V4-Pro",
+        )
+
+        self.assertEqual(
+            candidates,
+            ["GPT-5.2", "openrouter-1", "Kimi-K2.6", "DeepSeek-V4-Flash", "MiniMax-M2.7", "Qwen3.6-Plus"],
+        )
+        self.assertNotIn("openrouter-3o", candidates)
+        self.assertNotIn("openrouter-2o", candidates)
+        self.assertNotIn("Kimi-K2.5", candidates)
+        self.assertNotIn("MiniMax-M2.5", candidates)
+
+    def test_backfill_candidates_filter_runtime_models_against_defined_member_roster(self):
         from llm_council_for_trae.model_selection import build_backfill_candidates
 
         candidates = build_backfill_candidates(
@@ -30,7 +63,8 @@ class AutoBackfillQuorumTests(unittest.TestCase):
             chairman="Kimi-K2.6",
         )
 
-        self.assertEqual(candidates, ["MiniMax-M2.5", "Gemini-3.1-Pro-Preview", "Qwen3.6-Plus"])
+        self.assertEqual(candidates, ["Gemini-3.1-Pro-Preview", "Qwen3.6-Plus"])
+        self.assertNotIn("MiniMax-M2.5", candidates)
 
     def test_explicit_backfill_candidates_keep_priority_but_still_filter_unsafe_and_attempted(self):
         from llm_council_for_trae.model_selection import build_backfill_candidates
