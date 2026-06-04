@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LCT 搜索生效计数与索引补位候选修正简报</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1f2933;
+      --muted: #5d6875;
+      --line: #d9dee7;
+      --paper: #fbfaf7;
+      --panel: #ffffff;
+      --accent: #24527a;
+      --accent-soft: #e7f0f8;
+      --ok: #1f7a4d;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      line-height: 1.68;
+    }
+    main {
+      width: min(980px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 48px 0 64px;
+    }
+    header {
+      border-bottom: 2px solid var(--accent);
+      padding-bottom: 22px;
+      margin-bottom: 28px;
+    }
+    h1 {
+      font-size: 32px;
+      line-height: 1.22;
+      margin: 0 0 14px;
+      letter-spacing: 0;
+    }
+    h2 {
+      font-size: 21px;
+      margin: 34px 0 12px;
+      letter-spacing: 0;
+    }
+    h3 {
+      font-size: 17px;
+      margin: 24px 0 8px;
+      letter-spacing: 0;
+    }
+    p {
+      margin: 10px 0;
+    }
+    ul, ol {
+      margin: 10px 0 18px;
+      padding-left: 24px;
+    }
+    li {
+      margin: 5px 0;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      background: #f2f4f7;
+      border: 1px solid #e1e5eb;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-size: 0.94em;
+    }
+    pre {
+      overflow-x: auto;
+      background: #f2f4f7;
+      border: 1px solid #dfe5ec;
+      border-radius: 6px;
+      padding: 14px 16px;
+      white-space: pre-wrap;
+    }
+    pre code {
+      border: 0;
+      background: transparent;
+      padding: 0;
+    }
+    .meta {
+      color: var(--muted);
+      font-size: 14px;
+      display: grid;
+      gap: 4px;
+    }
+    .summary {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--accent);
+      border-radius: 6px;
+      padding: 16px 18px;
+      margin: 22px 0 26px;
+    }
+    .summary strong {
+      color: var(--accent);
+    }
+    .status {
+      display: inline-block;
+      color: var(--ok);
+      font-weight: 700;
+    }
+    .section {
+      border-top: 1px solid var(--line);
+      padding-top: 8px;
+      margin-top: 28px;
+    }
+    @media (max-width: 640px) {
+      main {
+        width: min(100% - 24px, 980px);
+        padding-top: 30px;
+      }
+      h1 {
+        font-size: 26px;
+      }
+      h2 {
+        font-size: 19px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>LCT 搜索生效计数与索引补位候选修正简报</h1>
+      <div class="meta">
+        <span>日期：2026-06-04</span>
+        <span>分支：<code>codex/lct-search-delivery-index-20260604</code></span>
+        <span>置信度：<span class="status">高</span></span>
+      </div>
+    </header>
+
+    <section class="summary">
+      <p><strong>结论：</strong>本轮已把 v10 live E2E 复盘暴露的两个审计缺口收束到代码、测试、文档和 Skill 契约里。HTML 搜索卡片现在拆开“调用次数”和“调用生效次数”；根目录索引的 <code>backfill_candidates</code> 来源被固定为 terminal manifest 的 <code>metadata.quorum.backfill_candidates</code>。</p>
+    </section>
+
+    <section class="section">
+      <h2>解决的问题</h2>
+      <ol>
+        <li>HTML 不再把“允许搜索”“观察到 tool call”和“搜索结果生效”混成一个口径，只展示 <code>调用次数</code> 和 <code>调用生效次数</code>。</li>
+        <li>LCT manifest stage records 会持久化 WebSearch / WebFetch 的 result 交付证据、conversion error 和 effective call 计数。</li>
+        <li><code>validate</code> 对“调用次数大于调用生效次数”的 run 给 warning，但不把已有可用 final 判失败。</li>
+        <li><code>&lt;run_id&gt;-index.md</code> 的 <code>backfill_candidates</code> 只能来自 terminal manifest，缺失时写 <code>not recorded</code>，不得猜。</li>
+      </ol>
+      <p>这次没有重跑 v10，也没有做新的 live council benchmark。旧 v10 artifacts 保持为复盘证据，不改写。</p>
+    </section>
+
+    <section class="section">
+      <h2>实现摘要</h2>
+      <h3>P1：搜索调用和生效拆分</h3>
+      <ul>
+        <li><code>provider.py</code> 解析 WebSearch / WebFetch 的 <code>tool_result</code> event，并从复制后的 <code>session.log</code> 统计 Web tool output conversion failures。</li>
+        <li><code>ModelCallResult</code> 持久化 <code>web_tool_result_calls_count</code>、<code>web_tool_result_call_ids</code>、<code>lct_search_conversion_errors</code>、<code>web_tool_effective_calls_count</code>。</li>
+        <li><code>council.py</code> 把这些字段传播到 manifest stage records。</li>
+        <li><code>html_export.py</code> 产出 <code>lct_web_tool_calls</code>、<code>lct_web_tool_result_calls</code>、<code>lct_search_conversion_errors</code>、<code>lct_web_tool_effective_calls</code>。</li>
+        <li>reviewer 反馈后，Web tool call 去重 scope 改为 per stage record，并把 persisted effective 限制到 observed calls，避免 <code>effective &gt; calls</code>。</li>
+      </ul>
+
+      <h3>P2：索引补位候选来源固定</h3>
+      <pre><code>backfill_candidates 必须来自 terminal manifest 的 metadata.quorum.backfill_candidates。
+如果 terminal manifest 没有记录该字段，写 backfill_candidates: not recorded。
+不得从默认成员阵容、models --recommend --json 的 primary roster、实际有效 Stage 1 成员猜测候补池。</code></pre>
+    </section>
+
+    <section class="section">
+      <h2>验证证据</h2>
+      <ul>
+        <li>基线：<code>PYTHONPATH=src python3 -m compileall src</code>、<code>make test</code>、<code>git diff --check</code>。</li>
+        <li>Targeted tests 覆盖 Web tool result 解析、session log conversion error 计数、manifest 字段传播、HTML 搜索卡片、validate warning、README / Skill index contract。</li>
+        <li>Reviewer 追加覆盖 per-record dedupe 和 effective clamp 回归测试。</li>
+        <li>Live runtime availability：<code>PYTHONPATH=src llm-council-for-trae doctor --json</code> exit 0，<code>ok=true</code>；内部只有 MCP / update warnings，无 runtime error。</li>
+        <li>Model recommendation：<code>PYTHONPATH=src llm-council-for-trae models --recommend --json</code> exit 0，返回 21 个模型，推荐成员为 <code>Kimi-K2.6</code>、<code>MiniMax-M2.7</code>、<code>GPT-5.2</code>、<code>DeepSeek-V4-Pro</code>，主席为 <code>Kimi-K2.6</code>。</li>
+        <li>Final full verification：<code>PYTHONPATH=src python3 -m compileall src</code> pass；<code>make test</code> pass，202 tests OK；<code>git diff --check</code> pass。</li>
+      </ul>
+    </section>
+
+    <section class="section">
+      <h2>提交链</h2>
+      <ul>
+        <li><code>0dea435 docs: start search delivery handoff notes</code></li>
+        <li><code>02f91c1 docs: design search delivery and index provenance</code></li>
+        <li><code>1007220 test: cover search delivery and index provenance gaps</code></li>
+        <li><code>be7a285 feat: record effective web tool delivery evidence</code></li>
+        <li><code>82a386d feat: display effective search calls in html and validate</code></li>
+        <li><code>c985dfc docs: require manifest-sourced backfill candidates</code></li>
+        <li><code>e30b723 fix: harden search summary and index contract tests</code></li>
+        <li><code>docs: add search delivery implementation brief</code></li>
+      </ul>
+    </section>
+
+    <section class="section">
+      <h2>未做事项</h2>
+      <ul>
+        <li>没有重跑完整 live council。当前 live checks 只证明 <code>traecli</code>、doctor 和 model recommendation 可用。</li>
+        <li>没有改写 v10 artifacts。旧 run 是复盘证据，不应被新实现覆盖。</li>
+        <li>没有改变模型阵容、quorum policy 或 chairman fallback policy。</li>
+        <li>没有把 WebSearch conversion warning 升级成 hard failure；这是刻意选择，因为 conversion issue 代表搜索交付审计风险，不等于已有 final 必然不可用。</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

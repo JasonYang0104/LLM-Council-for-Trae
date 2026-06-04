@@ -215,4 +215,38 @@
 
 ### Commit
 
-- 待提交：`fix: harden search summary and index contract tests`
+- `e30b723 fix: harden search summary and index contract tests`
+
+## 阶段 7：最终 brief 与全量验证
+
+### 阶段目标
+
+- 生成 PM director 风格简报 Markdown 和 HTML。
+- 复跑完整验证，确认 reviewer hardening 和 brief 产物都纳入验收。
+- 记录 live runtime availability，不发起新的完整 council benchmark。
+
+### 产物
+
+- `docs/lct-search-delivery-and-index-brief-20260604.md`
+- `docs/lct-search-delivery-and-index-brief-20260604.html`
+
+### Live 检查
+
+- 通过：`PYTHONPATH=src llm-council-for-trae doctor --json`
+  - exit 0，payload `ok=true`。
+  - `traecli doctor` 内部有 MCP connecting warning 和 update server warning；无 runtime error。
+  - model list count：21。
+- 通过：`PYTHONPATH=src llm-council-for-trae models --recommend --json`
+  - exit 0。
+  - recommendation members：`Kimi-K2.6`、`MiniMax-M2.7`、`GPT-5.2`、`DeepSeek-V4-Pro`。
+  - chairman：`Kimi-K2.6`。
+
+### 全量验证
+
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`make test`（202 tests OK，输出 `degraded_ok`）
+- 通过：`git diff --check`
+
+### Commit
+
+- `docs: add search delivery implementation brief`
