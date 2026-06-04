@@ -161,7 +161,7 @@
       <li>成员失败后的主恢复路径变为同一个 run 内 auto-backfill：保留已成功回答，只追加候补成员，不整轮重跑。</li>
       <li>low quorum 是可用降级，不是健康成功；必须标记 <code>degraded_ok</code> 并展示有效成员数和 backfill 尝试。</li>
       <li>主席模型失败时允许自动走备选链，但必须记录 <code>chairman_fallback_used</code>。</li>
-      <li><code>models --recommend --json</code> 现在是候补池来源，而不是另起一轮的指令。</li>
+      <li><code>models --recommend --json</code> 只作为当前模型可用性和安全过滤参考；默认候补池来自成员整体优先级，最终以 terminal manifest 的 <code>metadata.quorum.backfill_candidates</code> 为准。</li>
       <li>补位语义分两类：Stage 1 是 member backfill，只有 Stage 1 quorum 不足时才新增候选答案；Stage 2 是 reviewer-only backfill，不新增候选答案。</li>
     </ul>
 
@@ -171,7 +171,7 @@
     <p class="commit">提交：<code>7d7fc53 fix: drain cancelled model tasks before backfill</code></p>
 
     <h3>Backfill candidate pool</h3>
-    <p>候补池按显式 <code>--backfill-members</code>、同 vendor fallback、推荐成员、runtime safe models 的顺序生成，并过滤 primary、已尝试、主席、hard-banned、beta 和 hot queue 模型。</p>
+    <p>候补池优先使用显式 <code>--backfill-members</code>；未显式提供时，只从已批准的成员整体优先级中选择剩余候补，并用当前 runtime 模型列表过滤不可用、hard-banned、beta 和 hot queue 模型。候补池会过滤 primary、已尝试和主席，不追加未批准的 runtime safe models。</p>
     <p class="commit">提交：<code>b0d09f6 feat: add deterministic backfill candidate selection</code></p>
 
     <h3>Stage 1 auto-backfill</h3>

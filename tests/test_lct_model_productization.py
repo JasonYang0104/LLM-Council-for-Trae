@@ -262,6 +262,14 @@ class LctModelProductizationTests(unittest.TestCase):
         self.assertNotIn("subagent profile 已对齐 6 成员全阵容", text)
         self.assertIn("direct 默认 4 成员", text)
 
+    def test_readme_documents_defined_roster_only_default_backfill(self):
+        text = self.read_text("README.md")
+
+        self.assertIn("models --recommend 只会从成员整体优先级中推荐可用模型", text)
+        self.assertIn("默认 auto-backfill 只从成员整体优先级中选择候补", text)
+        self.assertNotIn("当前 runtime safe models 生成 backfill candidates", text)
+        self.assertNotIn("同 vendor fallback、`models --recommend --json` 和当前 runtime safe models", text)
+
     def test_subagent_profile_is_not_direct_default_source(self):
         text = self.read_text("docs/traecli-subagents.md")
 

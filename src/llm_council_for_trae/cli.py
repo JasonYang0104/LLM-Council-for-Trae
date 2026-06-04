@@ -59,8 +59,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--yolo", action="store_true", help="Pass --yolo to traecli. Default member runs do not bypass permissions.")
     run_p.add_argument("--no-yolo", action="store_true", help="Compatibility no-op: default member runs already omit --yolo.")
     run_p.add_argument("--min-valid-members", type=int, default=3, help="Minimum valid members for quorum.")
-    run_p.add_argument("--target-valid-members", type=int, default=8, help="Target valid members for quorum.")
-    run_p.add_argument("--backfill-members", help="Comma-separated backfill candidate models used before runtime recommendation candidates.")
+    run_p.add_argument("--target-valid-members", type=int, default=4, help="Target valid members for quorum.")
+    run_p.add_argument("--backfill-members", help="Comma-separated explicit backfill candidate models. If omitted, LCT uses the approved member priority roster only.")
     run_p.add_argument("--no-auto-backfill", action="store_true", help="Disable automatic Stage 1 and Stage 2 backfill.")
     run_p.add_argument("--low-quorum-floor", type=int, default=2, help="Minimum valid members required for low-quorum degraded delivery.")
     run_p.add_argument("--chairman-fallback", help="Comma-separated fallback chairman models.")
@@ -265,7 +265,7 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
         chairman_agent=chairman_agent,
         use_yolo=bool(getattr(args, "yolo", False)) and not bool(getattr(args, "no_yolo", False)),
         min_valid_members=getattr(args, "min_valid_members", 3),
-        target_valid_members=getattr(args, "target_valid_members", 8),
+        target_valid_members=getattr(args, "target_valid_members", 4),
         chairman_fallback=chairman_fallback,
         stage2_timeout=getattr(args, "stage2_timeout", None),
         chairman_timeout=getattr(args, "chairman_timeout", 720),

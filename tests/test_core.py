@@ -255,7 +255,7 @@ def write_reviewer_only_backfill_run(store, *, leak_reviewer_into_subjects: bool
             "aggregate_rankings": [{"model": "M1", "average_rank": 1.0, "rankings_count": 3, "positions": [1, 2, 1]}],
             "quorum": {
                 "min_valid_members": 3,
-                "target_valid_members": 8,
+                "target_valid_members": 4,
                 "low_quorum_floor": 2,
                 "effective_valid_members": 3,
                 "normal_quorum_met": True,
@@ -419,7 +419,7 @@ FINAL RANKING:
             {"name": "DeepSeek-V4-Pro", "context_window": 184000},
         ]
         choice = recommend_model_choice(models)
-        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "GPT-5.4", "openrouter-2o"])
+        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "GPT-5.4"])
         self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
 
     def test_default_direct_roster_uses_current_priority_suite(self):
@@ -1538,7 +1538,7 @@ The user is not merely asking whether local inference hardware will improve they
                 "low_quorum_used": True,
                 "backfill_used": False,
                 "primary_members": ["M1", "M2", "M3"],
-                "candidate_source": "traecli.models.filtered",
+                "candidate_source": "member_priority.filtered",
                 "backfill_candidates": [],
                 "backfill_attempted": [],
                 "effective_stage1_members": ["M1", "M2"],
@@ -1565,7 +1565,7 @@ The user is not merely asking whether local inference hardware will improve they
                 "low_quorum_used": True,
                 "backfill_used": False,
                 "primary_members": ["M1", "M2", "M3"],
-                "candidate_source": "traecli.models.filtered",
+                "candidate_source": "member_priority.filtered",
                 "backfill_candidates": [],
                 "backfill_attempted": [],
                 "effective_stage1_members": ["M1", "M2"],
@@ -1784,9 +1784,9 @@ The user is not merely asking whether local inference hardware will improve they
         config = CouncilConfig(members=["A"], chairman="B")
         self.assertEqual(config.min_valid_members, 3)
 
-    def test_target_valid_members_default_is_8(self):
+    def test_target_valid_members_default_is_4(self):
         config = CouncilConfig(members=["A"], chairman="B")
-        self.assertEqual(config.target_valid_members, 8)
+        self.assertEqual(config.target_valid_members, 4)
 
     def test_use_yolo_default_is_false(self):
         config = CouncilConfig(members=["A"], chairman="B")
@@ -2330,7 +2330,7 @@ The user is not merely asking whether local inference hardware will improve they
             {"name": "Qwen3.6-Plus"},
         ]
         choice = recommend_model_choice(models)
-        self.assertEqual(choice.members, ["Qwen3.6-Plus", "openrouter-2o"])
+        self.assertEqual(choice.members, ["Qwen3.6-Plus"])
         self.assertEqual(choice.source, "recommended")
 
     def test_recommend_model_choice_excludes_hard_banned_models_when_safe_alternatives_exist(self):
@@ -2345,13 +2345,14 @@ The user is not merely asking whether local inference hardware will improve they
         ]
         choice = recommend_model_choice(models)
 
-        self.assertEqual(choice.members, ["GPT-5.4", "Kimi-K2.6", "Mystery-Safe-Model"])
+        self.assertEqual(choice.members, ["GPT-5.4", "Kimi-K2.6"])
         joined = ",".join(choice.members + [choice.chairman]).lower()
         self.assertNotIn("seed", joined)
         self.assertNotIn("doubao", joined)
         self.assertNotIn("gpt-5.5", joined)
+        self.assertNotIn("mystery", joined)
 
-    def test_recommend_model_choice_prefers_openrouter_over_seed_when_it_is_the_only_safe_model(self):
+    def test_recommend_model_choice_rejects_unapproved_safe_model(self):
         from llm_council_for_trae.model_selection import recommend_model_choice
 
         choice = recommend_model_choice([
@@ -2359,7 +2360,9 @@ The user is not merely asking whether local inference hardware will improve they
             {"name": "openrouter-safe"},
         ])
 
-        self.assertEqual(choice.members, ["openrouter-safe"])
+        self.assertEqual(choice.members, [])
+        self.assertEqual(choice.chairman, "")
+        self.assertEqual(choice.source, "no-approved-candidates")
 
     def test_recommend_model_choice_reports_no_safe_candidates_when_all_models_are_hard_banned(self):
         from llm_council_for_trae.model_selection import recommend_model_choice
@@ -2378,11 +2381,13 @@ The user is not merely asking whether local inference hardware will improve they
 
         self.assertEqual(resolve_model_tokens("Seed-Dogfooding-2.0", names), ["Seed-Dogfooding-2.0"])
 
-    def test_recommend_model_choice_fallback_to_openrouter(self):
+    def test_recommend_model_choice_does_not_fallback_to_unapproved_openrouter(self):
         from llm_council_for_trae.model_selection import recommend_model_choice
         models = [{"name": "openrouter-2o"}]
         choice = recommend_model_choice(models)
-        self.assertEqual(choice.members, ["openrouter-2o"])
+        self.assertEqual(choice.members, [])
+        self.assertEqual(choice.chairman, "")
+        self.assertEqual(choice.source, "no-approved-candidates")
 
     def test_recommend_model_choice_empty_models(self):
         from llm_council_for_trae.model_selection import recommend_model_choice

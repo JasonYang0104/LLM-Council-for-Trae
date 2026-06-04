@@ -34,7 +34,7 @@ class CouncilConfig:
     chairman_agent: str | None = None
     use_yolo: bool = False
     min_valid_members: int = 3
-    target_valid_members: int = 8
+    target_valid_members: int = 4
     chairman_fallback: list[str] | None = None
     member_soft_checkpoint: int = 300
     member_quorum_checkpoint: int = 480
@@ -1333,7 +1333,7 @@ def stage1_quorum_metadata(
         "low_quorum_used": low_quorum_used,
         "backfill_used": bool(backfill_attempted),
         "primary_members": list(primary_members),
-        "candidate_source": "explicit" if config.backfill_members else "traecli.models.filtered",
+        "candidate_source": "explicit" if config.backfill_members else "member_priority.filtered",
         "backfill_candidates": backfill_candidates,
         "backfill_attempted": backfill_attempted,
         "effective_stage1_members": effective_members,

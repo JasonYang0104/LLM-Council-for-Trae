@@ -138,7 +138,7 @@ llm-council-for-trae validate <run_id> --json
 命令原则：
 
 - `doctor` 先确认 `traecli` 是否存在、Trae CLI 是否登录、模型是否可用、插件是否加载。
-- `models --recommend` 读取 Trae CLI 当前可用模型，并基于当前列表推荐 council 成员和主席，不维护第二套过期模型清单。
+- `models --recommend` 读取 Trae CLI 当前可用模型，只从成员整体优先级中推荐可用 council 成员和主席，不维护第二套过期模型清单。
 - `run` 在未传 `--members`、`--chairman`、`--profile` 或 `--default-models` 时，先在 CLI 终端中主动询问模型选择，再执行完整 Stage 1 -> Stage 2 -> Stage 3 -> HTML。
 - `run --default-models` 跳过询问，使用静态默认模型套。
 - `show` 只读 manifest，不调用模型。
@@ -649,7 +649,7 @@ Qwen3.6-Plus
 Qwen3.5-Plus
 ```
 
-注意：这个列表是 2026-05-22 当前机器当前时间的历史事实，不能写死进推荐逻辑。`openrouter-*` 的 quota / L4 repo 文案本身不是排除理由；真正的默认和推荐仍要经过当前 `traecli models --json`、hard-ban、Beta 和 queue heat 过滤。
+注意：这个列表是 2026-05-22 当前机器当前时间的历史事实，不能写死进推荐逻辑。`openrouter-*` 的 quota / L4 repo 文案本身不是排除理由；真正的默认和推荐仍要受成员整体优先级约束，并经过当前 `traecli models --json`、hard-ban、Beta 和 queue heat 过滤。
 
 推荐逻辑已经放在 CLC CLI 内，而不是写在 Trae-CN prompt 里。当前命令是 `models --recommend --json`；`run --input <file>` 在 TTY 中也会复用同一套推荐逻辑。
 
@@ -658,7 +658,7 @@ Qwen3.5-Plus
 - 只从 `models --json` 的当前返回中选。
 - 默认推荐最多 4 个 member models + 1 个 chairman。
 - 当前推荐结果带 members、chairman 和 source；后续如加入 task-mode，可再补 `generated_at`、完整模型快照 hash 或 path、推荐理由。
-- 如果某个首选模型不可用，按同族或同能力降级，但要把替换原因写进 JSON。
+- 如果某个首选模型不可用，继续按成员整体优先级选择下一个可用模型，不引入未批准的 runtime 模型。
 
 当前默认推荐策略：
 
@@ -666,6 +666,7 @@ Qwen3.5-Plus
 general:
   members: DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Gemini-3.1-Pro-Preview
   member_priority: DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Gemini-3.1-Pro-Preview, GPT-5.2, openrouter-1, Kimi-K2.6, DeepSeek-V4-Flash, MiniMax-M2.7, Qwen3.6-Plus
+  default_backfill: remaining available member_priority models only
   chairman: DeepSeek-V4-Pro
   chairman_fallback: Kimi-K2.6, DeepSeek-V4-Flash, GPT-5.2, openrouter-1
 ```
