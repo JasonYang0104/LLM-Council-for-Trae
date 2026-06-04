@@ -168,4 +168,28 @@
 
 ### Commit
 
-- 待提交：`feat: display effective search calls in html and validate`
+- `82a386d feat: display effective search calls in html and validate`
+
+## 阶段 5：Skill / README index contract 修正
+
+### 阶段目标
+
+- README、canonical Skill 和 `.trae` Skill 都明确 `backfill_candidates` 的唯一来源。
+- 根目录索引字段加入 `lct_web_tool_effective_calls` 和 `lct_search_conversion_errors`。
+- 文档禁止从默认成员阵容、`models --recommend --json` primary roster 或有效 Stage 1 成员猜测候补池。
+
+### 实现决定
+
+- `$RUN_ID-index.md` / `<run_id>-index.md` 的 `backfill_candidates` 必须来自 terminal manifest 的 `metadata.quorum.backfill_candidates`。
+- 如果 terminal manifest 缺该字段，索引写 `backfill_candidates: not recorded`。
+- `.trae` Skill 增加一行 `$RUN_ID-index.md` 字段清单，使它和 canonical Skill 的索引契约结构一致，便于测试锁定。
+
+### 阶段验证
+
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_readme_quickstart_index_contract_includes_input_and_search_evidence tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_readme_and_skills_require_manifest_sourced_backfill_candidates tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skills_index_contract_includes_search_delivery_fields -v`
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_lct_model_productization.LctModelProductizationTests.test_search_summary_distinguishes_calls_from_effective_calls tests.test_core.CouncilCoreTests.test_parse_stream_json_tracks_web_tool_results_separately tests.test_core.CouncilCoreTests.test_html_search_card_shows_calls_and_effective_calls tests.test_core.CouncilCoreTests.test_validate_warns_when_web_tool_delivery_is_lower_than_calls -v`
+- 通过：`git diff --check`
+
+### Commit
+
+- 待提交：`docs: require manifest-sourced backfill candidates`

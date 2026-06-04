@@ -56,6 +56,8 @@ Input mode: structured by Agent
 lct_search_allowed: true|false
 lct_search_used: true|false
 lct_web_tool_calls: <number>
+lct_web_tool_effective_calls: <number>
+lct_search_conversion_errors: <number>
 agent_external_search_allowed: true|false
 agent_external_search_used: true|false
 agent_sources: <URLs or none>
@@ -73,6 +75,7 @@ stage2_reviewer_backfill: <models or none>
 review_subject_count: <number>
 reviewer_count: <number>
 chairman_fallback_used: true|false
+backfill_candidates: <models or not recorded>
 ```
 
 ## Run
@@ -97,7 +100,7 @@ members: Kimi-K2.6, MiniMax-M2.7, GPT-5.2, DeepSeek-V4-Pro
 chairman: Kimi-K2.6
 ```
 
-推荐阵容不改变 primary default members；它只是 backfill candidates 的可审计输入。CLI 默认会在同一个 run 内 auto-backfill，不整轮重跑。
+推荐阵容不改变 primary default members；它只是 backfill candidates 的可审计输入。CLI 默认会在同一个 run 内 auto-backfill，不整轮重跑。最终 `$RUN_ID-index.md` 的 `backfill_candidates` 必须来自 terminal manifest 的 `metadata.quorum.backfill_candidates`；如果 terminal manifest 没有记录该字段，写 `backfill_candidates: not recorded`。不得从默认成员阵容、不得从 models --recommend --json 的 primary roster、不得从实际有效 Stage 1 成员猜测候补池。
 
 补位语义必须拆开：Stage 1 是 member backfill，只有 Stage 1 quorum 不足时才新增候选答案；Stage 2 是 reviewer-only backfill，当 Stage 1 quorum 已经满足但 reviewer 失败或不足时，候补模型只评审既有有效 Stage 1 answers，不新增候选答案。
 
@@ -120,7 +123,7 @@ llm-council-for-trae run \
 default_attempt_status: ok|degraded_ok|failed|skipped
 default_attempt_run_id: <RUN_ID or none>
 default_attempt_failure_reason: <reason or none>
-backfill_candidates: <models or none>
+backfill_candidates: <models or not recorded>
 backfill_attempts: <models or none>
 stage1_backfill_members: <models or none>
 stage2_reviewer_backfill: <models or none>
@@ -152,7 +155,7 @@ cat ".llm-council-for-trae/runs/$FINAL_RUN_ID/stage3/final.md"
 
 8. 在当前 workspace 根目录写出：
    - `$RUN_ID-final.md`：主席最终答案。
-   - `$RUN_ID-index.md`：run id、run status、validate status、HTML 路径、Input mode、lct_search_allowed、lct_search_used、lct_web_tool_calls、agent_external_search_allowed、agent_external_search_used、agent_sources、agent_fact_pack_path、agent_added_context、final_answer_source、valid_stage1_models、quorum_default、quorum_effective、low_quorum_used、backfill_attempts、stage2_reviewers、stage1_backfill_members、stage2_reviewer_backfill、review_subject_count、reviewer_count、chairman_fallback_used、default attempt 状态、失败模型或 timeout。
+   - `$RUN_ID-index.md`：run id、run status、validate status、HTML 路径、Input mode、lct_search_allowed、lct_search_used、lct_web_tool_calls、lct_web_tool_effective_calls、lct_search_conversion_errors、agent_external_search_allowed、agent_external_search_used、agent_sources、agent_fact_pack_path、agent_added_context、final_answer_source、valid_stage1_models、quorum_default、quorum_effective、low_quorum_used、backfill_candidates、backfill_attempts、stage2_reviewers、stage1_backfill_members、stage2_reviewer_backfill、review_subject_count、reviewer_count、chairman_fallback_used、default attempt 状态、失败模型或 timeout。
 
 ## Report
 
@@ -168,6 +171,8 @@ cat ".llm-council-for-trae/runs/$FINAL_RUN_ID/stage3/final.md"
 - lct_search_allowed：LCT member 是否允许 `WebSearch` / `WebFetch`
 - lct_search_used：LCT artifacts 中是否实际观察到 `WebSearch` / `WebFetch` tool call
 - lct_web_tool_calls：LCT artifacts 中的 Web 工具调用数量
+- lct_web_tool_effective_calls：有证据证明搜索结果成功进入模型上下文的 Web 工具调用数量
+- lct_search_conversion_errors：WebSearch / WebFetch 输出转换失败相关 warning 数量
 - agent_external_search_allowed：外层 Agent 是否被允许在 LCT 之外自行检索
 - agent_external_search_used：外层 Agent 是否实际在 LCT 之外自行检索
 - agent_sources / agent_fact_pack_path：外层 Agent 补充给问题文件的来源或 fact pack

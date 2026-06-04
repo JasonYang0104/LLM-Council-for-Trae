@@ -86,7 +86,7 @@ members: Kimi-K2.6, MiniMax-M2.7, GPT-5.2, DeepSeek-V4-Pro
 chairman: Kimi-K2.6
 ```
 
-`models --recommend --json` 只给本次 run 一个可审计候选来源。默认 primary members 仍来自 `--default-models`；CLI 会在同一个 run 内用 auto-backfill 和 backfill candidates 补足有效成员，不整轮重跑。显式候补优先级通过 `--backfill-members` 传入。
+`models --recommend --json` 只给本次 run 一个可审计候选来源。默认 primary members 仍来自 `--default-models`；CLI 会在同一个 run 内用 auto-backfill 和 backfill candidates 补足有效成员，不整轮重跑。显式候补优先级通过 `--backfill-members` 传入。最终 `$RUN_ID-index.md` 的 `backfill_candidates` 必须来自 terminal manifest 的 `metadata.quorum.backfill_candidates`；如果 terminal manifest 没有记录该字段，写 `backfill_candidates: not recorded`。不得从默认成员阵容、不得从 models --recommend --json 的 primary roster、不得从实际有效 Stage 1 成员猜测候补池。
 
 补位语义必须拆开：Stage 1 是 member backfill，只有 Stage 1 quorum 不足时才新增候选答案；Stage 2 是 reviewer-only backfill，当 Stage 1 quorum 已经满足但 reviewer 失败或不足时，候补模型只评审既有有效 Stage 1 answers，不新增候选答案。
 
@@ -123,7 +123,7 @@ $LCT run \
   --json
 ```
 
-记录 `default_attempt_status`、`default_attempt_run_id`、`default_attempt_failure_reason`、`backfill_candidates`、`backfill_attempts`。
+记录 `default_attempt_status`、`default_attempt_run_id`、`default_attempt_failure_reason`、`backfill_candidates`、`backfill_attempts`。`backfill_candidates` 写入根目录索引时只能抄 terminal manifest 的 `metadata.quorum.backfill_candidates`，缺失时写 `not recorded`。
 
 工具模式由外层 Agent 基于任务判断。answer_only 是可选工具模式，不强制 answer_only；外层 Agent 可以自行判断让 LCT 成员在 `search_enabled` 下内部搜索、先由外层 Agent 补 fact pack、使用 answer_only，或在只读代码/文件问题中使用 workspace_enabled。search_enabled 只表示搜索被允许，不表示模型实际搜索了；索引必须继续拆开记录 `lct_search_used` 和 `agent_external_search_used`。
 
@@ -174,6 +174,7 @@ $LCT run \
 - `metadata.quorum.min_valid_members`: quorum_default
 - `metadata.quorum.effective_valid_members`: quorum_effective
 - `metadata.quorum.low_quorum_used`: low_quorum_used
+- `metadata.quorum.backfill_candidates`: backfill_candidates
 - `metadata.quorum.backfill_attempted`: backfill_attempts
 - `metadata.stage2_reviewers`: stage2_reviewers
 - `metadata.stage2_reviewers.stage1_backfill_members`: stage1_backfill_members
@@ -227,10 +228,14 @@ $LCT run \
 
 交付给用户的根目录索引还必须拆开记录：
 
+- `$RUN_ID-index.md`：run id、run status、validate status、HTML 路径、Input mode、lct_search_allowed、lct_search_used、lct_web_tool_calls、lct_web_tool_effective_calls、lct_search_conversion_errors、agent_external_search_allowed、agent_external_search_used、agent_sources、agent_fact_pack_path、agent_added_context、final_answer_source、valid_stage1_models、quorum_default、quorum_effective、low_quorum_used、backfill_candidates、backfill_attempts、stage2_reviewers、stage1_backfill_members、stage2_reviewer_backfill、review_subject_count、reviewer_count、chairman_fallback_used、default attempt 状态、失败模型或 timeout。
+
 ```text
 lct_search_allowed: true|false
 lct_search_used: true|false
 lct_web_tool_calls: <number>
+lct_web_tool_effective_calls: <number>
+lct_search_conversion_errors: <number>
 agent_external_search_allowed: true|false
 agent_external_search_used: true|false
 agent_sources: <URLs or none>
@@ -241,6 +246,7 @@ valid_stage1_models: <comma-separated models or none>
 quorum_default: <number>
 quorum_effective: <number>
 low_quorum_used: true|false
+backfill_candidates: <models or not recorded>
 backfill_attempts: <models or none>
 stage2_reviewers: <models or none>
 stage1_backfill_members: <models or none>
