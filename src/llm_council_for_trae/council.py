@@ -1038,6 +1038,14 @@ def tool_policy_record(call: ModelCallResult) -> dict[str, Any]:
         "disallowed_tools": call.disallowed_tools,
         "forbidden_tool_calls": call.forbidden_tool_calls,
         "tool_calls": call.tool_calls,
+        "tool_result_calls": call.tool_result_calls,
+        "web_tool_result_calls_count": call.web_tool_result_calls_count,
+        "web_tool_result_call_ids": call.web_tool_result_call_ids,
+        "tool_output_conversion_errors": call.tool_output_conversion_errors,
+        "lct_search_conversion_errors": call.lct_search_conversion_errors,
+        "web_tool_effective_calls_count": call.web_tool_effective_calls_count,
+        "lct_web_tool_effective_calls": call.web_tool_effective_calls_count,
+        "lct_web_tool_result_calls": call.web_tool_result_calls_count,
         "termination": call.termination,
     }
 

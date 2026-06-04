@@ -118,4 +118,30 @@
 
 ### Commit
 
-- 待提交：`test: cover search delivery and index provenance gaps`
+- `1007220 test: cover search delivery and index provenance gaps`
+
+## 阶段 3：provider / manifest 搜索生效证据
+
+### 阶段目标
+
+- `parse_stream_json()` 解析 WebSearch / WebFetch 的 matching `tool_result` event。
+- 解析复制后的 `session.log`，把 Web 工具 output conversion error 折叠成逻辑错误次数。
+- `ModelCallResult.to_json()` 持久化搜索交付字段。
+- `tool_policy_record()` 把搜索交付字段传播到 manifest stage records。
+
+### 实现决定
+
+- `tool_result_calls` 当前只记录 WebSearch / WebFetch result；非 Web 工具不混入 `lct_web_*` 口径。
+- `parse_session_log_search_delivery()` 优先统计 `failed to convert ADK output to model format`，只有没有这类行时才退回 `unsupported tool output conversion`，避免同一转换失败重复计数。
+- `web_tool_effective_calls_count` 在 provider 正常路径中按 `matched_results - conversion_errors` 计算，并限制不超过 Web 工具调用数。
+- stage record 同时写入底层字段和 LCT alias：`web_tool_effective_calls_count` 与 `lct_web_tool_effective_calls`。
+
+### 阶段验证
+
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_parse_stream_json_tracks_web_tool_results_separately tests.test_core.CouncilCoreTests.test_parse_session_log_counts_web_conversion_errors_once tests.test_core.CouncilCoreTests.test_model_call_result_serializes_search_delivery_fields tests.test_core.CouncilCoreTests.test_tool_policy_record_persists_search_delivery_fields -v`
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`git diff --check`
+
+### Commit
+
+- 待提交：`feat: record effective web tool delivery evidence`
