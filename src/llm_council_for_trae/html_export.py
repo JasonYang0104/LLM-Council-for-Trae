@@ -38,9 +38,22 @@ GENERIC_REPORT_TITLES = {
     "正面信号",
     "负面信号",
     "核心结论",
+    "核心观点",
     "综合判断",
     "系统性评估",
     "我真正理解你的需求",
+    "主要内容",
+    "内容概要",
+    "一、核心内容",
+    "核心内容",
+    "二、背景语境",
+    "背景语境",
+    "三、批判性审视",
+    "批判性审视",
+    "四、价值提取",
+    "价值提取",
+    "五、写作技巧分析",
+    "写作技巧分析",
 }
 PREFERRED_TOPIC_SECTIONS = {
     "agent interpretation",
@@ -52,6 +65,10 @@ PREFERRED_TOPIC_SECTIONS = {
     "任务理解",
     "议题概括",
     "讨论焦点",
+    "文章标题",
+    "文章题目",
+    "原文标题",
+    "资料标题",
 }
 EXPLICIT_TOPIC_LABELS = {
     "report topic",
@@ -203,7 +220,7 @@ def _clean_title_candidate(line: str) -> str:
     text = re.sub(r"^[-*+]\s+", "", text)
     text = re.sub(r"^\d+[.)]\s+", "", text)
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
-    text = text.strip("`*_ \t")
+    text = text.strip("`*_ \t\"'“”‘’《》")
     text = re.sub(r"\s+", " ", text)
     return text
 
@@ -213,7 +230,8 @@ def _is_generic_input_title(title: str) -> bool:
 
 
 def _is_generic_report_title(title: str) -> bool:
-    return _normalize_title(title) in GENERIC_REPORT_TITLES
+    normalized = _normalize_title(title)
+    return normalized in GENERIC_REPORT_TITLES or _strip_chinese_section_prefix(normalized) in GENERIC_REPORT_TITLES
 
 
 def _usable_topic(candidate: str, allow_english: bool = False, require_chinese: bool = False) -> bool:
@@ -247,6 +265,10 @@ def _looks_like_english_long_sentence(candidate: str) -> bool:
 def _normalize_title(title: str) -> str:
     title = _clean_title_candidate(title).casefold()
     return re.sub(r"\s+", " ", title).strip(" :：-")
+
+
+def _strip_chinese_section_prefix(title: str) -> str:
+    return re.sub(r"^[一二三四五六七八九十]+[、.．]\s*", "", title).strip()
 
 
 def render_html(root: Path, manifest: dict[str, Any]) -> str:

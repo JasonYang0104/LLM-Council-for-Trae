@@ -41,7 +41,7 @@ v9 E2E 暴露了一个输入边界问题：外层 Agent 把“维护 `notes.md`�
 
 即便使用 `structured by Agent`，也必须保留原始用户问题，并明确哪些内容是 `Agent interpretation`。Agent 不得伪造用户没有表达过的事实、偏好或结论。
 
-`Report topic` 可以追加，因为它是报告元数据；但它不能承载执行指令。
+`Report topic` 可以追加，因为它是报告元数据；但它不能承载执行指令。用户说“直接 LCT”“不要改写提示词”时，禁止的是 `Agent interpretation`、事实包、任务拆解或重写；不禁止追加 `Report topic`。
 
 ## `notes.md` 边界
 

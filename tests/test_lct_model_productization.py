@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 from pathlib import Path
 
@@ -19,9 +20,12 @@ class LctModelProductizationTests(unittest.TestCase):
     def read_text(self, relative: str) -> str:
         return (REPO_ROOT / relative).read_text(encoding="utf-8")
 
-    def test_default_roster_is_four_member_20260602_suite(self):
-        self.assertEqual(DEFAULT_MEMBERS, ["Kimi-K2.6", "MiniMax-M2.7", "GPT-5.2", "DeepSeek-V4-Pro"])
-        self.assertEqual(DEFAULT_CHAIRMAN, "Kimi-K2.6")
+    def test_default_roster_uses_current_priority_suite(self):
+        self.assertEqual(
+            DEFAULT_MEMBERS,
+            ["DeepSeek-V4-Pro", "openrouter-1o", "GPT-5.4", "Gemini-3.1-Pro-Preview"],
+        )
+        self.assertEqual(DEFAULT_CHAIRMAN, "DeepSeek-V4-Pro")
 
     def test_recommendation_uses_safe_openrouter_to_fill_four_members(self):
         choice = recommend_model_choice(
@@ -33,8 +37,22 @@ class LctModelProductizationTests(unittest.TestCase):
             ]
         )
 
-        self.assertEqual(choice.members, ["Kimi-K2.6", "GPT-5.2", "openrouter-1o", "openrouter-1"])
+        self.assertEqual(choice.members, ["openrouter-1o", "GPT-5.2", "openrouter-1", "Kimi-K2.6"])
         self.assertEqual(choice.chairman, "Kimi-K2.6")
+
+    def test_recommendation_caps_primary_members_at_four(self):
+        choice = recommend_model_choice(
+            [
+                {"name": "DeepSeek-V4-Pro"},
+                {"name": "openrouter-1o"},
+                {"name": "GPT-5.4"},
+                {"name": "Gemini-3.1-Pro-Preview"},
+                {"name": "openrouter-2o"},
+            ]
+        )
+
+        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "openrouter-1o", "GPT-5.4", "Gemini-3.1-Pro-Preview"])
+        self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
 
     def test_recommendation_excludes_hard_ban_beta_and_hot_queue(self):
         choice = recommend_model_choice(
@@ -49,10 +67,24 @@ class LctModelProductizationTests(unittest.TestCase):
             ]
         )
 
-        self.assertEqual(choice.members, ["Kimi-K2.6", "DeepSeek-V4-Pro"])
+        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "Kimi-K2.6"])
         joined = ",".join(choice.members + [choice.chairman]).lower()
         for banned in ("seed", "doubao", "gpt-5.5", "beta", "gpt-5.4"):
             self.assertNotIn(banned, joined)
+
+    def test_recommendation_excludes_glm_models(self):
+        choice = recommend_model_choice(
+            [
+                {"name": "GLM-5.1"},
+                {"name": "GLM-5"},
+                {"name": "DeepSeek-V4-Pro"},
+                {"name": "Kimi-K2.6"},
+            ]
+        )
+
+        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "Kimi-K2.6"])
+        self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
+        self.assertNotIn("GLM", ",".join(choice.members + [choice.chairman]))
 
     def test_beta_detection_supports_structured_fields(self):
         beta_models = [
@@ -205,7 +237,7 @@ class LctModelProductizationTests(unittest.TestCase):
         ):
             text = self.read_text(relative)
             self.assertNotIn("6 个成员模型", text, relative)
-            self.assertIn("Kimi-K2.6, MiniMax-M2.7, GPT-5.2, DeepSeek-V4-Pro", text, relative)
+            self.assertIn("DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Gemini-3.1-Pro-Preview", text, relative)
 
     def test_canonical_skill_and_readme_split_lct_and_agent_search_evidence(self):
         for relative in ("README.md", "skills/llm-council-for-trae/SKILL.md"):
@@ -233,8 +265,41 @@ class LctModelProductizationTests(unittest.TestCase):
     def test_subagent_profile_is_not_direct_default_source(self):
         text = self.read_text("docs/traecli-subagents.md")
 
-        self.assertIn("不再代表 direct 默认阵容", text)
+        self.assertIn("不作为 direct 默认阵容的源头", text)
+        self.assertIn("镜像 direct 默认 4 成员", text)
         self.assertIn("src/llm_council_for_trae/council.py", text)
+
+    def test_benchmark_default_candidates_follow_current_priority_without_glm(self):
+        from llm_council_for_trae.model_benchmark import DEFAULT_CANDIDATES
+
+        self.assertEqual(
+            DEFAULT_CANDIDATES,
+            [
+                "DeepSeek-V4-Pro",
+                "openrouter-1o",
+                "GPT-5.4",
+                "Gemini-3.1-Pro-Preview",
+                "GPT-5.2",
+                "openrouter-1",
+                "Kimi-K2.6",
+                "DeepSeek-V4-Flash",
+                "MiniMax-M2.7",
+                "Qwen3.6-Plus",
+            ],
+        )
+        self.assertNotIn("GLM", ",".join(DEFAULT_CANDIDATES))
+
+    def test_active_subagent_profile_excludes_glm_and_tracks_current_default(self):
+        profile = json.loads(self.read_text("profiles/subagents.json"))
+        member_models = [item["model"] for item in profile["members"]]
+        agent_names = [item["agent"] for item in profile["members"]] + [profile["chairman"]["agent"]]
+
+        self.assertEqual(member_models, DEFAULT_MEMBERS)
+        self.assertEqual(profile["chairman"]["model"], DEFAULT_CHAIRMAN)
+        self.assertNotIn("GLM", json.dumps(profile))
+        self.assertFalse((REPO_ROOT / ".trae/agents/council-glm51.md").exists())
+        for agent_name in agent_names:
+            self.assertTrue((REPO_ROOT / f".trae/agents/{agent_name}.md").exists(), agent_name)
 
 
 if __name__ == "__main__":

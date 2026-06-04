@@ -419,12 +419,15 @@ FINAL RANKING:
             {"name": "DeepSeek-V4-Pro", "context_window": 184000},
         ]
         choice = recommend_model_choice(models)
-        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "GPT-5.4", "GLM-5.1", "openrouter-2o"])
+        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "GPT-5.4", "openrouter-2o"])
         self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
 
-    def test_default_direct_roster_uses_productized_four_member_suite(self):
-        self.assertEqual(DEFAULT_MEMBERS, ["Kimi-K2.6", "MiniMax-M2.7", "GPT-5.2", "DeepSeek-V4-Pro"])
-        self.assertEqual(DEFAULT_CHAIRMAN, "Kimi-K2.6")
+    def test_default_direct_roster_uses_current_priority_suite(self):
+        self.assertEqual(
+            DEFAULT_MEMBERS,
+            ["DeepSeek-V4-Pro", "openrouter-1o", "GPT-5.4", "Gemini-3.1-Pro-Preview"],
+        )
+        self.assertEqual(DEFAULT_CHAIRMAN, "DeepSeek-V4-Pro")
 
     def test_doctor_downgrades_mcp_only_errors_when_models_work(self):
         doctor_payload = {
@@ -542,7 +545,7 @@ FINAL RANKING:
         models = [{"name": "GPT-5.4"}, {"name": "GLM-5.1"}, {"name": "DeepSeek-V4-Pro"}]
         stderr = StringIO()
         choice = select_model_choice_interactively(models, stdin=StringIO("\n"), stderr=stderr)
-        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "GPT-5.4", "GLM-5.1"])
+        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "GPT-5.4"])
         self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
         self.assertIn("LCT 检测到当前 traecli 可用模型", stderr.getvalue())
         self.assertIn("推荐 council 模型套", stderr.getvalue())
@@ -1422,6 +1425,41 @@ The user is not merely asking whether local inference hardware will improve they
             self.assertIn("<h1>本地AI推理硬件消费化窗口：多模型智囊团评估</h1>", html)
             self.assertNotIn("我真正理解你的需求", hero_heading)
 
+    def test_html_title_skips_user_framework_section_headings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "input.md").write_text(
+                """你是一位专业的内容分析师。请对以下文章进行深度分析。
+
+文章标题：《今天比任何时候都更容易翻身：300 年现代财富史揭穿了一个时代错觉》
+""",
+                encoding="utf-8",
+            )
+            (root / "stage3").mkdir()
+            (root / "stage3" / "final.md").write_text(
+                """# 一、核心内容
+
+## 二、背景语境
+
+## 三、批判性审视
+""",
+                encoding="utf-8",
+            )
+
+            html = render_html(root, {"run_id": "run-framework-heading", "status": "ok", "config": {}, "stages": {}, "metadata": {}})
+            hero_heading = html.split('<section class="archive-hero"', 1)[1].split("<h1>", 1)[1].split("</h1>", 1)[0]
+
+            self.assertIn("今天比任何时候都更容易翻身", hero_heading)
+            self.assertNotIn("一、核心内容", hero_heading)
+
+    def test_html_title_keeps_specific_numbered_final_heading(self):
+        title = _extract_title(
+            "请评估本地 AI 推理硬件。",
+            final_text="# 一、AI PC 消费化窗口判断\n\n正文",
+        )
+
+        self.assertEqual(title, "一、AI PC 消费化窗口判断：多模型智囊团评估")
+
     def test_html_title_truncates_topic_without_truncating_fixed_suffix(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -2284,7 +2322,7 @@ The user is not merely asking whether local inference hardware will improve they
         import asyncio
         asyncio.run(_run())
 
-    def test_recommend_model_choice_prefers_non_openrouter_but_uses_openrouter_to_fill(self):
+    def test_recommend_model_choice_uses_priority_and_excludes_glm(self):
         from llm_council_for_trae.model_selection import recommend_model_choice
         models = [
             {"name": "openrouter-2o"},
@@ -2292,7 +2330,7 @@ The user is not merely asking whether local inference hardware will improve they
             {"name": "Qwen3.6-Plus"},
         ]
         choice = recommend_model_choice(models)
-        self.assertEqual(choice.members, ["Qwen3.6-Plus", "GLM-5.1", "openrouter-2o"])
+        self.assertEqual(choice.members, ["Qwen3.6-Plus", "openrouter-2o"])
         self.assertEqual(choice.source, "recommended")
 
     def test_recommend_model_choice_excludes_hard_banned_models_when_safe_alternatives_exist(self):
@@ -2307,7 +2345,7 @@ The user is not merely asking whether local inference hardware will improve they
         ]
         choice = recommend_model_choice(models)
 
-        self.assertEqual(choice.members, ["Kimi-K2.6", "GPT-5.4", "Mystery-Safe-Model"])
+        self.assertEqual(choice.members, ["GPT-5.4", "Kimi-K2.6", "Mystery-Safe-Model"])
         joined = ",".join(choice.members + [choice.chairman]).lower()
         self.assertNotIn("seed", joined)
         self.assertNotIn("doubao", joined)

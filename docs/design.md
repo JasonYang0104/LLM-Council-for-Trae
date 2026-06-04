@@ -182,10 +182,11 @@ traecli -p "<prompt>" \
 
 ```text
 .trae/agents/
+  council-deepseek-v4.md
+  council-openrouter-1o.md
   council-gpt54.md
-  council-glm51.md
   council-gemini31.md
-  council-chairman-gpt54.md
+  council-chairman-deepseek-v4.md
 ```
 
 示例：
@@ -570,10 +571,11 @@ open .llm-council-for-trae/runs/<run_id>/html/index.html
 ```markdown
 ---
 members:
+  - DeepSeek-V4-Pro
+  - openrouter-1o
   - GPT-5.4
-  - GLM-5.1
   - Gemini-3.1-Pro-Preview
-chairman: GPT-5.4
+chairman: DeepSeek-V4-Pro
 provider_mode: direct
 ---
 
@@ -647,14 +649,14 @@ Qwen3.6-Plus
 Qwen3.5-Plus
 ```
 
-注意：这个列表是当前机器当前时间的事实，不能写死进推荐逻辑。`openrouter-*` 当前输出带 quota / L4 repo 限制说明，默认不应进入推荐组合。
+注意：这个列表是 2026-05-22 当前机器当前时间的历史事实，不能写死进推荐逻辑。`openrouter-*` 的 quota / L4 repo 文案本身不是排除理由；真正的默认和推荐仍要经过当前 `traecli models --json`、hard-ban、Beta 和 queue heat 过滤。
 
 推荐逻辑已经放在 CLC CLI 内，而不是写在 Trae-CN prompt 里。当前命令是 `models --recommend --json`；`run --input <file>` 在 TTY 中也会复用同一套推荐逻辑。
 
 最小规则：
 
 - 只从 `models --json` 的当前返回中选。
-- 默认推荐 3 个 member models + 1 个 chairman。
+- 默认推荐最多 4 个 member models + 1 个 chairman。
 - 当前推荐结果带 members、chairman 和 source；后续如加入 task-mode，可再补 `generated_at`、完整模型快照 hash 或 path、推荐理由。
 - 如果某个首选模型不可用，按同族或同能力降级，但要把替换原因写进 JSON。
 
@@ -662,8 +664,10 @@ Qwen3.5-Plus
 
 ```text
 general:
-  members: GPT-5.4, GLM-5.1, DeepSeek-V4-Pro
-  chairman: GPT-5.4
+  members: DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Gemini-3.1-Pro-Preview
+  member_priority: DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Gemini-3.1-Pro-Preview, GPT-5.2, openrouter-1, Kimi-K2.6, DeepSeek-V4-Flash, MiniMax-M2.7, Qwen3.6-Plus
+  chairman: DeepSeek-V4-Pro
+  chairman_fallback: Kimi-K2.6, DeepSeek-V4-Flash, GPT-5.2, openrouter-1
 ```
 
 这里的推荐不是“模型真理”，只是启动默认值。真正可信边界仍是 run 里的 expected/actual model 校验和 artifact evidence。
