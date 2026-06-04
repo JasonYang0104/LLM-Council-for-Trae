@@ -16,6 +16,7 @@ from .schema_contract import (
     validate_json_file,
     validate_schema,
 )
+from .html_export import summarize_search_usage
 from .store import ArtifactStore
 
 
@@ -70,6 +71,7 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
             "verdict": "invalid_artifacts",
             "checks": checks,
             "failures": failures,
+            "warnings": [],
         }
 
     checks.extend(validate_schema("manifest.config", manifest.get("config"), CONFIG_SCHEMA))
@@ -102,6 +104,7 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
             "verdict": "in_progress",
             "checks": checks,
             "failures": failures,
+            "warnings": [],
         }
 
     for relative in REQUIRED_FILES:
@@ -204,6 +207,7 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
     else:
         checks.append({"name": "html_export", "ok": False, "message": "html/index.html missing"})
 
+    warnings = search_delivery_warnings(manifest)
     failures = [check for check in checks if not check["ok"]]
     if not failures and manifest_status in ("ok", "degraded_ok"):
         final_status = manifest_status
@@ -225,6 +229,7 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
         "verdict": validation_verdict(manifest_status, usable_final, failures, stage3_final_exists),
         "checks": checks,
         "failures": failures,
+        "warnings": warnings,
     }
 
 
@@ -244,6 +249,25 @@ def validation_verdict(manifest_status: Any, usable_final: bool, failures: list[
     if manifest_status == "failed" or not stage3_final_exists:
         return "failed_no_final"
     return "invalid_artifacts"
+
+
+def search_delivery_warnings(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    summary = summarize_search_usage(manifest)
+    calls = summary["lct_web_tool_calls"]
+    effective = summary["lct_web_tool_effective_calls"]
+    if calls <= 0 or effective >= calls:
+        return []
+    return [
+        {
+            "name": "search_tool_output_conversion",
+            "ok": True,
+            "severity": "warning",
+            "message": "WebSearch/WebFetch tool calls observed, but effective delivery is lower than calls",
+            "lct_web_tool_calls": calls,
+            "lct_web_tool_effective_calls": effective,
+            "lct_search_conversion_errors": summary["lct_search_conversion_errors"],
+        }
+    ]
 
 
 def collect_failed_stage_records(manifest: dict[str, Any]) -> list[dict[str, Any]]:

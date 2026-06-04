@@ -144,4 +144,28 @@
 
 ### Commit
 
-- 待提交：`feat: record effective web tool delivery evidence`
+- `be7a285 feat: record effective web tool delivery evidence`
+
+## 阶段 4：HTML / validate 搜索生效展示
+
+### 阶段目标
+
+- `summarize_search_usage()` 产出调用次数、tool result 次数、conversion error 次数和调用生效次数。
+- HTML 搜索工具卡片只展示“调用次数”和“调用生效次数”。
+- validate 对调用次数大于生效次数的 run 输出 warning，不改变可用 final verdict。
+
+### 实现决定
+
+- HTML 不再展示“允许 / 实际使用 / Web 工具调用 / 总工具调用”，避免把 policy allowed、tool call observed 和 result delivered 混在首屏。
+- `summarize_search_usage()` 对没有显式 effective 字段的 stage record 按同一公式派生：`matched_results - conversion_errors`，并限制不超过本 stage Web call 数。
+- `validate_run()` 新增顶层 `warnings`，`failures` 仍只包含硬失败 check。`search_tool_output_conversion` warning 的 `ok` 为 true，`severity` 为 `warning`。
+
+### 阶段验证
+
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_lct_model_productization.LctModelProductizationTests.test_search_summary_exposes_lct_aliases tests.test_lct_model_productization.LctModelProductizationTests.test_search_summary_distinguishes_calls_from_effective_calls tests.test_core.CouncilCoreTests.test_search_summary_separates_allowed_from_used tests.test_core.CouncilCoreTests.test_html_search_card_shows_calls_and_effective_calls tests.test_core.CouncilCoreTests.test_validate_warns_when_web_tool_delivery_is_lower_than_calls tests.test_core.CouncilCoreTests.test_validate_and_export_html_from_artifacts -v`
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`git diff --check`
+
+### Commit
+
+- 待提交：`feat: display effective search calls in html and validate`
