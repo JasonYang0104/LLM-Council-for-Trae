@@ -865,19 +865,19 @@ def render_summary_cards(manifest: dict[str, Any], aggregate: list[dict[str, Any
 def summarize_search_usage(manifest: dict[str, Any]) -> dict[str, Any]:
     search_allowed = False
     web_tool_calls_count = 0
-    web_tool_call_keys: set[str] = set()
+    web_tool_call_keys: set[tuple[int, str]] = set()
     tool_calls_count = 0
     forbidden_tool_calls_count = 0
     web_tool_result_calls_count = 0
     lct_search_conversion_errors = 0
     lct_web_tool_effective_calls = 0
 
-    def record_web_tool_call(call: dict[str, Any], local_ids: set[str]) -> bool:
+    def record_web_tool_call(call: dict[str, Any], local_ids: set[str], record_index: int) -> bool:
         nonlocal web_tool_calls_count
         if call.get("name") not in WEB_SEARCH_TOOLS:
             return False
         call_id = call.get("id")
-        key = str(call_id or (call.get("name"), call.get("arguments"), call.get("turn_index")))
+        key = (record_index, str(call_id or (call.get("name"), call.get("arguments"), call.get("turn_index"))))
         if key in web_tool_call_keys:
             return False
         web_tool_call_keys.add(key)
@@ -886,7 +886,7 @@ def summarize_search_usage(manifest: dict[str, Any]) -> dict[str, Any]:
             local_ids.add(call_id)
         return True
 
-    for item in iter_stage_records(manifest):
+    for record_index, item in enumerate(iter_stage_records(manifest)):
         allowed_tools = item.get("allowed_tools")
         if isinstance(allowed_tools, list) and any(tool in WEB_SEARCH_TOOLS for tool in allowed_tools):
             search_allowed = True
@@ -903,7 +903,7 @@ def summarize_search_usage(manifest: dict[str, Any]) -> dict[str, Any]:
                 tool_calls_count += len(tool_calls)
             for call in tool_calls:
                 if isinstance(call, dict):
-                    if record_web_tool_call(call, local_web_tool_call_ids):
+                    if record_web_tool_call(call, local_web_tool_call_ids, record_index):
                         local_web_tool_calls_count += 1
 
         forbidden_tool_calls = item.get("forbidden_tool_calls")
@@ -911,7 +911,7 @@ def summarize_search_usage(manifest: dict[str, Any]) -> dict[str, Any]:
             forbidden_tool_calls_count += len(forbidden_tool_calls)
             for call in forbidden_tool_calls:
                 if isinstance(call, dict):
-                    if record_web_tool_call(call, local_web_tool_call_ids):
+                    if record_web_tool_call(call, local_web_tool_call_ids, record_index):
                         local_web_tool_calls_count += 1
 
         local_result_count = 0
@@ -937,12 +937,14 @@ def summarize_search_usage(manifest: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(raw_effective, int):
             raw_effective = item.get("web_tool_effective_calls_count")
         if isinstance(raw_effective, int):
-            lct_web_tool_effective_calls += raw_effective
+            local_effective_count = max(0, raw_effective)
         else:
-            lct_web_tool_effective_calls += min(
-                local_web_tool_calls_count,
-                max(0, local_result_count - local_conversion_errors),
-            )
+            local_effective_count = max(0, local_result_count - local_conversion_errors)
+        if local_web_tool_calls_count:
+            local_effective_count = min(local_web_tool_calls_count, local_effective_count)
+        lct_web_tool_effective_calls += local_effective_count
+
+    lct_web_tool_effective_calls = min(web_tool_calls_count, lct_web_tool_effective_calls)
 
     return {
         "lct_search_allowed": search_allowed,

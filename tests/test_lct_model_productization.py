@@ -150,6 +150,54 @@ class LctModelProductizationTests(unittest.TestCase):
 
         self.assertEqual(partial["lct_web_tool_effective_calls"], 1)
 
+    def test_search_summary_deduplicates_web_tool_calls_per_stage_record(self):
+        summary = summarize_search_usage(
+            {
+                "stages": {
+                    "stage1": [
+                        {
+                            "allowed_tools": ["WebSearch"],
+                            "tool_calls": [{"id": "tc1", "name": "WebSearch"}],
+                            "web_tool_result_call_ids": ["tc1"],
+                            "lct_web_tool_effective_calls": 1,
+                        },
+                        {
+                            "allowed_tools": ["WebSearch"],
+                            "tool_calls": [{"id": "tc1", "name": "WebSearch"}],
+                            "web_tool_result_call_ids": ["tc1"],
+                            "lct_web_tool_effective_calls": 1,
+                        },
+                    ],
+                    "stage2": [],
+                    "stage3": {},
+                }
+            }
+        )
+
+        self.assertEqual(summary["lct_web_tool_calls"], 2)
+        self.assertEqual(summary["lct_web_tool_effective_calls"], 2)
+
+    def test_search_summary_clamps_persisted_effective_calls_to_observed_calls(self):
+        summary = summarize_search_usage(
+            {
+                "stages": {
+                    "stage1": [
+                        {
+                            "allowed_tools": ["WebSearch"],
+                            "tool_calls": [{"id": "tc1", "name": "WebSearch"}],
+                            "web_tool_result_call_ids": ["tc1"],
+                            "lct_web_tool_effective_calls": 5,
+                        }
+                    ],
+                    "stage2": [],
+                    "stage3": {},
+                }
+            }
+        )
+
+        self.assertEqual(summary["lct_web_tool_calls"], 1)
+        self.assertEqual(summary["lct_web_tool_effective_calls"], 1)
+
     def test_skill_docs_do_not_describe_stage1_as_six_member_default(self):
         for relative in (
             "skills/llm-council-for-trae/SKILL.md",

@@ -377,6 +377,7 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
             "not recorded",
             "不得从默认成员阵容",
             "不得从 models --recommend --json 的 primary roster",
+            "不得从实际有效 Stage 1 成员",
         ]
         for relative in [
             "README.md",

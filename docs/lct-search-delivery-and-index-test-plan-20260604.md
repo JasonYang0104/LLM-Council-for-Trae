@@ -207,6 +207,7 @@ test_readme_and_skills_require_manifest_sourced_backfill_candidates
 - `not recorded`
 - `不得从默认成员阵容`
 - `不得从 models --recommend --json 的 primary roster`
+- `不得从实际有效 Stage 1 成员`
 
 ### 9. Root index 字段扩展
 
@@ -261,4 +262,3 @@ llm-council-for-trae models --recommend --json
 - validate 对 conversion issue 给 warning，不改变可用 final verdict。
 - README、canonical Skill、`.trae` Skill 都明确 `backfill_candidates` 来源于 terminal manifest `metadata.quorum.backfill_candidates`，缺失时写 `not recorded`。
 - 完整测试和 whitespace 检查通过。
-

@@ -192,4 +192,27 @@
 
 ### Commit
 
-- 待提交：`docs: require manifest-sourced backfill candidates`
+- `c985dfc docs: require manifest-sourced backfill candidates`
+
+## 阶段 6：subagent reviewer 反馈处理
+
+### Reviewer 结论
+
+- Helmholtz：P1 / blocker 无。P3 指出 `summarize_search_usage()` 对 Web tool call 使用全局 id 去重，但 persisted effective 逐 record 相加，极端情况下可能 `effective > calls`。
+- Locke：blocker 无。P3 指出 docs contract 测试没有锁住“不得从实际有效 Stage 1 成员猜测候补池”。
+
+### 处理决定
+
+- `summarize_search_usage()` 的 Web tool call 去重 scope 改为 per stage record，同一 record 内重复 id 去重，不同 record / session 的同名 id 不互相吞掉。
+- persisted effective 先按本 record 的 observed calls clamp，最终汇总再 clamp 到 observed aggregate calls，保证 `lct_web_tool_effective_calls <= lct_web_tool_calls`。
+- docs contract 测试和测试计划都加入 `不得从实际有效 Stage 1 成员` 必含短语，避免以后文档回退但测试仍通过。
+
+### 阶段验证
+
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_lct_model_productization.LctModelProductizationTests.test_search_summary_distinguishes_calls_from_effective_calls tests.test_lct_model_productization.LctModelProductizationTests.test_search_summary_deduplicates_web_tool_calls_per_stage_record tests.test_lct_model_productization.LctModelProductizationTests.test_search_summary_clamps_persisted_effective_calls_to_observed_calls -v`
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_readme_and_skills_require_manifest_sourced_backfill_candidates -v`
+- 通过：`git diff --check`
+
+### Commit
+
+- 待提交：`fix: harden search summary and index contract tests`
