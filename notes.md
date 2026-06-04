@@ -598,3 +598,12 @@
   - `test_validate_rejects_stage2_reviewer_only_backfill_in_subject_mapping`
   - `test_html_summary_shows_stage2_reviewer_only_backfill_card`
   - `test_html_stage2_tab_shows_reviewer_source_and_subject_count`
+# 2026-06-04 LCT input boundary docs PR 运行记录
+
+## Phase 0：启动与边界确认
+
+- 本轮目标是 docs/Skill-only PR：修正 `_lct_question.md` 的输入边界，避免把外层 Agent 的执行职责泄露给 council 成员模型。
+- 不改 runtime、validate、`--member-tool-mode` 默认值，也不新增 CLI classifier。原因：v9 问题的直接诱因是 Skill/README 对输入准备的口径不够清楚，不是 CLI 执行层缺少一个新分类器。
+- 不把 `answer_only` 写成默认或强制策略。`answer_only` 是可选工具模式，适合某些收窄输入后的运行；默认是否允许成员搜索仍应由外层 Agent 基于任务判断。
+- 本轮需要同步 `README.md`、`skills/llm-council-for-trae/SKILL.md` 和 `.trae/skills/llm-council-for-trae/SKILL.md`，并用 docs contract 测试约束三者口径。
+- 红灯测试阶段如果单独提交会让分支处于故意失败状态，我会先记录红灯证据，再在同一测试提交前补齐实现，保证提交历史不留下破坏全量测试的节点。
