@@ -100,6 +100,103 @@ class LctModelProductizationTests(unittest.TestCase):
         self.assertTrue(summary["lct_search_allowed"])
         self.assertTrue(summary["lct_search_used"])
         self.assertEqual(summary["lct_web_tool_calls"], 1)
+        self.assertEqual(summary["lct_web_tool_effective_calls"], 0)
+
+    def test_search_summary_distinguishes_calls_from_effective_calls(self):
+        summary = summarize_search_usage(
+            {
+                "stages": {
+                    "stage1": [
+                        {
+                            "allowed_tools": ["WebSearch", "WebFetch"],
+                            "tool_calls": [
+                                {"id": "tc1", "name": "WebSearch"},
+                                {"id": "tc2", "name": "WebSearch"},
+                            ],
+                            "web_tool_result_call_ids": ["tc1", "tc2"],
+                            "lct_search_conversion_errors": 2,
+                        }
+                    ],
+                    "stage2": [],
+                    "stage3": {},
+                }
+            }
+        )
+
+        self.assertEqual(summary["lct_web_tool_calls"], 2)
+        self.assertEqual(summary["lct_web_tool_result_calls"], 2)
+        self.assertEqual(summary["lct_search_conversion_errors"], 2)
+        self.assertEqual(summary["lct_web_tool_effective_calls"], 0)
+
+        partial = summarize_search_usage(
+            {
+                "stages": {
+                    "stage1": [
+                        {
+                            "allowed_tools": ["WebSearch", "WebFetch"],
+                            "tool_calls": [
+                                {"id": "tc1", "name": "WebSearch"},
+                                {"id": "tc2", "name": "WebSearch"},
+                            ],
+                            "web_tool_result_call_ids": ["tc1", "tc2"],
+                            "lct_search_conversion_errors": 1,
+                        }
+                    ],
+                    "stage2": [],
+                    "stage3": {},
+                }
+            }
+        )
+
+        self.assertEqual(partial["lct_web_tool_effective_calls"], 1)
+
+    def test_search_summary_deduplicates_web_tool_calls_per_stage_record(self):
+        summary = summarize_search_usage(
+            {
+                "stages": {
+                    "stage1": [
+                        {
+                            "allowed_tools": ["WebSearch"],
+                            "tool_calls": [{"id": "tc1", "name": "WebSearch"}],
+                            "web_tool_result_call_ids": ["tc1"],
+                            "lct_web_tool_effective_calls": 1,
+                        },
+                        {
+                            "allowed_tools": ["WebSearch"],
+                            "tool_calls": [{"id": "tc1", "name": "WebSearch"}],
+                            "web_tool_result_call_ids": ["tc1"],
+                            "lct_web_tool_effective_calls": 1,
+                        },
+                    ],
+                    "stage2": [],
+                    "stage3": {},
+                }
+            }
+        )
+
+        self.assertEqual(summary["lct_web_tool_calls"], 2)
+        self.assertEqual(summary["lct_web_tool_effective_calls"], 2)
+
+    def test_search_summary_clamps_persisted_effective_calls_to_observed_calls(self):
+        summary = summarize_search_usage(
+            {
+                "stages": {
+                    "stage1": [
+                        {
+                            "allowed_tools": ["WebSearch"],
+                            "tool_calls": [{"id": "tc1", "name": "WebSearch"}],
+                            "web_tool_result_call_ids": ["tc1"],
+                            "lct_web_tool_effective_calls": 5,
+                        }
+                    ],
+                    "stage2": [],
+                    "stage3": {},
+                }
+            }
+        )
+
+        self.assertEqual(summary["lct_web_tool_calls"], 1)
+        self.assertEqual(summary["lct_web_tool_effective_calls"], 1)
 
     def test_skill_docs_do_not_describe_stage1_as_six_member_default(self):
         for relative in (

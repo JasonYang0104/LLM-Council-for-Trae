@@ -88,6 +88,12 @@ class ModelCallResult:
     disallowed_tools: list[str] = field(default_factory=list)
     forbidden_tool_calls: list[dict[str, Any]] = field(default_factory=list)
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    tool_result_calls: list[dict[str, Any]] = field(default_factory=list)
+    web_tool_result_calls_count: int = 0
+    web_tool_result_call_ids: list[str] = field(default_factory=list)
+    tool_output_conversion_errors: list[dict[str, Any]] = field(default_factory=list)
+    lct_search_conversion_errors: int = 0
+    web_tool_effective_calls_count: int = 0
     tool_budget_status: str = "ok"
     assistant_content_chars_total: int = 0
     last_assistant_content_chars: int = 0
@@ -121,6 +127,13 @@ class ModelCallResult:
             "disallowed_tools": self.disallowed_tools,
             "forbidden_tool_calls": self.forbidden_tool_calls,
             "tool_calls": self.tool_calls,
+            "tool_result_calls": self.tool_result_calls,
+            "web_tool_result_calls_count": self.web_tool_result_calls_count,
+            "web_tool_result_call_ids": self.web_tool_result_call_ids,
+            "tool_output_conversion_errors": self.tool_output_conversion_errors,
+            "lct_search_conversion_errors": self.lct_search_conversion_errors,
+            "web_tool_effective_calls_count": self.web_tool_effective_calls_count,
+            "lct_web_tool_effective_calls": self.web_tool_effective_calls_count,
             "tool_budget_status": self.tool_budget_status,
             "assistant_content_chars_total": self.assistant_content_chars_total,
             "last_assistant_content_chars": self.last_assistant_content_chars,
@@ -369,6 +382,8 @@ class TraeCliProvider:
         subagent_invocation = parsed["subagent_invocation"]
         tool_calls_count = parsed.get("tool_calls_count", 0)
         tool_calls = parsed.get("tool_calls", [])
+        tool_result_calls = parsed.get("tool_result_calls", [])
+        web_tool_result_call_ids = parsed.get("web_tool_result_call_ids", [])
         turns_count = parsed.get("turns_count", 0)
         forbidden_tool_calls = forbidden_tool_calls_for_mode(tool_calls, self.member_tool_mode)
         status = "ok"
@@ -391,6 +406,15 @@ class TraeCliProvider:
             error = f"tool_contaminated: forbidden tool call(s): {names}"
 
         copied = copy_traecli_session_files(session_id, output_dir, label)
+        search_delivery = parse_session_log_search_delivery(
+            read_copied_session_log(output_dir, copied)
+        )
+        lct_search_conversion_errors = search_delivery["lct_search_conversion_errors"]
+        web_tool_effective_calls_count = effective_web_tool_calls_count(
+            tool_calls,
+            web_tool_result_call_ids,
+            lct_search_conversion_errors,
+        )
         tool_budget_status = "ok"
         if budget_killed or tool_calls_count > self.deliver_tool_limit or turns_count > self.deliver_turn_limit:
             tool_budget_status = "dropped_tool_budget"
@@ -421,6 +445,12 @@ class TraeCliProvider:
             disallowed_tools=self.disallowed_tools,
             forbidden_tool_calls=forbidden_tool_calls,
             tool_calls=tool_calls,
+            tool_result_calls=tool_result_calls,
+            web_tool_result_calls_count=parsed.get("web_tool_result_calls_count", 0),
+            web_tool_result_call_ids=web_tool_result_call_ids,
+            tool_output_conversion_errors=search_delivery["tool_output_conversion_errors"],
+            lct_search_conversion_errors=lct_search_conversion_errors,
+            web_tool_effective_calls_count=web_tool_effective_calls_count,
             tool_budget_status=tool_budget_status,
             assistant_content_chars_total=parsed.get("assistant_content_chars_total", 0),
             last_assistant_content_chars=parsed.get("last_assistant_content_chars", 0),
@@ -520,6 +550,9 @@ def parse_stream_json(stdout: str, expected_agent: str | None = None) -> dict[st
     tool_calls_count: int = 0
     turns_count: int = 0
     tool_calls: list[dict[str, Any]] = []
+    tool_result_calls: list[dict[str, Any]] = []
+    web_tool_result_call_ids: list[str] = []
+    web_tool_result_call_id_set: set[str] = set()
 
     for line in stdout.splitlines():
         if not line.strip():
@@ -589,6 +622,13 @@ def parse_stream_json(stdout: str, expected_agent: str | None = None) -> dict[st
             tool_use_id = event.get("tool_use_id")
             if isinstance(tool_use_id, str):
                 agent_tool_result_ids.append(tool_use_id)
+        if event.get("subtype") == "tool_result" and event.get("tool_name") in WEB_TOOLS:
+            tool_use_id = event.get("tool_use_id")
+            tool_name = event.get("tool_name")
+            if isinstance(tool_use_id, str) and isinstance(tool_name, str) and tool_use_id not in web_tool_result_call_id_set:
+                web_tool_result_call_id_set.add(tool_use_id)
+                web_tool_result_call_ids.append(tool_use_id)
+                tool_result_calls.append({"id": tool_use_id, "name": tool_name})
         if event.get("type") == "result":
             if isinstance(event.get("result"), str):
                 result_text = event["result"]
@@ -634,10 +674,79 @@ def parse_stream_json(stdout: str, expected_agent: str | None = None) -> dict[st
         "tool_calls_count": tool_calls_count,
         "turns_count": turns_count,
         "tool_calls": tool_calls,
+        "tool_result_calls": tool_result_calls,
+        "web_tool_result_calls_count": len(web_tool_result_call_ids),
+        "web_tool_result_call_ids": web_tool_result_call_ids,
         "assistant_content_chars_total": assistant_content_chars_total,
         "last_assistant_content_chars": last_assistant_content_chars,
         "raw_partial_recoverable": raw_partial_recoverable,
     }
+
+
+def parse_session_log_search_delivery(log_text: str) -> dict[str, Any]:
+    preferred_errors: list[dict[str, Any]] = []
+    fallback_errors: list[dict[str, Any]] = []
+    for line_number, line in enumerate(log_text.splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        tool = event.get("tool")
+        if tool not in WEB_TOOLS:
+            continue
+        msg = event.get("msg")
+        if msg == "failed to convert ADK output to model format":
+            preferred_errors.append(
+                {
+                    "tool": tool,
+                    "message": msg,
+                    "line": line_number,
+                }
+            )
+        elif msg == "unsupported tool output conversion":
+            fallback_errors.append(
+                {
+                    "tool": tool,
+                    "message": msg,
+                    "line": line_number,
+                }
+            )
+    errors = preferred_errors if preferred_errors else fallback_errors
+    return {
+        "tool_output_conversion_errors": errors,
+        "lct_search_conversion_errors": len(errors),
+    }
+
+
+def read_copied_session_log(output_dir: Path, copied_session_files: dict[str, str]) -> str:
+    session_log = copied_session_files.get("session.log")
+    if not session_log:
+        return ""
+    path = output_dir / session_log
+    if not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def effective_web_tool_calls_count(
+    tool_calls: list[dict[str, Any]],
+    web_tool_result_call_ids: list[str],
+    conversion_errors: int,
+) -> int:
+    web_call_ids: list[str] = []
+    seen: set[str] = set()
+    for call in tool_calls:
+        if call.get("name") not in WEB_TOOLS:
+            continue
+        call_id = call.get("id")
+        if not isinstance(call_id, str) or not call_id or call_id in seen:
+            continue
+        seen.add(call_id)
+        web_call_ids.append(call_id)
+    matched_results = len([call_id for call_id in web_tool_result_call_ids if call_id in seen])
+    return min(len(web_call_ids), max(0, matched_results - conversion_errors))
 
 
 def missing_subagent_invocation(expected_agent: str | None) -> dict[str, Any]:
