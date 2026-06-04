@@ -9,21 +9,20 @@ from .roster import resolve_fallback
 
 
 PREFERRED_MEMBERS = [
-    "Kimi-K2.6",
-    "MiniMax-M2.7",
-    "GPT-5.2",
     "DeepSeek-V4-Pro",
-    "Qwen3.6-Plus",
-    "Gemini-3.1-Pro-Preview",
     "openrouter-1o",
-    "openrouter-1",
-    "MiniMax-M2.5",
     "GPT-5.4",
-    "GLM-5.1",
+    "Gemini-3.1-Pro-Preview",
+    "GPT-5.2",
+    "openrouter-1",
+    "Kimi-K2.6",
+    "DeepSeek-V4-Flash",
+    "MiniMax-M2.7",
+    "Qwen3.6-Plus",
 ]
-PREFERRED_CHAIRMEN = ["Kimi-K2.6", "DeepSeek-V4-Pro", "GPT-5.2", "GPT-5.4", "GLM-5.1"]
+PREFERRED_CHAIRMEN = ["DeepSeek-V4-Pro", "Kimi-K2.6", "DeepSeek-V4-Flash", "GPT-5.2", "openrouter-1"]
 HARD_BAN_EXACT = {"gpt-5.5"}
-HARD_BAN_MARKERS = ("seed", "doubao", "gpt-5.5")
+HARD_BAN_MARKERS = ("seed", "doubao", "gpt-5.5", "glm")
 QUEUE_HEAT_THRESHOLD = 95
 QUEUE_HEAT_RE = re.compile(r"(?:queue\s*heat|排队热度|队列热度)[^\d%]*(\d{1,3})\s*%", re.IGNORECASE)
 
@@ -59,9 +58,7 @@ def recommend_model_choice(models: list[dict[str, Any]]) -> ModelChoice:
         return ModelChoice([], "", "no-safe-candidates")
 
     safe_names = [model["name"] for model in safe_models]
-    safe_non_openrouter = [name for name in safe_names if not name.lower().startswith("openrouter")]
-    safe_openrouter = [name for name in safe_names if name.lower().startswith("openrouter")]
-    usable = safe_non_openrouter + safe_openrouter
+    usable = safe_names
 
     members: list[str] = []
     for preferred in PREFERRED_MEMBERS:
@@ -70,13 +67,13 @@ def recommend_model_choice(models: list[dict[str, Any]]) -> ModelChoice:
         if len(members) >= 4:
             break
     for name in usable:
-        if name not in members:
-            members.append(name)
         if len(members) >= 4:
             break
+        if name not in members:
+            members.append(name)
 
     chairman = next(
-        (name for name in PREFERRED_CHAIRMEN if name in safe_non_openrouter),
+        (name for name in PREFERRED_CHAIRMEN if name in safe_names),
         members[0],
     )
     return ModelChoice(members, chairman, "recommended")
@@ -265,7 +262,7 @@ def write_model_menu(stderr: TextIO, models: list[dict[str, Any]], recommendatio
     stderr.write("\n推荐 council 模型套：\n")
     stderr.write(f"  members: {', '.join(recommendation.members)}\n")
     stderr.write(f"  chairman: {recommendation.chairman}\n")
-    stderr.write("推荐逻辑：硬排除 Seed/Doubao/GPT-5.5、Beta 和 Queue heat 过高模型；优先非 OpenRouter，安全非 OpenRouter 不足 4 个时才用 OpenRouter 补位。主席优先级：Kimi、DeepSeek、GPT。\n")
+    stderr.write("推荐逻辑：硬排除 Seed/Doubao/GLM/GPT-5.5、Beta 和 Queue heat 过高模型；按配置优先级选择成员。主席优先级：DeepSeek、Kimi、DeepSeek Flash、GPT、OpenRouter。\n")
     if names:
         stderr.write("\n")
     stderr.flush()

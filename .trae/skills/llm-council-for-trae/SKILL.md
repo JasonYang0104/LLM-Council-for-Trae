@@ -82,8 +82,8 @@ $LCT models --recommend --json
 记录 `recommendation.members` 和 `recommendation.chairman`。当前静态默认模型套是：
 
 ```text
-members: Kimi-K2.6, MiniMax-M2.7, GPT-5.2, DeepSeek-V4-Pro
-chairman: Kimi-K2.6
+members: DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Gemini-3.1-Pro-Preview
+chairman: DeepSeek-V4-Pro
 ```
 
 `models --recommend --json` 只给本次 run 一个可审计候选来源。默认 primary members 仍来自 `--default-models`；CLI 会在同一个 run 内用 auto-backfill 和 backfill candidates 补足有效成员，不整轮重跑。显式候补优先级通过 `--backfill-members` 传入。最终 `$RUN_ID-index.md` 的 `backfill_candidates` 必须来自 terminal manifest 的 `metadata.quorum.backfill_candidates`；如果 terminal manifest 没有记录该字段，写 `backfill_candidates: not recorded`。不得从默认成员阵容、不得从 models --recommend --json 的 primary roster、不得从实际有效 Stage 1 成员猜测候补池。
@@ -97,7 +97,7 @@ chairman: Kimi-K2.6
 - `council input`：用户真正要委员会回答的问题、必要事实背景、输出要求，以及 `Report topic: <中文议题>`。`Report topic` 是报告元数据，不是成员任务指令。
 - `operator envelope`：使用 LCT、运行 validate、写 final/index、生成 HTML、维护 notes.md、Git/PR/测试职责、开 branch、提交代码等外层执行职责。外层执行指令不得写入 _lct_question.md。
 
-默认保留用户原始实质问题。中文问题直接写，英文问题保持原文。只有当用户明确要求思考真实意图、拆解问题、重构输入、加入事实包或结构化输出时，才使用 `structured by Agent` 模式，并保留 `Original input`，把额外内容标注为 `Agent interpretation`。原始问题下方追加一行 `Report topic: <中文议题>`，让 HTML 标题稳定生成为 `<中文议题>：多模型智囊团评估`。
+默认保留用户原始实质问题。中文问题直接写，英文问题保持原文。只有当用户明确要求思考真实意图、拆解问题、重构输入、加入事实包或结构化输出时，才使用 `structured by Agent` 模式，并保留 `Original input`，把额外内容标注为 `Agent interpretation`。原始问题下方追加一行 `Report topic: <中文议题>`，让 HTML 标题稳定生成为 `<中文议题>：多模型智囊团评估`。如果用户要求“直接 LCT”“不要改写提示词”，禁止的是 prompt shaping；`Report topic` 仍可追加，因为它是报告元数据，不是成员任务指令。
 
 如果外层 Agent 需要补充事实背景，fact pack 必须直接嵌入 _lct_question.md，放在用户原始输入之后并标注来源。fact pack 只包含事实背景和来源，不能包含执行指令；不要要求成员读取 sidecar 文件，也不要要求模型读取额外 sidecar 文件。`notes.md` 只由外层 Agent 维护，用来记录执行过程、测试和风险；如果用户要求维护 notes.md，调用 Agent 应执行这个要求，但不得把它写入 council input。不要要求 council 成员创建、读取、修改或维护 notes.md，模型不要创建或修改 notes，也不要把 notes 当成 council 输入。
 
@@ -145,8 +145,8 @@ $LCT run \
 ```bash
 $LCT run \
   --input /tmp/council-question.md \
-  --members "Kimi-K2.6,MiniMax-M2.7,GPT-5.2,DeepSeek-V4-Pro" \
-  --chairman "Kimi-K2.6" \
+  --members "DeepSeek-V4-Pro,openrouter-1o,GPT-5.4,Gemini-3.1-Pro-Preview" \
+  --chairman "DeepSeek-V4-Pro" \
   --timeout 180 \
   --json
 ```

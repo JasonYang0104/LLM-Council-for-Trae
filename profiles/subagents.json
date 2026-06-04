@@ -2,24 +2,16 @@
   "provider_mode": "subagent",
   "members": [
     {
-      "agent": "council-gpt54",
-      "model": "GPT-5.4"
-    },
-    {
-      "agent": "council-glm51",
-      "model": "GLM-5.1"
-    },
-    {
-      "agent": "council-qwen36",
-      "model": "Qwen3.6-Plus"
-    },
-    {
-      "agent": "council-kimi26",
-      "model": "Kimi-K2.6"
-    },
-    {
       "agent": "council-deepseek-v4",
       "model": "DeepSeek-V4-Pro"
+    },
+    {
+      "agent": "council-openrouter-1o",
+      "model": "openrouter-1o"
+    },
+    {
+      "agent": "council-gpt54",
+      "model": "GPT-5.4"
     },
     {
       "agent": "council-gemini31",
@@ -27,7 +19,7 @@
     }
   ],
   "chairman": {
-    "agent": "council-chairman-kimi26",
-    "model": "Kimi-K2.6"
+    "agent": "council-chairman-deepseek-v4",
+    "model": "DeepSeek-V4-Pro"
   }
 }

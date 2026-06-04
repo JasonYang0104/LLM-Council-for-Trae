@@ -10,7 +10,7 @@
 
 - **三阶段 council run**：Stage 1 独立回答，Stage 2 匿名互评排序，Stage 3 主席综合。
 - **traecli-first runtime**：默认通过 `traecli` 调用模型，不维护第二套模型清单。
-- **主动模型选择**：只传问题文件时，CLI 会读取当前 `traecli models --json`，展示模型列表和推荐 council 套装，再询问是否采用；推荐逻辑会排除 Seed/Doubao/GPT-5.5、Beta 和 Queue heat 过高模型。
+- **主动模型选择**：只传问题文件时，CLI 会读取当前 `traecli models --json`，展示模型列表和推荐 council 套装，再询问是否采用；推荐逻辑会排除 Seed/Doubao/GLM/GPT-5.5、Beta 和 Queue heat 过高模型。
 - **可审计 artifact**：每次运行保存 input、config、manifest、每阶段 prompt / response / metadata、traecli stream JSON 和 HTML export。
 - **模型防 fallback**：记录 expected model 和 actual model，模型不匹配、空响应、无效模型、Stage 2 parse failure 都会失败。
 - **本地 HTML 报告**：HTML export 只读 artifacts，不调用模型，不改写主席答案。
@@ -139,8 +139,8 @@ LCT 检测到当前 traecli 可用模型：
   2. ...
 
 推荐 council 模型套：
-  members: Kimi-K2.6, MiniMax-M2.7, GPT-5.2, DeepSeek-V4-Pro
-  chairman: Kimi-K2.6
+  members: DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Gemini-3.1-Pro-Preview
+  chairman: DeepSeek-V4-Pro
 
 选择 [回车=使用推荐 / d=默认模型套 / c=自定义 / q=取消]:
 ```
@@ -158,8 +158,8 @@ llm-council-for-trae run \
 默认模型套是：
 
 ```text
-members: Kimi-K2.6, MiniMax-M2.7, GPT-5.2, DeepSeek-V4-Pro
-chairman: Kimi-K2.6
+members: DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Gemini-3.1-Pro-Preview
+chairman: DeepSeek-V4-Pro
 ```
 
 `--default-models` 始终使用这套静态默认阵容。run 内 auto-backfill 默认启用：CLI 会从 `--backfill-members`、同 vendor fallback、`models --recommend --json` 和当前 runtime safe models 生成 backfill candidates，在同一个 run 内追加候补补足有效成员；它不整轮重跑，也不会把已成功 Stage 1 输出替换掉。交付索引里只能记录 terminal manifest 的 `metadata.quorum.backfill_candidates`；如果没有记录则写 `not recorded`，不得从默认成员阵容或 `models --recommend --json` 的 primary roster 替代。
@@ -395,11 +395,11 @@ PYTHONPATH=src python3 -m llm_council_for_trae.cli run --input examples/question
 - 不接 OpenRouter API。
 - 不依赖旧 TR。
 - 不把 HTML 生成和主席综合混成一步。
-- 不维护一份脱离 `traecli models --json` 的静态模型清单。
+- 不维护脱离 `traecli models --json` 过滤的 runtime 推荐；静态默认阵容和优先级必须与代码、测试、Skill 文档同步。
 - 不把 subagent profile 的 prompt-only 成功当成真实 subagent 成功。
 
 ## Current Status
 
-`LLM-Council-for-Trae` v1.1.2：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、subagent evidence validation、主动模型选择和中文默认输出全部落地。默认 direct 阵容已按 2026-06-02 live 可用性收敛为 4 成员：Kimi-K2.6、MiniMax-M2.7、GPT-5.2、DeepSeek-V4-Pro，主席为 Kimi-K2.6。`models --recommend` 会排除 Seed/Doubao/GPT-5.5、Beta 和 Queue heat ≥95% 的模型，优先安全非 OpenRouter，安全非 OpenRouter 不足 4 个时才用 OpenRouter 补位。测试数量以 `make test` 的当前输出为准。HTML 报告 h1 动态标题、问题摘要和 LCT 搜索证据摘要已上线。subagent profile 是 legacy / experimental 路径，不再代表 direct 默认阵容。当前下一阶段是 runtime hardening：重点解决并发互斥、Stage 2 超时、timeout 真值源、优雅退出和降级收场。
+`LLM-Council-for-Trae` v1.1.2：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、subagent evidence validation、主动模型选择和中文默认输出全部落地。默认 direct 阵容已按 2026-06-04 live 可用性收敛为 4 成员：DeepSeek-V4-Pro、openrouter-1o、GPT-5.4、Gemini-3.1-Pro-Preview，主席为 DeepSeek-V4-Pro。`models --recommend` 会排除 Seed/Doubao/GLM/GPT-5.5、Beta 和 Queue heat ≥95% 的模型，并按配置优先级选择成员。测试数量以 `make test` 的当前输出为准。HTML 报告 h1 动态标题、问题摘要和 LCT 搜索证据摘要已上线；标题抽取会跳过“核心内容”等通用章节名，缺少 `Report topic` 时优先使用可识别的文章题名或具体议题。subagent profile 是 legacy / experimental 路径，不再代表 direct 默认阵容。当前下一阶段是 runtime hardening：重点解决并发互斥、Stage 2 超时、timeout 真值源、优雅退出和降级收场。
 
-模型阵容：direct 默认 4 成员（Kimi-K2.6、MiniMax-M2.7、GPT-5.2、DeepSeek-V4-Pro）+ Kimi-K2.6 主席。subagent profile 保留历史 6 成员固定实验路径，不再代表 direct 默认阵容。HTML 报告结构已稳定化。
+模型阵容：direct 默认 4 成员取成员整体优先级前 4 个（DeepSeek-V4-Pro、openrouter-1o、GPT-5.4、Gemini-3.1-Pro-Preview）+ DeepSeek-V4-Pro 主席。成员整体优先级按 `model_selection.py`：DeepSeek-V4-Pro、openrouter-1o、GPT-5.4、Gemini-3.1-Pro-Preview、GPT-5.2、openrouter-1、Kimi-K2.6、DeepSeek-V4-Flash、MiniMax-M2.7、Qwen3.6-Plus。主席备选链为 Kimi-K2.6 → DeepSeek-V4-Flash → GPT-5.2 → openrouter-1。subagent profile 是 legacy / experimental 路径，不作为 direct 默认阵容的源头；当前 profile 仅镜像 direct 默认 4 成员，避免旧 GLM profile 被误跑。HTML 报告结构已稳定化。

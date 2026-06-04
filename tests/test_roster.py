@@ -26,11 +26,15 @@ class TestRoster(unittest.TestCase):
         self.assertIsNone(get_vendor("UnknownModel"))
 
     def test_chairman_fallback_chain_defined(self):
-        self.assertIsInstance(CHAIRMAN_FALLBACK_CHAIN, list)
-        self.assertGreater(len(CHAIRMAN_FALLBACK_CHAIN), 0)
+        self.assertEqual(CHAIRMAN_FALLBACK_CHAIN, ["Kimi-K2.6", "DeepSeek-V4-Flash", "GPT-5.2", "openrouter-1"])
 
-    def test_primary_chairman_is_kimi(self):
-        self.assertEqual(PRIMARY_CHAIRMAN, "Kimi-K2.6")
+    def test_primary_chairman_is_deepseek(self):
+        self.assertEqual(PRIMARY_CHAIRMAN, "DeepSeek-V4-Pro")
+
+    def test_glm_is_not_an_active_vendor_tier(self):
+        serialized = repr(VENDOR_TIERS)
+        self.assertNotIn("GLM-5.1", serialized)
+        self.assertNotIn("GLM-5", serialized)
 
 
 if __name__ == "__main__":

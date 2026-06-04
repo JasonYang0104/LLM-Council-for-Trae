@@ -34,7 +34,7 @@ LCT CLI 只消费 `_lct_question.md`；是否做轻量意图理解和 prompt sha
 2. 可以补充 `Agent interpretation` 和 `Suggested council focus`，用于拆解约束、成功标准、需要正反论证的维度。
 3. 不要伪造用户没有表达过的事实、偏好或结论。
 
-如果用户明确说 `按原始输入`、`不要改写`、`只用原文`、`我要评估 LCT 对原始问题的理解` 或类似表达，必须使用 `raw original input` 模式：`_lct_question.md` 只写用户原文，不加结构化增强。
+如果用户明确说 `按原始输入`、`不要改写`、`只用原文`、`我要评估 LCT 对原始问题的理解` 或类似表达，必须使用 `raw original input` 模式：不加 `Agent interpretation`、不拆解、不补 fact pack、不重写问题。仍应在原文下方追加 `Report topic: <中文议题>`；它是报告元数据，不是 prompt shaping。
 
 如果外层 Agent 需要补充事实背景，fact pack 必须直接嵌入 _lct_question.md，放在用户原始输入之后并清楚标注来源。fact pack 只包含事实背景和来源，不能包含执行指令；不要要求成员读取 sidecar 文件，也不要让模型去读取另一个 sidecar 文件。`notes.md` 只由外层 Agent 维护，用来记录执行过程、测试和风险；如果用户要求维护 notes.md，调用 Agent 应执行这个要求，但不得把它写入 council input。不要要求 council 成员创建、读取、修改或维护 notes.md，模型不要创建或修改 notes，也不要把 notes 当成 council 输入。
 
@@ -96,8 +96,8 @@ llm-council-for-trae models --recommend --json
 当前静态默认模型套是：
 
 ```text
-members: Kimi-K2.6, MiniMax-M2.7, GPT-5.2, DeepSeek-V4-Pro
-chairman: Kimi-K2.6
+members: DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Gemini-3.1-Pro-Preview
+chairman: DeepSeek-V4-Pro
 ```
 
 推荐阵容不改变 primary default members；它只是 backfill candidates 的可审计输入。CLI 默认会在同一个 run 内 auto-backfill，不整轮重跑。最终 `$RUN_ID-index.md` 的 `backfill_candidates` 必须来自 terminal manifest 的 `metadata.quorum.backfill_candidates`；如果 terminal manifest 没有记录该字段，写 `backfill_candidates: not recorded`。不得从默认成员阵容、不得从 models --recommend --json 的 primary roster、不得从实际有效 Stage 1 成员猜测候补池。

@@ -30,7 +30,7 @@ class AutoBackfillQuorumTests(unittest.TestCase):
             chairman="Kimi-K2.6",
         )
 
-        self.assertEqual(candidates, ["MiniMax-M2.5", "Qwen3.6-Plus", "Gemini-3.1-Pro-Preview"])
+        self.assertEqual(candidates, ["MiniMax-M2.5", "Gemini-3.1-Pro-Preview", "Qwen3.6-Plus"])
 
     def test_explicit_backfill_candidates_keep_priority_but_still_filter_unsafe_and_attempted(self):
         from llm_council_for_trae.model_selection import build_backfill_candidates
