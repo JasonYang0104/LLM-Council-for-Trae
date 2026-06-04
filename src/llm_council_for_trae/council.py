@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import tempfile
 from dataclasses import dataclass, field
@@ -53,6 +54,23 @@ class CouncilConfig:
         if not self.member_agents or index >= len(self.member_agents):
             return None
         return self.member_agents[index]
+
+
+def ensure_stage1_stream_sidecar(store: ArtifactStore, label: str, call: ModelCallResult) -> None:
+    stream_path = store.root / "stage1" / f"{label}.traecli.stream.jsonl"
+    if stream_path.exists() and stream_path.stat().st_size > 0:
+        return
+    stream_event = {
+        "event": "synthetic_stage1_result",
+        "stage": "stage1",
+        "label": label,
+        "expected_model": call.expected_model,
+        "actual_model": call.actual_model,
+        "status": call.status,
+        "error": call.error,
+        "captured_at": utc_now(),
+    }
+    store.write_text(f"stage1/{label}.traecli.stream.jsonl", json.dumps(stream_event, ensure_ascii=False) + "\n")
 
 
 async def stage1_collect_responses(
@@ -130,6 +148,7 @@ async def stage1_collect_responses(
             call = synthetic_failed_call(model, "cancelled_by_stage_timeout", config)
         if not (store.root / "stage1" / f"{label}.meta.json").exists():
             store.write_json(f"stage1/{label}.meta.json", call.to_json() | {"captured_at": utc_now()})
+        ensure_stage1_stream_sidecar(store, label, call)
         store.write_text(f"stage1/{label}.response.md", call.response + "\n")
         stage1_results.append(
             {
@@ -206,6 +225,7 @@ async def backfill_stage1_responses(
         )
         if not (store.root / "stage1" / f"{label}.meta.json").exists():
             store.write_json(f"stage1/{label}.meta.json", call.to_json() | {"captured_at": utc_now()})
+        ensure_stage1_stream_sidecar(store, label, call)
         store.write_text(f"stage1/{label}.response.md", call.response + "\n")
         stage1_results.append(
             {
@@ -824,6 +844,7 @@ async def run_full_council(
             } | tool_policy_record(retry_call)
             store.write_text(f"stage1/{label}.response.md", retry_call.response + "\n")
             store.write_json(f"stage1/{label}.meta.json", retry_call.to_json() | {"captured_at": utc_now()})
+            ensure_stage1_stream_sidecar(store, label, retry_call)
 
     backfill_candidates, backfill_attempted = await backfill_stage1_responses(
         user_query,
