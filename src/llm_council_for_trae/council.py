@@ -5,6 +5,7 @@ import json
 import re
 import tempfile
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
@@ -468,7 +469,21 @@ async def stage3_synthesize_final(
     store: ArtifactStore,
     fallback_chain: list[str] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    chairman_prompt = build_stage3_prompt(user_query, stage1_results, stage2_results)
+    label_to_model = {
+        result["label"]: result["model"]
+        for result in stage1_results
+        if result.get("label") and result.get("model")
+    }
+    aggregate_rankings = aggregate_rankings_with_labels(
+        calculate_aggregate_rankings(valid_stage2_rankings(stage2_results), label_to_model),
+        label_to_model,
+    )
+    chairman_prompt = build_stage3_prompt(
+        user_query,
+        stage1_results,
+        stage2_results,
+        aggregate_rankings=aggregate_rankings,
+    )
     store.write_text("stage3/chairman.prompt.md", chairman_prompt + "\n")
 
     attempted = [config.chairman]
@@ -524,6 +539,42 @@ async def stage3_synthesize_final(
             store.write_json("stage3/final.json", degraded)
             return degraded, chairman_meta
 
+    copy_check = stage3_copy_check(call.response, stage1_results) if call.status == "ok" else None
+    prompt_path = "stage3/chairman.prompt.md"
+    original_prompt_path: str | None = None
+    if copy_check and copy_check["triggered"]:
+        retry_prompt = build_stage3_copy_retry_prompt(chairman_prompt, copy_check["matched_stage1"])
+        store.write_text("stage3/chairman.copy_retry.prompt.md", retry_prompt + "\n")
+        retry_call = await provider.query_model(
+            model=used,
+            prompt=retry_prompt,
+            run_id=store.root.name,
+            stage="stage3",
+            label="final-copy-retry",
+            output_dir=store.path("stage3"),
+            agent=config.chairman_agent if used == config.chairman else None,
+            query_timeout=config.chairman_timeout,
+        )
+        copy_check["retry_attempted"] = True
+        copy_check["retry_status"] = retry_call.status
+        copy_check["retry_prompt_path"] = "stage3/chairman.copy_retry.prompt.md"
+        if retry_call.status == "ok":
+            retry_matches = stage3_copy_matches(retry_call.response, stage1_results)
+            copy_check["retry_matched_stage1"] = retry_matches
+            call = retry_call
+            prompt_path = "stage3/chairman.copy_retry.prompt.md"
+            original_prompt_path = "stage3/chairman.prompt.md"
+            if retry_matches:
+                copy_check["resolved"] = False
+                copy_check["unresolved_reason"] = "retry_still_copies_stage1"
+            else:
+                copy_check["resolved"] = True
+                copy_check["unresolved_reason"] = None
+        else:
+            copy_check["resolved"] = False
+            copy_check["unresolved_reason"] = "retry_failed"
+            copy_check["retry_error"] = retry_call.error
+
     final = {
         "model": used,
         "expected_model": call.expected_model,
@@ -533,7 +584,7 @@ async def stage3_synthesize_final(
         "response": call.response,
         "status": call.status,
         "error": call.error,
-        "prompt_path": "stage3/chairman.prompt.md",
+        "prompt_path": prompt_path,
         "response_path": "stage3/final.md",
         "json_path": "stage3/final.json",
         "tool_calls_count": call.tool_calls_count,
@@ -543,9 +594,90 @@ async def stage3_synthesize_final(
         "retried": call.retried,
         "retry_error": call.retry_error,
     } | tool_policy_record(call)
+    if original_prompt_path:
+        final["original_prompt_path"] = original_prompt_path
+    if copy_check:
+        final["chairman_copy_check"] = copy_check
+        chairman_meta["copy_check"] = copy_check
     store.write_text("stage3/final.md", call.response + "\n")
     store.write_json("stage3/final.json", final)
     return final, chairman_meta
+
+
+def normalize_for_stage3_copy_check(text: str) -> str:
+    normalized = re.sub(r"\s+", " ", text).strip().lower()
+    return normalized
+
+
+def stage3_copy_matches(
+    final_text: str,
+    stage1_results: list[dict[str, Any]],
+    *,
+    exact_min_chars: int = 80,
+    similarity_min_chars: int = 200,
+    similarity_threshold: float = 0.92,
+) -> list[dict[str, Any]]:
+    final_normalized = normalize_for_stage3_copy_check(final_text)
+    if not final_normalized:
+        return []
+
+    matches: list[dict[str, Any]] = []
+    for result in stage1_results:
+        if result.get("status") != "ok":
+            continue
+        source_normalized = normalize_for_stage3_copy_check(result.get("response", ""))
+        if not source_normalized:
+            continue
+        exact_match = (
+            final_normalized == source_normalized
+            and len(final_normalized) >= exact_min_chars
+        )
+        similarity = 1.0 if exact_match else 0.0
+        near_match = False
+        if not exact_match and min(len(final_normalized), len(source_normalized)) >= similarity_min_chars:
+            similarity = SequenceMatcher(None, final_normalized, source_normalized).ratio()
+            near_match = similarity >= similarity_threshold
+        if not exact_match and not near_match:
+            continue
+        matches.append(
+            {
+                "label": result.get("label"),
+                "model": result.get("model"),
+                "similarity": round(similarity, 4),
+                "match_type": "exact_normalized" if exact_match else "near_copy",
+            }
+        )
+    matches.sort(key=lambda item: item["similarity"], reverse=True)
+    return matches
+
+
+def stage3_copy_check(final_text: str, stage1_results: list[dict[str, Any]]) -> dict[str, Any]:
+    matches = stage3_copy_matches(final_text, stage1_results)
+    return {
+        "triggered": bool(matches),
+        "matched_stage1": matches,
+        "retry_attempted": False,
+        "resolved": not matches,
+        "unresolved_reason": None,
+    }
+
+
+def build_stage3_copy_retry_prompt(chairman_prompt: str, matches: list[dict[str, Any]]) -> str:
+    match_lines = "\n".join(
+        f"- {match.get('label')} | model={match.get('model')} | "
+        f"similarity={match.get('similarity')} | match_type={match.get('match_type')}"
+        for match in matches
+    )
+    return f"""{chairman_prompt}
+
+ANTI-COPY RETRY:
+你刚才的主席最终答案与以下 Stage 1 回答过于接近：
+{match_lines}
+
+请重新生成最终答案。硬性要求：
+- 不得逐字或近似复用上述 Stage 1 回答。
+- 必须重新组织论证结构，并融合综合排序靠前回答的不同洞察。
+- 仍然直接回答用户原始问题，不要输出模型排名或解释重试过程。"""
 
 
 def degraded_final_from_stage2(
@@ -663,13 +795,37 @@ def build_stage3_prompt(
     user_query: str,
     stage1_results: list[dict[str, Any]],
     stage2_results: list[dict[str, Any]],
+    aggregate_rankings: list[dict[str, Any]] | None = None,
 ) -> str:
     stage1_text = "\n\n".join(
-        f"Model: {result['model']}\nResponse: {result['response']}" for result in stage1_results
+        f"{result.get('label', 'Response ?')}:\nModel: {result['model']}\nResponse: {result['response']}" for result in stage1_results
     )
     stage2_text = "\n\n".join(
         f"Model: {result['model']}\nRanking: {result['ranking']}" for result in stage2_results
     )
+    model_to_label: dict[str, str] = {}
+    for result in stage1_results:
+        if result.get("model") and result.get("label"):
+            model_to_label.setdefault(str(result["model"]), str(result["label"]))
+    aggregate_text = "未生成可用的 Stage 2 综合排序。"
+    if aggregate_rankings:
+        aggregate_lines: list[str] = []
+        for index, item in enumerate(aggregate_rankings, start=1):
+            label = (
+                item.get("label")
+                or item.get("response_label")
+                or item.get("stage1_label")
+                or item.get("source_stage1_label")
+                or model_to_label.get(str(item.get("model")))
+                or "Response ?"
+            )
+            positions = item.get("positions", [])
+            aggregate_lines.append(
+                f"{index}. {label} | model={item.get('model')} | "
+                f"average_rank={item.get('average_rank')} | "
+                f"rankings_count={item.get('rankings_count')} | positions={positions}"
+            )
+        aggregate_text = "\n".join(aggregate_lines)
     return f"""你是 LLM Council 的主席。多个 AI 模型已经回答了用户问题，并对彼此的回答进行了排序。
 
 {DEFAULT_READER_LANGUAGE_INSTRUCTION}
@@ -683,12 +839,19 @@ def build_stage3_prompt(
 阶段 2 - 同侪排序与评价：
 {stage2_text}
 
+Stage 2 综合排序（按 average_rank 从低到高，越靠前代表同侪排序越好）：
+{aggregate_text}
+
 你的任务是综合以上所有信息，给出一个直接、清晰、有判断力的综述答案。请考虑：
 - 各个回答提供的有效洞察。
 - 同侪排序反映出的回答质量差异。
 - 模型之间的一致意见和分歧。
+- 必须显式融合 top-ranked responses 的不同洞察，尤其是综合排序靠前回答的关键证据、判断和边界条件。
 
-重要：你的输出应该是针对原始问题的综述性最终答案，而不是对各模型表现的评价或排名。不要评价哪个模型更好，不要输出模型排名对比。直接回答用户的问题。"""
+重要：
+- 你的输出应该是针对原始问题的综述性最终答案，而不是对各模型表现的评价或排名。不要评价哪个模型更好，不要输出模型排名对比。直接回答用户的问题。
+- 不得逐字或近似复用任何 Stage 1 回答；不能把某个候选回答原封不动当成最终答案。
+- 如果某个 Stage 1 回答整体最好，也必须重新组织、压缩、补足边界，并融合其他高排名回答的有效洞察。"""
 
 
 def parse_ranking_from_text(ranking_text: str) -> list[str]:
@@ -735,6 +898,19 @@ def calculate_aggregate_rankings(
             )
     aggregate.sort(key=lambda x: (x["average_rank"], x["model"]))
     return aggregate
+
+
+def aggregate_rankings_with_labels(
+    aggregate_rankings: list[dict[str, Any]],
+    label_to_model: dict[str, str],
+) -> list[dict[str, Any]]:
+    model_to_label: dict[str, str] = {}
+    for label, model in label_to_model.items():
+        model_to_label.setdefault(model, label)
+    return [
+        {"label": model_to_label.get(item.get("model"), "Response ?")} | item
+        for item in aggregate_rankings
+    ]
 
 
 async def run_full_council(
@@ -960,6 +1136,17 @@ async def run_full_council(
     )
     manifest["stages"]["stage3"] = stage3_result
     manifest["metadata"]["chairman"] = chairman_meta
+    copy_check = stage3_result.get("chairman_copy_check") or chairman_meta.get("copy_check")
+    if copy_check and copy_check.get("triggered") and not copy_check.get("resolved"):
+        matched_labels = [
+            str(match.get("label"))
+            for match in copy_check.get("matched_stage1", [])
+            if match.get("label")
+        ]
+        manifest["warnings"].append(
+            "stage3_copy_risk: chairman final still closely matches Stage 1 after anti-copy retry; "
+            f"matched_stage1={', '.join(matched_labels) or 'unknown'}"
+        )
     record_stage_failures(manifest, [stage3_result])
     if stage3_result.get("status") == "degraded_ok":
         manifest["status"] = "degraded_ok"

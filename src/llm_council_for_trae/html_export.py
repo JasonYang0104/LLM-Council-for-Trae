@@ -817,8 +817,6 @@ def render_summary_cards(manifest: dict[str, Any], aggregate: list[dict[str, Any
     chairman = metadata.get("chairman") if isinstance(metadata.get("chairman"), dict) else {}
     top_model = aggregate[0].get("model") if aggregate and isinstance(aggregate[0], dict) else "暂无聚合排序"
     search = summarize_search_usage(manifest)
-    search_text = f"调用次数：{search['lct_web_tool_calls']}"
-    search_meta = f"调用生效次数：{search['lct_web_tool_effective_calls']}"
     cards = [
         f"<div class='summary-card'><h3>最高排序成员</h3><p>{esc(top_model)}</p></div>"
     ]
@@ -858,7 +856,9 @@ def render_summary_cards(manifest: dict[str, Any], aggregate: list[dict[str, Any
         )
     else:
         cards.append(f"<div class='summary-card'><h3>主席模型</h3><p>{esc(config.get('chairman'))}</p></div>")
-    cards.append(f"<div class='summary-card'><h3>搜索工具</h3><p>{esc(search_text)}</p><p class='meta'>{esc(search_meta)}</p></div>")
+    if search["lct_web_tool_calls"] > 0:
+        search_text = f"调用次数：{search['lct_web_tool_calls']}"
+        cards.append(f"<div class='summary-card'><h3>搜索工具</h3><p>{esc(search_text)}</p></div>")
     return "".join(cards)
 
 
