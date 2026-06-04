@@ -598,3 +598,25 @@
   - `test_validate_rejects_stage2_reviewer_only_backfill_in_subject_mapping`
   - `test_html_summary_shows_stage2_reviewer_only_backfill_card`
   - `test_html_stage2_tab_shows_reviewer_source_and_subject_count`
+# 2026-06-04 LCT input boundary docs PR 运行记录
+
+## Phase 0：启动与边界确认
+
+- 本轮目标是 docs/Skill-only PR：修正 `_lct_question.md` 的输入边界，避免把外层 Agent 的执行职责泄露给 council 成员模型。
+- 不改 runtime、validate、`--member-tool-mode` 默认值，也不新增 CLI classifier。原因：v9 问题的直接诱因是 Skill/README 对输入准备的口径不够清楚，不是 CLI 执行层缺少一个新分类器。
+- 不把 `answer_only` 写成默认或强制策略。`answer_only` 是可选工具模式，适合某些收窄输入后的运行；默认是否允许成员搜索仍应由外层 Agent 基于任务判断。
+- 本轮需要同步 `README.md`、`skills/llm-council-for-trae/SKILL.md` 和 `.trae/skills/llm-council-for-trae/SKILL.md`，并用 docs contract 测试约束三者口径。
+- 红灯测试阶段如果单独提交会让分支处于故意失败状态，我会先记录红灯证据，再在同一测试提交前补齐实现，保证提交历史不留下破坏全量测试的节点。
+
+## Phase 2：红灯测试证据
+
+- 新增 `tests/test_global_install_skill_docs.py` 的 input-boundary 文档契约测试后，运行 `PYTHONPATH=src python3 -m unittest tests.test_global_install_skill_docs`。
+- 红灯结果：22 个测试中失败 10 个 subtest。主要失败点是 README/Skill 缺少 `answer_only 是可选工具模式` 等判断权口径，`.trae` Skill 缺少 `council input` / `operator envelope`，canonical Skill 仍写着“默认使用 `structured by Agent` 模式”。
+- 这证明旧口径不足以阻止外层执行指令进入 `_lct_question.md`；后续实现只改 README 和 Skill 文档，不改 runtime。
+
+## Phase 4：subagent review
+
+- 独立 subagent review 结论：Findings 为 None，置信度高。
+- 它逐项确认：`_lct_question.md` 边界已写清，未强制 `answer_only` 或外层搜索，`notes.md` 被限定为外层 Agent 维护，fact pack 可选且必须有来源，本 diff 没有触碰 runtime。
+- 它指出现有测试是文档契约字符串测试，不是语义解析测试；对 docs/Skill-only PR 合理，但未来同义错误措辞仍可能绕过。这是残余风险，不需要本轮改成解析器。
+- 我不会把 subagent 的验证当作最终门禁；最终仍由主线程重新运行完整验证命令。

@@ -154,6 +154,111 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
                     self.assertIn(term, text)
                 self.assertNotIn("请读取 _lct_fact_pack.md", text)
 
+    def test_skills_separate_council_input_from_operator_envelope(self):
+        required_terms = [
+            "council input",
+            "operator envelope",
+            "_lct_question.md",
+            "外层执行指令不得写入 _lct_question.md",
+            "Report topic",
+            "报告元数据",
+            "维护 notes.md",
+            "不得把它写入 council input",
+        ]
+        forbidden_member_tasks = [
+            "要求 council 成员维护 notes.md",
+            "要求模型维护 notes.md",
+            "让模型维护 notes.md",
+        ]
+        for relative in [
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+                for term in forbidden_member_tasks:
+                    self.assertNotIn(term, text)
+
+    def test_skills_preserve_raw_input_by_default_unless_agent_shaping_is_requested(self):
+        required_terms = [
+            "默认保留用户原始实质问题",
+            "只有当用户明确要求",
+            "structured by Agent",
+            "Original input",
+            "Agent interpretation",
+        ]
+        for relative in [
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+                self.assertNotIn("默认使用 `structured by Agent` 模式", text)
+                self.assertNotIn("默认使用 structured by Agent 模式", text)
+
+    def test_readme_quickstart_documents_council_facing_question_boundary(self):
+        readme = self.read_text("README.md")
+        quickstart = readme.split("### 1. 确认 traecli 可用", 1)[0]
+
+        required_terms = [
+            "council-facing 问题",
+            "必要事实背景",
+            "输出要求",
+            "外层执行指令不得写入 _lct_question.md",
+            "维护 notes.md",
+            "Git/PR/测试职责",
+            "Report topic",
+            "报告元数据",
+        ]
+        for term in required_terms:
+            self.assertIn(term, quickstart)
+
+    def test_readme_and_skills_preserve_agent_tool_mode_judgment(self):
+        required_terms = [
+            "answer_only 是可选工具模式",
+            "不强制 answer_only",
+            "外层 Agent 可以自行判断",
+            "search_enabled 只表示搜索被允许，不表示模型实际搜索了",
+            "agent_external_search_used",
+        ]
+        forbidden_terms = [
+            "必须使用 --member-tool-mode answer_only",
+            "默认使用 --member-tool-mode answer_only",
+            "强制使用 answer_only",
+        ]
+        for relative in [
+            "README.md",
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+                for term in forbidden_terms:
+                    self.assertNotIn(term, text)
+
+    def test_skills_require_fact_pack_sources_without_execution_instructions(self):
+        required_terms = [
+            "fact pack",
+            "标注来源",
+            "只包含事实背景和来源",
+            "不能包含执行指令",
+            "不要要求成员读取 sidecar 文件",
+        ]
+        for relative in [
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+
     def test_readme_and_skills_require_explicit_chinese_report_topic(self):
         required_terms = [
             "Report topic",
