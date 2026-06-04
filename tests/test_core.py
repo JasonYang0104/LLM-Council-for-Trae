@@ -528,6 +528,62 @@ FINAL RANKING:
         self.assertEqual(parsed["actual_model"], "GPT-5.4")
         self.assertEqual(parsed["response"], "OK")
 
+    def test_parse_stream_json_tracks_web_tool_results_separately(self):
+        stream = "\n".join(
+            [
+                json.dumps({"type": "system", "subtype": "init", "session_id": "s1", "model": "GPT-5.4"}),
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "message": {
+                            "role": "assistant",
+                            "content": "",
+                            "tool_calls": [
+                                {
+                                    "id": "tc1",
+                                    "type": "function",
+                                    "function": {"name": "WebSearch", "arguments": "{\"query\":\"x\"}"},
+                                }
+                            ],
+                        },
+                    }
+                ),
+                json.dumps({"type": "user", "subtype": "tool_result", "tool_name": "WebSearch", "tool_use_id": "tc1", "content": "results"}),
+                json.dumps({"type": "user", "subtype": "tool_result", "tool_name": "Read", "tool_use_id": "tc2", "content": "file"}),
+                json.dumps({"type": "assistant", "message": {"role": "assistant", "content": "OK"}}),
+                json.dumps({"type": "result", "result": "OK", "is_error": False}),
+            ]
+        )
+
+        parsed = parse_stream_json(stream)
+
+        self.assertEqual(parsed["tool_calls_count"], 1)
+        self.assertEqual(parsed["tool_calls"][0]["name"], "WebSearch")
+        self.assertEqual(parsed["tool_result_calls"], [{"id": "tc1", "name": "WebSearch"}])
+        self.assertEqual(parsed["web_tool_result_calls_count"], 1)
+        self.assertEqual(parsed["web_tool_result_call_ids"], ["tc1"])
+
+    def test_parse_session_log_counts_web_conversion_errors_once(self):
+        from llm_council_for_trae.provider import parse_session_log_search_delivery
+
+        log = "\n".join(
+            [
+                json.dumps({"level": "ERROR", "msg": "unsupported tool output conversion", "tool": "WebSearch"}),
+                json.dumps({"level": "ERROR", "msg": "failed to convert ADK output to model format", "tool": "WebSearch"}),
+                json.dumps({"level": "ERROR", "msg": "BuildNotification failed", "error": "failed to convert ADK output to model format"}),
+                json.dumps({"level": "ERROR", "msg": "failed to convert ADK output to model format", "tool": "WebFetch"}),
+                json.dumps({"level": "ERROR", "msg": "failed to convert ADK output to model format", "tool": "Read"}),
+            ]
+        )
+
+        parsed = parse_session_log_search_delivery(log)
+
+        self.assertEqual(parsed["lct_search_conversion_errors"], 2)
+        self.assertEqual(
+            [item["tool"] for item in parsed["tool_output_conversion_errors"]],
+            ["WebSearch", "WebFetch"],
+        )
+
     def test_parse_stream_json_prefers_subagent_source_model(self):
         tool_id = "call_1"
         stream = "\n".join(
@@ -632,7 +688,9 @@ FINAL RANKING:
             self.assertNotIn('<p class="question-context">', html)
             self.assertIn("附录 A · 阶段 1 候选回答", html)
             self.assertIn("搜索工具", html)
-            self.assertIn("允许：是 · 实际使用：否", html)
+            self.assertIn("调用次数：0", html)
+            self.assertIn("调用生效次数：0", html)
+            self.assertNotIn("允许：是 · 实际使用：否", html)
             self.assertIn("已验证<br>阶段 3", html)
             self.assertIn("复制 Markdown", html)
             self.assertIn('id="copy-fallback"', html)
@@ -684,6 +742,9 @@ FINAL RANKING:
         self.assertTrue(summary["lct_search_allowed"])
         self.assertTrue(summary["lct_search_used"])
         self.assertEqual(summary["lct_web_tool_calls"], 1)
+        self.assertEqual(summary["lct_web_tool_result_calls"], 0)
+        self.assertEqual(summary["lct_search_conversion_errors"], 0)
+        self.assertEqual(summary["lct_web_tool_effective_calls"], 0)
         self.assertTrue(summary["search_allowed"])
         self.assertTrue(summary["search_used"])
         self.assertEqual(summary["web_tool_calls_count"], 1)
@@ -1024,6 +1085,36 @@ FINAL RANKING:
             self.assertTrue(validation["html_exists"])
             self.assertEqual(validation["failed_stage_records"], [])
             self.assertEqual(validation["verdict"], "complete_ok_final")
+
+    def test_validate_warns_when_web_tool_delivery_is_lower_than_calls(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-search-warning")
+            write_minimal_valid_direct_run(store)
+            manifest = store.read_manifest()
+            manifest["stages"]["stage1"][0].update(
+                {
+                    "tool_calls": [
+                        {"id": "tc1", "name": "WebSearch"},
+                        {"id": "tc2", "name": "WebSearch"},
+                    ],
+                    "tool_calls_count": 2,
+                    "web_tool_result_call_ids": ["tc1", "tc2"],
+                    "web_tool_result_calls_count": 2,
+                    "lct_search_conversion_errors": 2,
+                    "lct_web_tool_effective_calls": 0,
+                }
+            )
+            store.write_manifest(manifest)
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["status"], "ok", validation["failures"])
+            self.assertEqual(validation["verdict"], "complete_ok_final")
+            self.assertFalse(validation["failures"])
+            self.assertTrue(
+                any(warning["name"] == "search_tool_output_conversion" for warning in validation["warnings"]),
+                validation,
+            )
 
     def test_validate_contract_reports_usable_degraded_final_with_failed_member_record(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2170,6 +2261,50 @@ The user is not merely asking whether local inference hardware will improve they
         self.assertTrue(result2.retried)
         self.assertEqual(result2.retry_error, "first error")
 
+    def test_model_call_result_serializes_search_delivery_fields(self):
+        result = ModelCallResult(
+            expected_model="GPT-5.4", actual_model="GPT-5.4", response="ok",
+            status="ok", session_id="s1", command=["traecli"], exit_code=0,
+            stdout_path="out.jsonl", stderr_path="err.log",
+            tool_result_calls=[{"id": "tc1", "name": "WebSearch"}],
+            web_tool_result_calls_count=1,
+            web_tool_result_call_ids=["tc1"],
+            tool_output_conversion_errors=[{"tool": "WebSearch", "message": "failed to convert ADK output to model format"}],
+            lct_search_conversion_errors=1,
+            web_tool_effective_calls_count=0,
+        )
+
+        data = result.to_json()
+
+        self.assertEqual(data["tool_result_calls"], [{"id": "tc1", "name": "WebSearch"}])
+        self.assertEqual(data["web_tool_result_calls_count"], 1)
+        self.assertEqual(data["web_tool_result_call_ids"], ["tc1"])
+        self.assertEqual(data["lct_search_conversion_errors"], 1)
+        self.assertEqual(data["web_tool_effective_calls_count"], 0)
+
+    def test_tool_policy_record_persists_search_delivery_fields(self):
+        from llm_council_for_trae.council import tool_policy_record
+
+        result = ModelCallResult(
+            expected_model="GPT-5.4", actual_model="GPT-5.4", response="ok",
+            status="ok", session_id="s1", command=["traecli"], exit_code=0,
+            stdout_path="out.jsonl", stderr_path="err.log",
+        )
+        result.tool_result_calls = [{"id": "tc1", "name": "WebSearch"}]
+        result.web_tool_result_calls_count = 1
+        result.web_tool_result_call_ids = ["tc1"]
+        result.tool_output_conversion_errors = [{"tool": "WebSearch", "message": "failed to convert ADK output to model format"}]
+        result.lct_search_conversion_errors = 1
+        result.web_tool_effective_calls_count = 0
+
+        record = tool_policy_record(result)
+
+        self.assertEqual(record["tool_result_calls"], [{"id": "tc1", "name": "WebSearch"}])
+        self.assertEqual(record["web_tool_result_calls_count"], 1)
+        self.assertEqual(record["web_tool_result_call_ids"], ["tc1"])
+        self.assertEqual(record["lct_search_conversion_errors"], 1)
+        self.assertEqual(record["lct_web_tool_effective_calls"], 0)
+
     def test_stage1_result_dict_has_metrics(self):
         async def _run():
             from llm_council_for_trae.council import stage1_collect_responses, CouncilConfig
@@ -2414,6 +2549,37 @@ The user is not merely asking whether local inference hardware will improve they
         self.assertIn("M4", html)
         self.assertIn("reviewer-only", html)
         self.assertIn("subjects：3", html)
+
+    def test_html_search_card_shows_calls_and_effective_calls(self):
+        from llm_council_for_trae.html_export import render_summary_cards
+        manifest = {
+            "config": {"members": ["M1"], "chairman": "Chair"},
+            "stages": {
+                "stage1": [
+                    {
+                        "allowed_tools": ["WebSearch", "WebFetch"],
+                        "tool_calls": [
+                            {"id": "tc1", "name": "WebSearch"},
+                            {"id": "tc2", "name": "WebSearch"},
+                        ],
+                        "web_tool_result_call_ids": ["tc1", "tc2"],
+                        "lct_search_conversion_errors": 2,
+                    }
+                ],
+                "stage2": [],
+                "stage3": {},
+            },
+            "status": "ok",
+        }
+
+        html = render_summary_cards(manifest, [])
+
+        self.assertIn("搜索工具", html)
+        self.assertIn("调用次数：2", html)
+        self.assertIn("调用生效次数：0", html)
+        self.assertNotIn("允许：", html)
+        self.assertNotIn("实际使用：", html)
+        self.assertNotIn("Web 工具调用：", html)
 
     def test_html_stage2_tab_shows_reviewer_source_and_subject_count(self):
         manifest = {

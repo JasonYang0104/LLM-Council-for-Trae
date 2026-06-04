@@ -79,4 +79,43 @@
 
 ### Commit
 
-- 待提交：`docs: design search delivery and index provenance`
+- `02f91c1 docs: design search delivery and index provenance`
+
+## 阶段 2：TDD 红灯测试
+
+### 阶段目标
+
+- 用测试证明当前实现仍把 Web 工具调用和搜索结果生效混在一起。
+- 用测试证明 provider 尚未解析 Web tool result 和 session log conversion error。
+- 用测试证明 manifest stage record、HTML、validate 和文档契约都缺本轮字段。
+
+### 新增/修改的测试
+
+- `test_search_summary_distinguishes_calls_from_effective_calls`
+- `test_parse_stream_json_tracks_web_tool_results_separately`
+- `test_parse_session_log_counts_web_conversion_errors_once`
+- `test_model_call_result_serializes_search_delivery_fields`
+- `test_tool_policy_record_persists_search_delivery_fields`
+- `test_html_search_card_shows_calls_and_effective_calls`
+- `test_validate_warns_when_web_tool_delivery_is_lower_than_calls`
+- `test_readme_and_skills_require_manifest_sourced_backfill_candidates`
+- `test_skills_index_contract_includes_search_delivery_fields`
+
+### 红灯证据
+
+- 失败命令：`PYTHONPATH=src python3 -m unittest tests.test_lct_model_productization.LctModelProductizationTests.test_search_summary_distinguishes_calls_from_effective_calls tests.test_core.CouncilCoreTests.test_parse_stream_json_tracks_web_tool_results_separately tests.test_core.CouncilCoreTests.test_parse_session_log_counts_web_conversion_errors_once tests.test_core.CouncilCoreTests.test_model_call_result_serializes_search_delivery_fields tests.test_core.CouncilCoreTests.test_tool_policy_record_persists_search_delivery_fields tests.test_core.CouncilCoreTests.test_html_search_card_shows_calls_and_effective_calls tests.test_core.CouncilCoreTests.test_validate_warns_when_web_tool_delivery_is_lower_than_calls tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_readme_and_skills_require_manifest_sourced_backfill_candidates tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skills_index_contract_includes_search_delivery_fields -v`
+- 结果：9 个测试运行，当前旧实现出现 5 个 failure、7 个 error。
+- 失败点符合预期：
+  - `summarize_search_usage()` 缺 `lct_web_tool_result_calls` / `lct_web_tool_effective_calls`。
+  - `parse_stream_json()` 缺 `tool_result_calls`。
+  - `parse_session_log_search_delivery` 尚不存在。
+  - `ModelCallResult` 尚不接受搜索交付字段。
+  - `tool_policy_record()` 没有把搜索交付字段写入 stage record。
+  - HTML 搜索卡片仍显示旧文案“允许 / 实际使用 / Web 工具调用”。
+  - `validate_run()` 缺顶层 warning。
+  - README / canonical Skill / `.trae` Skill 缺 `metadata.quorum.backfill_candidates` 来源契约。
+- 通过：`git diff --check`
+
+### Commit
+
+- 待提交：`test: cover search delivery and index provenance gaps`

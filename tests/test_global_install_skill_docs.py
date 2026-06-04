@@ -366,7 +366,43 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
         self.assertIn("Input mode", quickstart_line)
         self.assertIn("lct_search_allowed", quickstart_line)
         self.assertIn("lct_search_used", quickstart_line)
+        self.assertIn("lct_web_tool_effective_calls", quickstart_line)
+        self.assertIn("lct_search_conversion_errors", quickstart_line)
         self.assertIn("agent_external_search_used", quickstart_line)
+
+    def test_readme_and_skills_require_manifest_sourced_backfill_candidates(self):
+        required_terms = [
+            "metadata.quorum.backfill_candidates",
+            "terminal manifest",
+            "not recorded",
+            "不得从默认成员阵容",
+            "不得从 models --recommend --json 的 primary roster",
+        ]
+        for relative in [
+            "README.md",
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+
+    def test_skills_index_contract_includes_search_delivery_fields(self):
+        required_terms = [
+            "lct_web_tool_effective_calls",
+            "lct_search_conversion_errors",
+            "backfill_candidates",
+        ]
+        for relative in [
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                index_line = next(line for line in text.splitlines() if "$RUN_ID-index.md" in line and "lct_search_allowed" in line)
+                for term in required_terms:
+                    self.assertIn(term, index_line)
 
     def test_make_install_global_writes_global_wrapper_and_skill_link(self):
         with tempfile.TemporaryDirectory() as tmp:
