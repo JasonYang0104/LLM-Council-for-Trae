@@ -613,3 +613,10 @@
 - 新增 `tests/test_global_install_skill_docs.py` 的 input-boundary 文档契约测试后，运行 `PYTHONPATH=src python3 -m unittest tests.test_global_install_skill_docs`。
 - 红灯结果：22 个测试中失败 10 个 subtest。主要失败点是 README/Skill 缺少 `answer_only 是可选工具模式` 等判断权口径，`.trae` Skill 缺少 `council input` / `operator envelope`，canonical Skill 仍写着“默认使用 `structured by Agent` 模式”。
 - 这证明旧口径不足以阻止外层执行指令进入 `_lct_question.md`；后续实现只改 README 和 Skill 文档，不改 runtime。
+
+## Phase 4：subagent review
+
+- 独立 subagent review 结论：Findings 为 None，置信度高。
+- 它逐项确认：`_lct_question.md` 边界已写清，未强制 `answer_only` 或外层搜索，`notes.md` 被限定为外层 Agent 维护，fact pack 可选且必须有来源，本 diff 没有触碰 runtime。
+- 它指出现有测试是文档契约字符串测试，不是语义解析测试；对 docs/Skill-only PR 合理，但未来同义错误措辞仍可能绕过。这是残余风险，不需要本轮改成解析器。
+- 我不会把 subagent 的验证当作最终门禁；最终仍由主线程重新运行完整验证命令。
