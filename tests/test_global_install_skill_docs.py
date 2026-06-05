@@ -14,6 +14,20 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
     def read_text(self, relative: str) -> str:
         return (REPO_ROOT / relative).read_text(encoding="utf-8")
 
+    def runtime_override_main_docs(self) -> list[str]:
+        return [
+            "README.md",
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]
+
+    def runtime_override_support_docs(self) -> list[str]:
+        return [
+            "docs/lct-deployment-guide-20260601.md",
+            "docs/lct-global-install-skill-design-20260601.md",
+            "docs/lct-global-install-skill-test-plan-20260601.md",
+        ]
+
     def test_readme_defaults_to_global_install_and_clean_workspace(self):
         readme = self.read_text("README.md")
 
@@ -25,6 +39,90 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
         self.assertIn("CLI 直接产物", readme)
         self.assertIn("Agent/Skill 额外落盘产物", readme)
         self.assertRegex(readme, re.compile(r"make install-local[\s\S]{0,160}开发"))
+
+    def test_docs_document_runtime_override_without_silent_fallback(self):
+        required_terms = [
+            "runtime override",
+            "--runtime-command coco",
+            "traecli models --json",
+            "空列表",
+            "coco models --json",
+            "非空",
+            "不是 CLI silent fallback",
+        ]
+        forbidden_patterns = [
+            r"自动切换到\s*`?coco`?",
+            r"默认(?:\s+runtime)?\s*改成\s*`?coco`?",
+            r"自动\s*fallback\s*到\s*`?coco`?",
+        ]
+        for relative in self.runtime_override_main_docs():
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+                for pattern in forbidden_patterns:
+                    self.assertIsNone(re.search(pattern, text, re.IGNORECASE), pattern)
+
+    def test_docs_require_runtime_override_evidence_in_index(self):
+        required_fields = [
+            "runtime_default_command",
+            "runtime_default_models_status",
+            "runtime_override_used",
+            "runtime_override_command",
+            "runtime_override_reason",
+            "runtime_used_by_lct",
+        ]
+        for relative in self.runtime_override_main_docs():
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for field in required_fields:
+                    self.assertIn(field, text)
+
+    def test_docs_require_same_runtime_command_for_override_run_and_validate(self):
+        required_terms = [
+            "llm-council-for-trae --runtime-command coco run",
+            "llm-council-for-trae --runtime-command coco validate",
+        ]
+        for relative in self.runtime_override_main_docs():
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+
+    def test_docs_preserve_traecli_as_default_runtime(self):
+        required_terms = [
+            "默认 runtime 仍是 traecli",
+            "coco 只在显式 override 中使用",
+        ]
+        for relative in self.runtime_override_main_docs() + self.runtime_override_support_docs():
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+
+    def test_docs_probe_recommendation_object_for_override(self):
+        required_terms = [
+            "llm-council-for-trae --runtime-command coco models --recommend --json",
+            "recommendation.members",
+            "recommendation.chairman",
+        ]
+        for relative in self.runtime_override_main_docs() + self.runtime_override_support_docs():
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+
+    def test_skill_removes_stale_recommendation_backfill_wording(self):
+        stale_phrase = "先记录推荐阵容，作为同一个 run 内 auto-backfill 的 backfill candidates 来源"
+        replacement_phrase = "先记录推荐阵容，作为当前模型可用性和推荐安全过滤参考"
+        for relative in [
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                self.assertNotIn(stale_phrase, text)
+                self.assertIn(replacement_phrase, text)
 
     def test_skill_template_has_required_workflow_contract(self):
         skill_path = REPO_ROOT / "skills" / "llm-council-for-trae" / "SKILL.md"
