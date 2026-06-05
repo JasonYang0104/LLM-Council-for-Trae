@@ -61,6 +61,9 @@ Behavior:
 - User-facing install docs do not use the stale `~/.trae/skills` path.
 - The deployment guide exists and states that the development repo, `~/.LCT`, and problem workspace are separate directories.
 - Local verification, live smoke, validate, and fake-runtime verification are not collapsed into one success claim.
+- Runtime override is documented as an explicit operator path: 默认 runtime 仍是 traecli，coco 只在显式 override 中使用.
+- `coco` override requires evidence from `traecli models --json`, `coco models --json`, `llm-council-for-trae --runtime-command coco doctor --json`, and `llm-council-for-trae --runtime-command coco models --recommend --json`.
+- The override recommendation check must inspect `recommendation.members` and `recommendation.chairman`.
 
 RED:
 
@@ -128,6 +131,25 @@ llm-council-for-trae validate <run_id> --json
 ```
 
 If live smoke cannot run, record exactly which prerequisite failed and keep the result marked as skipped. Do not substitute fixture or fake-runtime E2E for live smoke.
+
+Optional explicit runtime override smoke, only when `traecli models --json` is empty/failed/timed out and `coco` has evidence of usable models:
+
+```bash
+rm -rf /tmp/lct-runtime-override-smoke
+mkdir -p /tmp/lct-runtime-override-smoke
+cd /tmp/lct-runtime-override-smoke
+printf '请用两段话解释 LCT runtime override.\n\nReport topic: LCT runtime override smoke\n' > _lct_question.md
+traecli --version
+traecli models --json
+coco --version
+coco models --json
+llm-council-for-trae --runtime-command coco doctor --json
+llm-council-for-trae --runtime-command coco models --recommend --json
+llm-council-for-trae --runtime-command coco run --input _lct_question.md --default-models --member-tool-mode answer_only --json
+llm-council-for-trae --runtime-command coco validate <run_id> --json
+```
+
+The override smoke passes only if the recommendation object contains usable `recommendation.members` and `recommendation.chairman`, and the final report says `live runtime: coco via explicit --runtime-command override`. If both runtime commands fail to prove model availability, the live E2E is skipped or failed with `live runtime: unavailable`.
 
 ## Subagent Acceptance Checks
 

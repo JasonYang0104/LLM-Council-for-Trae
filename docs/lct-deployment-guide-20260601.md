@@ -62,6 +62,26 @@ traecli models --json
 
 If `traecli` is not installed or not logged in, use `docs/traecli-installation-and-paths.md`.
 
+Runtime override rule: 默认 runtime 仍是 traecli，coco 只在显式 override 中使用. If `traecli models --json` returns an empty list, fails, times out, or produces no structured output, the operator may probe `coco` before declaring live LCT unavailable. This is a runtime override, not CLI silent fallback.
+
+The probe must record default-entry evidence and then check the override entry:
+
+```bash
+traecli --version
+traecli models --json
+coco --version
+coco models --json
+llm-council-for-trae --runtime-command coco doctor --json
+llm-council-for-trae --runtime-command coco models --recommend --json
+```
+
+Only use `--runtime-command coco` when `coco models --json` is non-empty, `doctor` has no non-MCP blocking error, and the recommendation payload has usable `recommendation.members` and `recommendation.chairman`. The run and validate commands must use the same runtime command:
+
+```bash
+llm-council-for-trae --runtime-command coco run --input _lct_question.md --default-models --json
+llm-council-for-trae --runtime-command coco validate <run_id> --json
+```
+
 ## 5. Install Or Update LCT In `~/.LCT`
 
 Fresh install:
@@ -172,11 +192,11 @@ Ask the Agent:
 The Agent should:
 
 1. Write `_lct_question.md`.
-2. Run `llm-council-for-trae run --input _lct_question.md --default-models --json`.
-3. Run `llm-council-for-trae validate <run_id> --json`.
+2. Run `llm-council-for-trae run --input _lct_question.md --default-models --json`, unless the prerequisite checks justified explicit `llm-council-for-trae --runtime-command coco run --input _lct_question.md --default-models --json`.
+3. Run `llm-council-for-trae validate <run_id> --json`, or `llm-council-for-trae --runtime-command coco validate <run_id> --json` for the explicit override path.
 4. Read `.llm-council-for-trae/runs/<run_id>/stage3/final.md`.
 5. Write `<run_id>-final.md` and `<run_id>-index.md` in the problem workspace root.
-6. Report run status, validate status, HTML path, failed models, timeout, and live `traecli` availability.
+6. Report run status, validate status, HTML path, failed models, timeout, live runtime, and whether runtime override was used. Normal path reports `live runtime: traecli`; override path reports `live runtime: coco via explicit --runtime-command override`; non-live path reports `live runtime: unavailable`.
 
 ## 9. Validation Boundaries
 

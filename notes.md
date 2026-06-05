@@ -1,3 +1,124 @@
+# LCT runtime override Skill/文档规范实施记录
+
+日期：2026-06-05
+分支：`codex/lct-runtime-override-skill-20260605`
+开始时间：2026-06-05 10:04:24 CST
+
+## 阶段 0：启动与范围确认
+
+### 阶段目标
+
+- 按 `docs/lct-runtime-override-skill-handoff-20260605.md` 执行本轮 runtime override 规范产品化。
+- 从最新 `origin/main` 创建新分支。
+- 先读 handoff 指定的 README、设计文档、部署文档、两份 Skill 和静态契约测试。
+- 先跑 baseline verification，再按 TDD 补红灯测试。
+- 实现后做只读 subagent review；review 无 P1/P2 后继续 PR、合并和隔离 E2E。
+
+### 初始观察
+
+- 当前分支已从 `origin/main` 创建：`codex/lct-runtime-override-skill-20260605`。
+- 启动时有 3 个未跟踪输入资产：`docs/lct-runtime-override-skill-handoff-20260605.md`、`docs/拉取main-Prompt.md`、`docs/E2E测试-Prompt.md`。
+- handoff 要求本轮只处理显式 runtime override 规范：默认 runtime 仍是 `traecli`；只有当 `traecli models --json` 空列表、失败或超时时，外层 Agent 才能在记录证据后显式使用 `--runtime-command coco`。
+- 本轮不实现 CLI 自动 fallback，不改默认 runtime，不改模型阵容、quorum、backfill、主席 fallback 或 search accounting。
+
+### 待验证
+
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`make test`（216 个 unittest 通过）
+- 通过：`git diff --check`
+
+### 已读文件
+
+- `README.md`
+- `docs/design.md`
+- `docs/lct-global-install-skill-design-20260601.md`
+- `docs/lct-global-install-skill-test-plan-20260601.md`
+- `docs/lct-deployment-guide-20260601.md`
+- `docs/traecli-installation-and-paths.md`
+- `docs/lct-search-delivery-and-index-handoff-20260604.md`
+- `skills/llm-council-for-trae/SKILL.md`
+- `.trae/skills/llm-council-for-trae/SKILL.md`
+- `tests/test_global_install_skill_docs.py`
+
+## 阶段 1：TDD 红灯测试
+
+### 阶段目标
+
+- 在 `tests/test_global_install_skill_docs.py` 添加 runtime override 文档契约测试。
+- 先运行目标测试确认失败，再改 README、两份 Skill 和相关 docs。
+- 重点约束：默认 `traecli` 不变；`coco` 只能作为有证据的显式 `--runtime-command coco` override；run 和 validate 必须使用同一个 runtime command；index/report 必须记录 override 证据字段；修掉旧的 recommendation/backfill_candidates 来源混淆。
+
+### 红灯证据
+
+- 失败命令：`python3 -m unittest tests.test_global_install_skill_docs -v`
+- 结果：30 个测试运行，23 个 failure。
+- 失败点符合预期：
+  - README / canonical Skill / `.trae` Skill 缺 `runtime override`、`--runtime-command coco`、默认入口空列表和 `coco` 非空证据语义。
+  - 三份主文档缺 runtime override 的 index 字段契约。
+  - 文档没有强制 override 路径的 run 和 validate 都带同一个 `--runtime-command coco`。
+  - support docs 缺“默认 runtime 仍是 traecli / coco 只在显式 override 中使用”。
+  - support docs 缺 `recommendation.members` 和 `recommendation.chairman` 检查要求。
+  - `.trae` Skill 仍未同步 canonical Skill 的推荐阵容新口径。
+
+## 阶段 2：文档实现
+
+### 已完成修改
+
+- `README.md`：
+  - Highlights 增加显式 runtime override 口径。
+  - Quickstart 增加正常 `traecli` 路径、`coco` override probe、override run/validate 命令和 index runtime 字段。
+- `skills/llm-council-for-trae/SKILL.md`：
+  - Preflight 从“模型列表为空就硬停”改为“先记录默认入口阻断证据，再 probe explicit runtime override 条件”。
+  - `$RUN_ID-index.md` 字段增加 runtime default / override / actual used 证据。
+  - run 和 validate 分别补 `--runtime-command coco` override 命令。
+  - report 和 failure handling 增加 `live runtime` 三态口径。
+  - 修掉旧句“推荐阵容是 backfill candidates 来源”，改为“推荐阵容只是当前模型可用性和推荐安全过滤参考”。
+- `.trae/skills/llm-council-for-trae/SKILL.md`：
+  - 已机械同步 canonical Skill，避免两份 Skill 漂移。
+- `docs/lct-deployment-guide-20260601.md`：
+  - prerequisites 和 clean workspace 流程增加 runtime override 证据、命令和汇报要求。
+- `docs/lct-global-install-skill-design-20260601.md`：
+  - Skill Strategy 和 Verification Strategy 增加 override 规则。
+- `docs/lct-global-install-skill-test-plan-20260601.md`：
+  - 文档契约和 optional override smoke 增加 `recommendation.members` / `recommendation.chairman` 检查要求。
+
+### 阶段验证
+
+- 通过：`python3 -m unittest tests.test_global_install_skill_docs -v`（30 个测试通过）
+- 通过：forbidden 口径 grep 未命中。
+- 通过：`diff -u skills/llm-council-for-trae/SKILL.md .trae/skills/llm-council-for-trae/SKILL.md` 无差异。
+
+## 阶段 3：完整验证与 runtime probe
+
+### 本地验证
+
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`make test`（222 个 unittest 通过）
+- 通过：`git diff --check`
+
+### runtime probe
+
+- 通过：`command -v traecli` -> `/Users/bytedance/.local/bin/traecli`
+- 通过：`command -v coco` -> `/Users/bytedance/.local/bin/coco`
+- 通过：`command -v llm-council-for-trae` -> `/Users/bytedance/.local/bin/llm-council-for-trae`
+- 通过：`traecli --version` 和 `coco --version` 都返回 `coco version 0.120.36`。
+- 当前未触发 override smoke：`traecli models --json` 返回 20 个模型，不是空列表；`coco models --json` 也返回 20 个模型。
+- 结论：本机当前 default runtime 可用，无法复现 handoff 里的 `traecli models --json` 空列表场景；因此 live runtime override smoke skipped，不用 fake runtime 或普通 live `traecli` run 伪装 override。
+
+### 只读 review
+
+- reviewer：subagent `019e9590-15fa-7702-aef6-a57ddf0ac153`
+- 结论：pass，P1 findings 无，P2 findings 无。
+- reviewer 验证：`tests.test_global_install_skill_docs` 30 tests passed；scoped `git diff --check` passed；未跑 live LCT run。
+- reviewer residual risk：当前测试主要是文档字符串契约，不证明 CLI runtime override 在真实 run/validate 路径里端到端生效；未审查 scope 外 `notes.md` 和 untracked docs。
+
+### staging 边界
+
+- 纳入 PR：README、canonical Skill、`.trae` Skill、deployment guide、global install design/test plan、静态契约测试、`notes.md`。
+- 暂不纳入 PR：`docs/lct-runtime-override-skill-handoff-20260605.md`、`docs/拉取main-Prompt.md`、`docs/E2E测试-Prompt.md`。它们是本轮本地输入/后续 E2E 驱动资产，其中 `E2E测试-Prompt.md` 含完整长文输入，不作为产品文档提交。
+
+---
+
 # LCT 搜索生效计数与索引补位候选修正实施记录
 
 日期：2026-06-04
