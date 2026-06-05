@@ -10,6 +10,7 @@
 
 - **三阶段 council run**：Stage 1 独立回答，Stage 2 匿名互评排序，Stage 3 主席综合。
 - **traecli-first runtime**：默认通过 `traecli` 调用模型，不维护第二套模型清单。
+- **显式 runtime override**：默认 runtime 仍是 traecli；当 `traecli models --json` 返回空列表、失败或超时，但 `coco` 入口有证据可用时，外层 Agent 可以显式传 `--runtime-command coco`。coco 只在显式 override 中使用；这不是 CLI silent fallback，也不是把默认入口改写为 `coco`。
 - **主动模型选择**：只传问题文件时，CLI 会读取当前 `traecli models --json`，展示模型列表和推荐 council 套装，再询问是否采用；models --recommend 只会从成员整体优先级中推荐可用模型，并排除 Seed/Doubao/GLM/GPT-5.5、Beta 和 Queue heat 过高模型。
 - **可审计 artifact**：每次运行保存 input、config、manifest、每阶段 prompt / response / metadata、traecli stream JSON 和 HTML export。
 - **模型防 fallback**：记录 expected model 和 actual model，模型不匹配、空响应、无效模型、Stage 2 parse failure 都会失败。
@@ -55,7 +56,7 @@ make -C ~/.LCT install-global
 
 Agent 应先确认 `_lct_question.md` 的输入边界：它只写 council-facing 问题、必要事实背景、输出要求和 `Report topic: <中文议题>`。`Report topic` 是报告元数据，供 HTML 标题稳定生成 `<中文议题>：多模型智囊团评估`，不是成员任务指令。外层执行指令不得写入 _lct_question.md：包括维护 notes.md、运行 validate、写 final/index、生成 HTML、Git/PR/测试职责、开 branch 或提交代码。
 
-Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo（出现 `src/llm_council_for_trae/`、`.trae/agents/` 或 `profiles/subagents.json` 时停止）→ 确认 `traecli` 和 `llm-council-for-trae` 可用 → 准备 `_lct_question.md` → 先记录 `models --recommend --json`，作为当前模型可用性和安全过滤参考 → 使用 `--default-models`、`--json` 非交互运行，auto-backfill **（注释：自动补位，指 CLI 在同一次运行里追加候补模型而不是重新跑整轮）** 默认启用，必要时可用 `--backfill-members` 显式提供候补优先级 → 如果默认成员失败、超时或不可用，CLI 在同一个 run 内追加 backfill 成员补足 quorum，不整轮重跑，不覆盖已成功 Stage 1 输出 → 如果 Stage 1 quorum 已满足但 Stage 2 reviewer 失败，CLI 只做 reviewer-only backfill **（注释：仅评审者补位，指候补模型只补交 Stage 2 评审，不新增 Stage 1 候选答案）** → 先读取 terminal manifest 并执行 `llm-council-for-trae validate <run_id> --json` → 只有 validate JSON 显示 `usable_final: true` 时读取 `stage3/final.md` → 在问题 workspace 根目录写出 `<run_id>-final.md` 和 `<run_id>-index.md`（必须包含 run status、validate status、validate verdict、HTML path、Input mode、lct_search_allowed、lct_search_used、lct_web_tool_calls、lct_web_tool_effective_calls、lct_search_conversion_errors、agent_external_search_allowed、agent_external_search_used、agent_sources、agent_fact_pack_path、agent_added_context、final_answer_source、valid_stage1_models、quorum_default、quorum_effective、low_quorum_used、backfill_candidates、backfill_attempts、stage2_reviewers、stage1_backfill_members、stage2_reviewer_backfill、review_subject_count、reviewer_count、chairman_fallback_used、failed models / timeout）→ 返回 run status、validate status、最终答案路径和 HTML 报告路径。`degraded_ok 是可用结果`；成员失败不等于 run 失败。
+Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo（出现 `src/llm_council_for_trae/`、`.trae/agents/` 或 `profiles/subagents.json` 时停止）→ 确认 `traecli` 和 `llm-council-for-trae` 可用 → 检查 `traecli models --json` → 准备 `_lct_question.md` → 先记录 `models --recommend --json`，作为当前模型可用性和安全过滤参考 → 使用 `--default-models`、`--json` 非交互运行，auto-backfill **（注释：自动补位，指 CLI 在同一次运行里追加候补模型而不是重新跑整轮）** 默认启用，必要时可用 `--backfill-members` 显式提供候补优先级 → 如果默认成员失败、超时或不可用，CLI 在同一个 run 内追加 backfill 成员补足 quorum，不整轮重跑，不覆盖已成功 Stage 1 输出 → 如果 Stage 1 quorum 已满足但 Stage 2 reviewer 失败，CLI 只做 reviewer-only backfill **（注释：仅评审者补位，指候补模型只补交 Stage 2 评审，不新增 Stage 1 候选答案）** → 先读取 terminal manifest 并执行 `llm-council-for-trae validate <run_id> --json` → 只有 validate JSON 显示 `usable_final: true` 时读取 `stage3/final.md` → 在问题 workspace 根目录写出 `<run_id>-final.md` 和 `<run_id>-index.md`（必须包含 run status、validate status、validate verdict、HTML path、Input mode、runtime_default_command、runtime_default_version、runtime_default_models_status、runtime_default_models_count、runtime_override_used、runtime_override_command、runtime_override_reason、runtime_override_version、runtime_override_doctor_ok、runtime_override_models_count、runtime_override_recommendation_members、runtime_used_by_lct、lct_search_allowed、lct_search_used、lct_web_tool_calls、lct_web_tool_effective_calls、lct_search_conversion_errors、agent_external_search_allowed、agent_external_search_used、agent_sources、agent_fact_pack_path、agent_added_context、final_answer_source、valid_stage1_models、quorum_default、quorum_effective、low_quorum_used、backfill_candidates、backfill_attempts、stage2_reviewers、stage1_backfill_members、stage2_reviewer_backfill、review_subject_count、reviewer_count、chairman_fallback_used、failed models / timeout）→ 返回 run status、validate status、最终答案路径、HTML 报告路径和 live runtime。`degraded_ok 是可用结果`；成员失败不等于 run 失败。
 
 `<run_id>-index.md` 的 `backfill_candidates` 必须来自 terminal manifest 的 `metadata.quorum.backfill_candidates`。如果 terminal manifest 没有记录该字段，写 `backfill_candidates: not recorded`；不得从默认成员阵容、不得从 models --recommend --json 的 primary roster、不得从实际有效 Stage 1 成员猜测候补池。
 
@@ -63,7 +64,7 @@ Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo（出�
 
 本项目要求本机已经安装并登录 traecli，且 `traecli models --json` 能返回模型列表。
 
-如果当前 traecli 临时不可用，可以先验证 CLI 自身、模型推荐逻辑、schema contract 和 HTML export fixture；不要把 fake runtime 或 fixture 结果说成 live traecli 验证。
+如果当前 traecli 临时不可用，可以先验证 CLI 自身、模型推荐逻辑、schema contract 和 HTML export fixture；不要把 fake runtime 或 fixture 结果说成 live traecli 验证。默认 runtime 仍是 traecli。
 
 ```bash
 traecli --version
@@ -71,7 +72,61 @@ traecli doctor --json
 traecli models --json
 ```
 
-如果 traecli 还没安装或模型列表为空，先看：
+如果 `traecli models --json` 返回非空模型列表，继续日常默认路径。最终汇报写 `live runtime: traecli`，且 index 记录：
+
+```text
+runtime_default_command: traecli
+runtime_default_models_status: ok
+runtime_override_used: false
+runtime_override_command: none
+runtime_override_reason: none
+runtime_used_by_lct: traecli
+```
+
+如果 `traecli models --json` 返回空列表、非 0 退出、明显超时或没有结构化输出，不要立刻启动 run，也不要直接放弃。先把默认入口阻断证据写入 notes/index，再 probe `coco`。这条路径叫 runtime override：默认 runtime 仍是 traecli，coco 只在显式 override 中使用；它不是 CLI silent fallback。
+
+```bash
+traecli --version
+traecli models --json
+coco --version
+coco models --json
+llm-council-for-trae --runtime-command coco doctor --json
+llm-council-for-trae --runtime-command coco models --recommend --json
+```
+
+只有当 `coco models --json` 返回非空、`llm-council-for-trae --runtime-command coco doctor --json` 没有非 MCP 阻断错误，并且 `llm-council-for-trae --runtime-command coco models --recommend --json` 的 `recommendation.members` 与 `recommendation.chairman` 都可用时，外层 Agent 才能显式 override。本次 run 和 validate 必须保持同一个 runtime command：
+
+```bash
+llm-council-for-trae --runtime-command coco run \
+  --input _lct_question.md \
+  --default-models \
+  --run-id "$RUN_ID" \
+  --timeout 180 \
+  --json
+
+llm-council-for-trae --runtime-command coco validate "$RUN_ID" --json
+```
+
+override 路径的最终汇报写 `live runtime: coco via explicit --runtime-command override`，并在 index 记录：
+
+```text
+runtime_default_command: traecli
+runtime_default_version: <value or error>
+runtime_default_models_status: empty|failed|timeout
+runtime_default_models_count: <number or none>
+runtime_override_used: true
+runtime_override_command: coco
+runtime_override_reason: <short reason>
+runtime_override_version: <value or none>
+runtime_override_doctor_ok: true|false
+runtime_override_models_count: <number or none>
+runtime_override_recommendation_members: <models or none>
+runtime_used_by_lct: coco
+```
+
+如果 `traecli` 和 `coco` 都不能证明模型可用，停止 live run。最终汇报写 `live runtime: unavailable`，只允许做 non-live 测试或 fixture validation。
+
+如果 traecli 还没安装，先看：
 
 ```text
 docs/traecli-installation-and-paths.md

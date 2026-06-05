@@ -54,6 +54,8 @@ This iteration does not own:
 - OpenRouter, the old Web UI, or legacy TR paths.
 - Any fake-runtime result presented as live `traecli` evidence.
 
+This iteration does own one operator-level runtime override rule for the Skill and docs: 默认 runtime 仍是 traecli，coco 只在显式 override 中使用. If `traecli models --json` returns an empty list, fails, times out, or has no structured output, the outer Agent may probe `coco` and explicitly pass `--runtime-command coco` only after recording evidence. This is a runtime override, not CLI silent fallback, and it does not change the CLI default runtime.
+
 ## Directory Responsibilities
 
 | Directory | Responsibility | Daily LCT question runs? |
@@ -95,10 +97,14 @@ The Skill must make these constraints explicit:
 - Stop if the current workspace looks like the LCT source repository.
 - Check for `src/llm_council_for_trae/`, `.trae/agents/`, and `profiles/subagents.json`.
 - Require `traecli --version`, `traecli models --json`, and `command -v llm-council-for-trae`.
+- When `traecli models --json` is empty, failed, or timed out, require the operator to record default runtime evidence before probing `coco`.
+- Allow explicit `--runtime-command coco` only when `coco models --json` is non-empty, `llm-council-for-trae --runtime-command coco doctor --json` has no non-MCP blocker, and `llm-council-for-trae --runtime-command coco models --recommend --json` returns usable `recommendation.members` and `recommendation.chairman`.
+- Require `llm-council-for-trae --runtime-command coco run` and `llm-council-for-trae --runtime-command coco validate` to use the same override command.
 - Use `--default-models` in non-interactive Agent runs.
 - Use `--json` so outer Agents can parse results.
 - Always run `validate`.
 - Report live `traecli` status separately from non-live or fake-runtime verification.
+- Report runtime override status separately: normal path `live runtime: traecli`, explicit override path `live runtime: coco via explicit --runtime-command override`, unavailable path `live runtime: unavailable`.
 - Treat `.llm-council-for-trae/` as read-only artifacts after the run.
 
 ## Install Script Strategy
@@ -152,6 +158,19 @@ llm-council-for-trae validate <run_id> --json
 ```
 
 If live `traecli` is unavailable, record the blocker and do not relabel fixture or fake-runtime results as live smoke.
+
+When default `traecli` is specifically blocked by an empty/failed/timed-out model list but `coco` may be available, verify the explicit override probe before deciding whether to skip live smoke:
+
+```bash
+traecli --version
+traecli models --json
+coco --version
+coco models --json
+llm-council-for-trae --runtime-command coco doctor --json
+llm-council-for-trae --runtime-command coco models --recommend --json
+```
+
+The `models --recommend --json` payload must expose `recommendation.members` and `recommendation.chairman`; do not infer the recommended roster from the raw model list alone.
 
 ## Subagent Review Contract
 
