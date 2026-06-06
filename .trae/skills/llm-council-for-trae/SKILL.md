@@ -67,6 +67,18 @@ LCT CLI 只消费 `_lct_question.md`；是否做轻量意图理解和 prompt sha
 - 不要复用原生 `--members` 表达 agent-assisted 自选；原生 `--members` 是 power-user 精确路径，给几个跑几个，不补足、不裁剪。
 - 自选路径的运行索引和 manifest provenance 必须记录 `selection_surface=agent_assisted`、用户请求的 members、解析后的 members、补足成员、裁剪成员和最终 config。
 
+## Chairman Contribution Map
+
+默认不要打开主席贡献说明。只有用户明确要求解释 final answer 各段来源、展示成员贡献、或评估综合答案如何融合成员观点时，才在 `run` 命令追加 `--chairman-contribution-map`。
+
+启用后必须在索引和最终汇报中记录：
+
+- `chairman_contribution_enabled: true`
+- `contribution_map_path: stage3/contribution_map.json`
+- `contribution_map_validate_status: ok|failed|missing`
+
+该功能只使用 Stage 3 写出的 `stage3/contribution_map.json` blocks 渲染 HTML 来源说明；不要在外层 Agent 或 HTML 阶段按 Markdown 自然段猜来源。`validate` 只在 manifest 标记 enabled 时要求 sidecar 合法；legacy run 或默认关闭路径缺少 contribution map 不算失败。不要输出贡献百分比，不要把 Stage 2 同侪排序解释成模型能力排行。
+
 无论哪种模式，最终根目录 `$RUN_ID-index.md` 和对用户汇报都必须写明 `Input mode` 和证据字段；输入模式取值为：
 
 ```text

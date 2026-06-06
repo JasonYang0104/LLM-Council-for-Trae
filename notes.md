@@ -287,6 +287,25 @@
 
 ### Commit
 
+- `5fa99e2 feat: add gated chairman contribution map`
+
+## 阶段 6：用户侧文档与 implementation brief
+
+### 阶段目标
+
+- README / canonical Skill / `.trae` Skill 补充 `--chairman-contribution-map` 的灰度触发、sidecar 路径、validate 状态和默认关闭边界。
+- 新增 `docs/lct-experience-upgrade-implementation-brief-20260606.md`。
+- 新增 `docs/lct-experience-upgrade-implementation-brief-20260606.html`。
+- 不提前声称 PR、CI、merge 或 v16 E2E 已完成；brief 只记录当前实现、兼容边界、阶段验证和剩余风险。
+
+### 阶段验证
+
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_raw_input_trigger_matrix tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_structured_input_trigger_matrix tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_negative_triggers_do_not_imply_rewrite tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_operator_envelope_never_enters_lct_question tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_selected_model_agent_assisted_path -v`
+  - 结果：5 个测试通过。
+- 通过：`git diff --check`
+
+### Commit
+
 - `be7a285 feat: record effective web tool delivery evidence`
 
 ## 阶段 4：HTML / validate 搜索生效展示
