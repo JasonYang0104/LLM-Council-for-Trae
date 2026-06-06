@@ -371,3 +371,57 @@
 ### Commit
 
 - `docs: add search delivery implementation brief`
+
+---
+
+# LCT 体验升级实现运行日志
+
+日期：2026-06-06
+
+## 阶段 0：启动与范围确认
+
+### 阶段目标
+
+- 按 `docs/lct-experience-upgrade-implementation-handoff-20260606.md` 执行 LCT 体验升级实现。
+- 从最新 `main` 新建 `codex/lct-experience-upgrade-20260606`，不继续旧 architect brief 分支。
+- 保留本轮架构/规格/交接输入文档，避免实现 diff 和输入资产混在一起。
+- 先跑 baseline verification，再补测试方案与 TDD 红灯测试。
+- 本地验证通过后做只读 subagent review，再推进 PR、merge、v16 fresh-main E2E 与输出 review。
+
+### 初始观察
+
+- 原工作区在 `codex/lct-experience-architect-brief-20260606`。
+- 当前 `origin/main`：`427850da4dfd6ea53d195e1df1af4ee3bded7042`。
+- 新实现分支：`codex/lct-experience-upgrade-20260606`。
+- 已 cherry-pick 旧文档分支提交 `965e3a5`，新提交为 `f9bed036a8a61a8727c70e8599e816004e41c4c3`，带入 `docs/lct-experience-upgrade-architect-brief-20260606.md`、director brief Markdown 和 HTML。
+- 未跟踪 `CLAUDE.md` 是本地角色文件，不在本轮交接要求范围内；保留但不纳入 PR。
+
+### 已读事实源
+
+- `AGENTS.md`
+- `DECISIONS.md`
+- `docs/lct-experience-upgrade-implementation-handoff-20260606.md`
+- `docs/lct-experience-upgrade-execution-plan-20260606.md`
+- `docs/lct-experience-upgrade-implementation-spec-20260606.md`
+- `docs/lct-experience-upgrade-architect-brief-20260606.md`
+- `README.md`
+- `docs/design.md`
+- `docs/lct-input-boundary-docs-design-20260604.md`
+- `docs/lct-auto-backfill-quorum-design-20260603.md`
+- `docs/lct-search-delivery-and-index-design-20260604.md`
+- `docs/lct-global-install-skill-design-20260601.md`
+- `skills/llm-council-for-trae/SKILL.md`
+
+### 当前关键裁决
+
+- 顶部 summary card 改为「成员模型」，新 run 只信 `metadata.quorum.effective_stage1_members`；只有整个 `metadata.quorum` 缺失时才 legacy fallback 到 `config.members`。
+- 输入改写仍属于 Skill / outer Agent，不下沉 CLI；默认 raw，结构化必须有明确触发；operator envelope 不进入 `_lct_question.md`。
+- 原生 `--members` 永远保持精确语义，不补足、不裁剪；自选体验必须走独立 opt-in 通道。
+- 自选体验路径归一化到 4 个成员，并持久记录 provenance。
+- 主席贡献说明默认关闭；开启后使用 sidecar / 块模型，HTML export 只读 artifacts，不调用模型、不按自然段猜来源。
+
+### 待验证
+
+- 待跑：`PYTHONPATH=src python3 -m compileall src`
+- 待跑：`make test`
+- 待跑：`git diff --check`
