@@ -90,6 +90,14 @@
 - 公共接口：**新增自选归一化入口**（独立 opt-in 通道，如 `--selected-members`/`--selected-chairman`），**原生 `--members` 行为不变**；归一化入口对用户自选 members 执行补足/裁剪并写 `selection_surface` provenance。`validate` 新增 additive 校验（legacy run 不因缺新字段失败）。
 - 协作：新增本决策记录文件；新增 feature 开关控制贡献说明灰度。
 
+### 实现层补充（2026-06-06）
+
+- 自选归一化入口采用 `--selected-members` / `--selected-chairman`。
+- 原生 `--members` / `--chairman` 仍是 power-user 精确路径，不补足、不裁剪。
+- `normalize_user_model_selection(...)` 是唯一归一化函数，CLI TTY custom 和 agent-assisted 自选都走它。
+- `CouncilConfig.model_selection_provenance` 是持久通道；`initial_manifest()` 将其写入 `metadata.model_selection`。
+- provenance 至少记录：`selection_surface`、`requested_members`、`requested_chairman`、`resolved_requested_members`、`resolved_members`、`resolved_chairman`、`filled_members`、`trimmed_members`、`final_members`、`final_chairman`。
+
 ### 推翻条件
 
 - 报告卡片：若用户反馈更想看「配置成员」而非「有效成员」，改回 `config.members`。

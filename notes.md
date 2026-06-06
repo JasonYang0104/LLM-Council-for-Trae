@@ -492,3 +492,23 @@
 - 通过：`PYTHONPATH=src python3 -m compileall src`
 - 通过：`git diff --check`
 - 说明：完整 `make test` 暂不跑绿灯断言，因为阶段 4/5 红灯测试仍未实现，预期会失败。
+
+### Commit
+
+- `9f1a097 feat: simplify LCT report summary and input policy docs`
+
+## 阶段 4：自选模型归一化
+
+### 阶段目标
+
+- 新增 `normalize_user_model_selection(...)`。
+- 新增 CLI opt-in 参数 `--selected-members` / `--selected-chairman`。
+- 原生 `--members` / `--chairman` 保持精确语义，不补足、不裁剪。
+- 将 selected model provenance 持久化到 `CouncilConfig.model_selection_provenance` 与 `manifest.metadata.model_selection`。
+
+### 阶段验证
+
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_fills_to_four_by_preferred_members tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_trims_to_four_by_preferred_members tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_keeps_exact_four_user_order tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_fails_closed_for_unknown_model tests.test_core.CouncilCoreTests.test_native_members_build_config_is_not_normalized tests.test_core.CouncilCoreTests.test_selected_members_cli_path_is_normalized_and_records_provenance tests.test_core.CouncilCoreTests.test_initial_manifest_persists_model_selection_provenance tests.test_core.CouncilCoreTests.test_interactive_model_selection_accepts_custom_numbered_models -v`
+  - 结果：8 个测试通过。
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`git diff --check`

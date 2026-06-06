@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, TextIO
 
 from .council import DEFAULT_CHAIRMAN, DEFAULT_MEMBERS
@@ -31,6 +31,7 @@ class ModelChoice:
     members: list[str]
     chairman: str
     source: str
+    provenance: dict[str, Any] = field(default_factory=dict)
 
 
 def available_model_names(models: list[dict[str, Any]]) -> list[str]:
@@ -73,6 +74,61 @@ def recommend_model_choice(models: list[dict[str, Any]]) -> ModelChoice:
         members[0],
     )
     return ModelChoice(members, chairman, "recommended")
+
+
+def normalize_user_model_selection(
+    *,
+    requested_members: list[str],
+    requested_chairman: str | None,
+    models: list[dict[str, Any]],
+    selection_surface: str,
+    target_members: int = 4,
+) -> ModelChoice:
+    names = available_model_names(models)
+    if not names:
+        raise ValueError("当前模型列表为空，无法归一化用户自选模型。")
+
+    resolved_requested_members = resolve_model_names(requested_members, names)
+    if not resolved_requested_members:
+        raise ValueError("自选模型路径至少需要一个成员模型。")
+
+    resolved_chairman = resolve_model_token(requested_chairman, names) if requested_chairman else resolved_requested_members[0]
+    filled_members: list[str] = []
+    trimmed_members: list[str] = []
+    if len(resolved_requested_members) < target_members:
+        final_members = list(resolved_requested_members)
+        for preferred in PREFERRED_MEMBERS:
+            if len(final_members) >= target_members:
+                break
+            if preferred in names and preferred not in final_members:
+                final_members.append(preferred)
+                filled_members.append(preferred)
+    elif len(resolved_requested_members) > target_members:
+        requested_order = {name: index for index, name in enumerate(resolved_requested_members)}
+        preferred_order = {name: index for index, name in enumerate(PREFERRED_MEMBERS)}
+        ranked = sorted(
+            resolved_requested_members,
+            key=lambda name: (preferred_order.get(name, len(PREFERRED_MEMBERS)), requested_order[name]),
+        )
+        final_members = ranked[:target_members]
+        trimmed_members = [name for name in resolved_requested_members if name not in final_members]
+    else:
+        final_members = list(resolved_requested_members)
+
+    provenance = {
+        "selection_surface": selection_surface,
+        "requested_members": list(requested_members),
+        "requested_chairman": requested_chairman,
+        "resolved_requested_members": resolved_requested_members,
+        "resolved_members": list(final_members),
+        "resolved_chairman": resolved_chairman,
+        "filled_members": filled_members,
+        "trimmed_members": trimmed_members,
+        "final_members": list(final_members),
+        "final_chairman": resolved_chairman,
+        "normalization_target_members": target_members,
+    }
+    return ModelChoice(final_members, resolved_chairman, selection_surface, provenance)
 
 
 def build_backfill_candidates(
@@ -232,7 +288,12 @@ def select_model_choice_interactively(
         raise ValueError("至少需要选择一个成员模型。")
     chairman_text = read_answer(stdin, stderr, f"主席模型编号或名称 [回车={members[0]}]: ").strip()
     chairman = resolve_model_token(chairman_text, names) if chairman_text else members[0]
-    return ModelChoice(members, chairman, "custom")
+    return normalize_user_model_selection(
+        requested_members=members,
+        requested_chairman=chairman,
+        models=models,
+        selection_surface="cli_tty_custom",
+    )
 
 
 def write_model_menu(stderr: TextIO, models: list[dict[str, Any]], recommendation: ModelChoice) -> None:
@@ -261,11 +322,12 @@ def write_model_menu(stderr: TextIO, models: list[dict[str, Any]], recommendatio
 def resolve_model_tokens(text: str, names: list[str]) -> list[str]:
     if not text:
         return []
+    return resolve_model_names([token.strip() for token in text.split(",") if token.strip()], names)
+
+
+def resolve_model_names(tokens: list[str], names: list[str]) -> list[str]:
     resolved: list[str] = []
-    for raw_token in text.split(","):
-        token = raw_token.strip()
-        if not token:
-            continue
+    for token in tokens:
         name = resolve_model_token(token, names)
         if name not in resolved:
             resolved.append(name)

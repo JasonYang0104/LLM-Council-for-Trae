@@ -50,6 +50,8 @@ class CouncilConfig:
     stage2_auto_backfill: bool = True
     allow_low_quorum: bool = True
     low_quorum_floor: int = 2
+    model_selection_provenance: dict[str, Any] | None = None
+    chairman_contribution_enabled: bool = False
 
     def agent_for_member(self, index: int) -> str | None:
         if not self.member_agents or index >= len(self.member_agents):
@@ -1180,7 +1182,15 @@ def initial_manifest(run_id: str, user_query: str, config: CouncilConfig) -> dic
             "html": "html/index.html",
         },
         "stages": {"stage1": [], "stage2": [], "stage3": None},
-        "metadata": {"label_to_model": {}, "aggregate_rankings": []},
+        "metadata": (
+            {
+                "label_to_model": {},
+                "aggregate_rankings": [],
+                "model_selection": config.model_selection_provenance,
+            }
+            if config.model_selection_provenance
+            else {"label_to_model": {}, "aggregate_rankings": []}
+        ),
         "warnings": [],
         "failures": [],
     }
@@ -1215,6 +1225,8 @@ def config_to_json(config: CouncilConfig) -> dict[str, Any]:
         "stage2_auto_backfill": config.stage2_auto_backfill,
         "allow_low_quorum": config.allow_low_quorum,
         "low_quorum_floor": config.low_quorum_floor,
+        "model_selection_provenance": config.model_selection_provenance,
+        "chairman_contribution_enabled": config.chairman_contribution_enabled,
     }
 
 

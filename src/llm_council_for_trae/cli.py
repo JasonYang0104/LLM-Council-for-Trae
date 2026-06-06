@@ -11,7 +11,7 @@ from typing import Any
 from . import __version__
 from .council import DEFAULT_CHAIRMAN, DEFAULT_MEMBERS, CouncilConfig, load_profile, run_full_council
 from .html_export import export_html
-from .model_selection import ModelChoice, recommend_model_choice, select_model_choice_interactively
+from .model_selection import ModelChoice, normalize_user_model_selection, recommend_model_choice, select_model_choice_interactively
 from .models import doctor as runtime_doctor
 from .models import get_models
 from .runtime import RunLease
@@ -50,6 +50,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--input", required=True, help="Input markdown/text file.")
     run_p.add_argument("--members", help="Comma-separated model roster. If omitted, LCT asks you to choose from current traecli models.")
     run_p.add_argument("--chairman", help="Chairman model. If omitted with --members, default chairman is used.")
+    run_p.add_argument("--selected-members", help="Agent-assisted selected member seed models. This opt-in path normalizes to 4 and records provenance.")
+    run_p.add_argument("--selected-chairman", help="Agent-assisted selected chairman model for --selected-members.")
     run_p.add_argument("--profile", help="Optional JSON profile overriding members/chairman/provider.")
     run_p.add_argument("--default-models", action="store_true", help="Skip model selection and use LCT's default model suite.")
     run_p.add_argument("--run-id", help="Explicit run id. Default generated from UTC timestamp.")
@@ -239,6 +241,7 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
     provider_mode = profile.get("provider_mode") or profile.get("provider", {}).get("mode") or "direct"
     member_agents = None
     chairman_agent = None
+    model_selection_provenance = None
     if provider_mode == "subagent":
         members, member_agents = parse_subagent_members(profile.get("members") or [])
         chairman, chairman_agent = parse_subagent_chairman(profile.get("chairman") or {})
@@ -247,6 +250,7 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
         selected: ModelChoice | None = getattr(args, "selected_model_choice", None)
         members = profile.get("members") or (selected.members if selected else None) or split_csv(args.members or ",".join(DEFAULT_MEMBERS))
         chairman = profile.get("chairman") or (selected.chairman if selected else None) or args.chairman or DEFAULT_CHAIRMAN
+        model_selection_provenance = selected.provenance if selected and selected.provenance else None
         if any(isinstance(item, dict) for item in members):
             raise ValueError("direct provider members must be model-name strings")
         runtime_cwd = str(Path(args.runtime_cwd).expanduser().resolve()) if args.runtime_cwd else None
@@ -277,12 +281,25 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
         stage2_auto_backfill=not getattr(args, "no_auto_backfill", False),
         allow_low_quorum=True,
         low_quorum_floor=getattr(args, "low_quorum_floor", 2),
+        model_selection_provenance=model_selection_provenance,
     )
 
 
 def resolve_run_model_choice(args: argparse.Namespace) -> ModelChoice | None:
     if getattr(args, "profile", None):
         return None
+    if getattr(args, "selected_members", None) or getattr(args, "selected_chairman", None):
+        if getattr(args, "members", None) or getattr(args, "chairman", None) or getattr(args, "default_models", False):
+            raise ValueError("--selected-members/--selected-chairman cannot be combined with --members/--chairman or --default-models")
+        if not getattr(args, "selected_members", None):
+            raise ValueError("--selected-chairman requires --selected-members")
+        models = get_models(args.runtime_command)
+        return normalize_user_model_selection(
+            requested_members=split_csv(args.selected_members),
+            requested_chairman=args.selected_chairman,
+            models=models,
+            selection_surface="agent_assisted",
+        )
     if getattr(args, "default_models", False):
         return ModelChoice(list(DEFAULT_MEMBERS), DEFAULT_CHAIRMAN, "static-default")
     if getattr(args, "members", None) or getattr(args, "chairman", None):
