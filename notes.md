@@ -265,47 +265,6 @@
 
 ### Commit
 
-- `57d411a feat: add explicit selected-model normalization`
-
-## 阶段 5：主席贡献说明 sidecar
-
-### 阶段目标
-
-- 新增 `--chairman-contribution-map` 与 `CouncilConfig.chairman_contribution_enabled`，默认关闭。
-- Stage 3 仅在 enabled 时要求主席输出 `stage3/contribution_map.json` sidecar。
-- `validate` 仅在 manifest 标记 enabled 时检查 contribution map 的存在、结构、成员引用与 consensus 成员数。
-- HTML 在 enabled 且 sidecar 合法可读时渲染 blocks；legacy / disabled run 继续渲染 `stage3/final.md`。
-
-### 阶段验证
-
-- 通过：`PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_chairman_contribution_map_disabled_by_default tests.test_core.CouncilCoreTests.test_stage3_prompt_requests_contribution_blocks_only_when_enabled tests.test_core.CouncilCoreTests.test_validate_fails_enabled_contribution_map_missing_sidecar tests.test_core.CouncilCoreTests.test_validate_rejects_contribution_map_unknown_member_reference tests.test_core.CouncilCoreTests.test_validate_rejects_contribution_map_consensus_with_fewer_than_two_members tests.test_core.CouncilCoreTests.test_html_renders_contribution_blocks_deterministically -v`
-  - 结果：6 个测试通过。
-- 通过：`PYTHONPATH=src python3 -m compileall src`
-- 通过：`git diff --check`
-- 通过：`make test`
-  - 结果：243 个测试通过，`OK`；输出末尾包含 `degraded_ok` fixture 预期路径。
-
-### Commit
-
-- `5fa99e2 feat: add gated chairman contribution map`
-
-## 阶段 6：用户侧文档与 implementation brief
-
-### 阶段目标
-
-- README / canonical Skill / `.trae` Skill 补充 `--chairman-contribution-map` 的灰度触发、sidecar 路径、validate 状态和默认关闭边界。
-- 新增 `docs/lct-experience-upgrade-implementation-brief-20260606.md`。
-- 新增 `docs/lct-experience-upgrade-implementation-brief-20260606.html`。
-- 不提前声称 PR、CI、merge 或 v16 E2E 已完成；brief 只记录当前实现、兼容边界、阶段验证和剩余风险。
-
-### 阶段验证
-
-- 通过：`PYTHONPATH=src python3 -m unittest tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_raw_input_trigger_matrix tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_structured_input_trigger_matrix tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_negative_triggers_do_not_imply_rewrite tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_operator_envelope_never_enters_lct_question tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_selected_model_agent_assisted_path -v`
-  - 结果：5 个测试通过。
-- 通过：`git diff --check`
-
-### Commit
-
 - `be7a285 feat: record effective web tool delivery evidence`
 
 ## 阶段 4：HTML / validate 搜索生效展示
@@ -553,3 +512,81 @@
   - 结果：8 个测试通过。
 - 通过：`PYTHONPATH=src python3 -m compileall src`
 - 通过：`git diff --check`
+
+### Commit
+
+- `57d411a feat: add explicit selected-model normalization`
+
+## 阶段 5：主席贡献说明 sidecar
+
+### 阶段目标
+
+- 新增 `--chairman-contribution-map` 与 `CouncilConfig.chairman_contribution_enabled`，默认关闭。
+- Stage 3 仅在 enabled 时要求主席输出 `stage3/contribution_map.json` sidecar。
+- `validate` 仅在 manifest 标记 enabled 时检查 contribution map 的存在、结构、成员引用与 consensus 成员数。
+- HTML 在 enabled 且 sidecar 合法可读时渲染 blocks；legacy / disabled run 继续渲染 `stage3/final.md`。
+
+### 阶段验证
+
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_chairman_contribution_map_disabled_by_default tests.test_core.CouncilCoreTests.test_stage3_prompt_requests_contribution_blocks_only_when_enabled tests.test_core.CouncilCoreTests.test_validate_fails_enabled_contribution_map_missing_sidecar tests.test_core.CouncilCoreTests.test_validate_rejects_contribution_map_unknown_member_reference tests.test_core.CouncilCoreTests.test_validate_rejects_contribution_map_consensus_with_fewer_than_two_members tests.test_core.CouncilCoreTests.test_html_renders_contribution_blocks_deterministically -v`
+  - 结果：6 个测试通过。
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`git diff --check`
+- 通过：`make test`
+  - 结果：243 个测试通过，`OK`；输出末尾包含 `degraded_ok` fixture 预期路径。
+
+### Commit
+
+- `5fa99e2 feat: add gated chairman contribution map`
+
+## 阶段 6：用户侧文档与 implementation brief
+
+### 阶段目标
+
+- README / canonical Skill / `.trae` Skill 补充 `--chairman-contribution-map` 的灰度触发、sidecar 路径、validate 状态和默认关闭边界。
+- 新增 `docs/lct-experience-upgrade-implementation-brief-20260606.md`。
+- 新增 `docs/lct-experience-upgrade-implementation-brief-20260606.html`。
+- 不提前声称 PR、CI、merge 或 v16 E2E 已完成；brief 只记录当前实现、兼容边界、阶段验证和剩余风险。
+
+### 阶段验证
+
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_raw_input_trigger_matrix tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_structured_input_trigger_matrix tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_negative_triggers_do_not_imply_rewrite tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_operator_envelope_never_enters_lct_question tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_selected_model_agent_assisted_path -v`
+  - 结果：5 个测试通过。
+- 通过：`git diff --check`
+
+### Commit
+
+- `bcbd899 docs: summarize LCT experience upgrade implementation`
+
+## 阶段 7：本地完整门禁与 live smoke
+
+### 静态 / 单测门禁
+
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+  - exit 0。
+- 通过：`git diff --check && git diff --check origin/main..HEAD`
+  - exit 0，无输出。
+- 通过：`make test`
+  - exit 0；243 个 unittest 通过，`OK`；输出末尾包含 `degraded_ok` fixture 预期路径。
+
+### Live runtime 观察
+
+- 全局 wrapper：`/Users/bytedance/.local/bin/llm-council-for-trae`
+  - 当前指向 `/Users/bytedance/.LCT/src`，不是本分支 checkout。
+  - 因此本地 PR smoke 使用 `PYTHONPATH=src python3 -m llm_council_for_trae.cli ...` 验证当前分支代码。
+- 通过：`PYTHONPATH=src python3 -m llm_council_for_trae.cli models --recommend --json`
+  - exit 0；返回 20 个模型。
+  - recommendation members：`DeepSeek-V4-Pro`、`openrouter-1o`、`GPT-5.4`、`Gemini-3.1-Pro-Preview`。
+  - chairman：`DeepSeek-V4-Pro`。
+- 通过：`PYTHONPATH=src python3 -m llm_council_for_trae.cli run --input examples/question.md --default-models --run-id experience-upgrade-local-smoke-20260606-121305 --json`
+  - exit 0；`status=ok`，`degraded=false`，`failures=[]`。
+  - HTML：`.llm-council-for-trae/runs/experience-upgrade-local-smoke-20260606-121305/html/index.html`。
+  - warnings：`traecli doctor reported warnings`。
+- 通过：`PYTHONPATH=src python3 -m llm_council_for_trae.cli validate experience-upgrade-local-smoke-20260606-121305 --json`
+  - exit 0；`status=ok`，`terminal=true`，`usable_final=true`，`verdict=complete_ok_final`，`failed_stage_records=[]`。
+
+### 当前边界
+
+- 本地验证覆盖当前 branch checkout。
+- 全局 wrapper 当前不指向本分支；merge 后 v16 fresh-main E2E 需要重新同步并安装 / 确认 wrapper 指向最新 main。
+- 未跟踪 `CLAUDE.md` 保持不纳入提交。
