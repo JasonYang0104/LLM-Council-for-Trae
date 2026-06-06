@@ -1,3 +1,39 @@
+# LCT Stage 3 fallback meta 修复记录
+
+日期：2026-06-06
+分支：`codex/lct-stage3-fallback-meta-20260606`
+
+## live E2E 触发
+
+- 隔离 workspace：`/Users/bytedance/Documents/AI Coder/test/LLM-Council-for-Trae-v17`
+- run_id：`v17-jd-contribution-20260606-143545`
+- 命令启用了 `--chairman-contribution-map`，且 HTML 已渲染 `同侪#n` 来源锚点。
+- 但 `llm-council-for-trae validate v17-jd-contribution-20260606-143545 --json` 返回 `invalid_artifacts`。
+
+## 根因
+
+- Stage 3 primary chairman `DeepSeek-V4-Pro` 发生 forbidden tool contamination：尝试调用 `Write`、`Bash`、`Agent`。
+- fallback chairman `Kimi-K2.6` 成功，并写出 `stage3/contribution_map.json`、`stage3/final.json` 和 HTML。
+- 代码没有把 fallback 成功 call 的 meta 同步覆盖到规范路径 `stage3/final.meta.json`，导致该文件仍保留 primary 的失败 contamination 记录。
+- validate 正确拦截了不一致状态：`manifest_status=ok, contaminated_records=1`。
+
+## TDD 证据
+
+- 红灯：`PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_stage3_fallback_records_in_metadata -v`
+- 失败点：fallback 成功后 `stage3/final.meta.json` 仍为 `GLM-5.1` primary 失败记录，而不是 `Qwen3.6-Plus` fallback 成功记录。
+- 修复：`stage3_synthesize_final` 在最终采用某次成功 chairman call 后，显式写入 `stage3/final.meta.json = call.to_json()`。
+
+## 当前验证
+
+- 通过：`test_stage3_fallback_records_in_metadata`
+- 通过：相关 Stage 3 / contribution target tests 5 项。
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`make test`（246 个 unittest 通过）
+- 通过：`git diff --check`
+- 待做：PR、merge 后重新跑 enabled live E2E 并重新 validate。
+
+---
+
 # LCT contribution map anchor 修复记录
 
 日期：2026-06-06

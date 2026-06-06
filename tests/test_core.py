@@ -2682,25 +2682,39 @@ The user is not merely asking whether local inference hardware will improve they
     def test_stage3_fallback_records_in_metadata(self):
         async def _run():
             from llm_council_for_trae.council import stage3_synthesize_final, CouncilConfig
-            from llm_council_for_trae.provider import ModelCallResult, TraeCliProvider
+            from llm_council_for_trae.provider import ModelCallResult
             from llm_council_for_trae.store import ArtifactStore
-            from unittest.mock import AsyncMock
 
             store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s3-fb")
             config = CouncilConfig(members=["GLM-5.1"], chairman="GLM-5.1")
 
             fail_call = ModelCallResult(
-                expected_model="GLM-5.1", actual_model=None, response="",
+                expected_model="GLM-5.1", actual_model="GLM-5.1", response="",
                 status="failed", session_id="s1", command=["traecli"], exit_code=1,
-                stdout_path="out.jsonl", stderr_path="err.log", error="timeout",
+                stdout_path="out.jsonl", stderr_path="err.log",
+                error="tool_contaminated: forbidden tool call(s): Write",
+                forbidden_tool_calls=[{"id": "call-1", "name": "Write", "arguments": "{}", "turn_index": 1}],
             )
             ok_call = ModelCallResult(
                 expected_model="Qwen3.6-Plus", actual_model="Qwen3.6-Plus", response="Fallback answer",
                 status="ok", session_id="s2", command=["traecli"], exit_code=0,
                 stdout_path="out.jsonl", stderr_path="err.log",
             )
-            provider = TraeCliProvider.__new__(TraeCliProvider)
-            provider.query_model = AsyncMock(side_effect=[fail_call, ok_call])
+
+            class Provider:
+                def __init__(self):
+                    self.calls = []
+
+                async def query_model(self, **kwargs):
+                    self.calls.append(kwargs["label"])
+                    call = fail_call if len(self.calls) == 1 else ok_call
+                    store.write_json(
+                        f"stage3/{kwargs['label']}.meta.json",
+                        call.to_json() | {"captured_at": "2026-06-06T00:00:00Z"},
+                    )
+                    return call
+
+            provider = Provider()
 
             final, meta = await stage3_synthesize_final(
                 "test query",
@@ -2714,6 +2728,12 @@ The user is not merely asking whether local inference hardware will improve they
             self.assertEqual(meta["used"], "Qwen3.6-Plus")
             self.assertEqual(meta["fallback_from"], "GLM-5.1")
             self.assertEqual(meta["attempted"], ["GLM-5.1", "Qwen3.6-Plus"])
+            final_meta = json.loads(store.path("stage3/final.meta.json").read_text(encoding="utf-8"))
+            self.assertEqual(final_meta["expected_model"], "Qwen3.6-Plus")
+            self.assertEqual(final_meta["actual_model"], "Qwen3.6-Plus")
+            self.assertEqual(final_meta["status"], "ok")
+            self.assertEqual(final_meta["forbidden_tool_calls"], [])
+            self.assertTrue(store.path("stage3/final-fb-Qwen3.6-Plus.meta.json").exists())
 
         import asyncio
         asyncio.run(_run())

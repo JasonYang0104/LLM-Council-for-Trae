@@ -611,6 +611,7 @@ async def stage3_synthesize_final(
         else:
             store.write_json("stage3/contribution_map.json", contribution_map)
     store.write_text("stage3/final.md", call.response + "\n")
+    store.write_json("stage3/final.meta.json", call.to_json() | {"captured_at": utc_now()})
     store.write_json("stage3/final.json", final)
     return final, chairman_meta
 
