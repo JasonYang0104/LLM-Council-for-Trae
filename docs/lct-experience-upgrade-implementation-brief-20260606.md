@@ -15,7 +15,7 @@ LCT 本轮体验升级已经把三个容易误解的用户界面问题收进可�
 
 第三，自选模型体验从原生 `--members` 中剥离。原生 `--members` 仍是 power-user 精确路径，给几个跑几个，不补足、不裁剪。agent-assisted 自选使用 `--selected-members` / `--selected-chairman`，会归一化到 4 个成员，并把用户请求、解析结果、补足成员、裁剪成员和最终 config 写入 `manifest.metadata.model_selection`。
 
-第四，主席贡献说明采用默认关闭的 sidecar contract。只有追加 `--chairman-contribution-map` 时，Stage 3 才要求主席输出 `stage3/contribution_map.json`；HTML 从 blocks 确定性渲染段落来源，validate 只在 enabled 时校验 sidecar。系统不输出贡献百分比，也不把 Stage 2 同侪排序解释成模型能力排行。
+第四，主席贡献说明采用默认关闭的 sidecar contract。只有追加 `--chairman-contribution-map` 时，Stage 3 才要求主席输出 `stage3/contribution_map.json`；HTML 从 blocks 确定性渲染段落来源，并根据 `metadata.aggregate_rankings` 给成员来源追加 `同侪#n` 可验证锚点；validate 只在 enabled 时校验 sidecar。系统不输出贡献百分比，也不把 Stage 2 同侪排序解释成模型能力排行。
 
 ## 关键实现
 
@@ -45,7 +45,7 @@ LCT 本轮体验升级已经把三个容易误解的用户界面问题收进可�
 
 `src/llm_council_for_trae/schema_contract.py` 定义 `CONTRIBUTION_MAP_SCHEMA`；`src/llm_council_for_trae/validation.py` 只在 enabled 时校验 sidecar 存在、block type 合法、attribution kind 合法、成员引用来自有效 Stage 1 成员、`multi_member_consensus` 至少引用 2 个成员、`single_member` 只引用 1 个成员。
 
-`src/llm_council_for_trae/html_export.py` 在 sidecar 可读时渲染 blocks，否则回到 `stage3/final.md`。HTML 阶段不调模型，也不按自然段猜来源。
+`src/llm_council_for_trae/html_export.py` 在 sidecar 可读时渲染 blocks，否则回到 `stage3/final.md`。HTML 阶段不调模型，也不按自然段猜来源；成员来源旁的 `同侪#n` 从 `metadata.aggregate_rankings` 确定性带出。
 
 对应提交：`5fa99e2 feat: add gated chairman contribution map`
 

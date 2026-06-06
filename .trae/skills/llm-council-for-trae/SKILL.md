@@ -77,7 +77,7 @@ LCT CLI 只消费 `_lct_question.md`；是否做轻量意图理解和 prompt sha
 - `contribution_map_path: stage3/contribution_map.json`
 - `contribution_map_validate_status: ok|failed|missing`
 
-该功能只使用 Stage 3 写出的 `stage3/contribution_map.json` blocks 渲染 HTML 来源说明；不要在外层 Agent 或 HTML 阶段按 Markdown 自然段猜来源。`validate` 只在 manifest 标记 enabled 时要求 sidecar 合法；legacy run 或默认关闭路径缺少 contribution map 不算失败。不要输出贡献百分比，不要把 Stage 2 同侪排序解释成模型能力排行。
+该功能只使用 Stage 3 写出的 `stage3/contribution_map.json` blocks 渲染 HTML 来源说明；不要在外层 Agent 或 HTML 阶段按 Markdown 自然段猜来源。HTML 会根据 `metadata.aggregate_rankings` 给单一成员和多成员共识来源追加 `同侪#n`，作为主席无法改写的可验证锚点。`validate` 只在 manifest 标记 enabled 时要求 sidecar 合法；legacy run 或默认关闭路径缺少 contribution map 不算失败。不要输出贡献百分比，不要把 Stage 2 同侪排序解释成模型能力排行。
 
 无论哪种模式，最终根目录 `$RUN_ID-index.md` 和对用户汇报都必须写明 `Input mode` 和证据字段；输入模式取值为：
 

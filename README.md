@@ -221,7 +221,7 @@ chairman: DeepSeek-V4-Pro
 
 如果用户明确要挑成员或指定主席，外层 Agent 可以进入 agent-assisted 自选模型路径：先读取当前模型清单，必要时用 `AskUserQuestionTool` 展示选择卡片；工具不可用时使用文本 fallback。该路径必须调用独立参数 `--selected-members` / `--selected-chairman`，不要复用原生 `--members`。原生 `--members` 是 power-user 精确路径，给几个跑几个，不补足、不裁剪；agent-assisted 自选路径才会归一化到 4 并记录 `selection_surface=agent_assisted`、用户请求、解析结果、补足成员、裁剪成员和最终 config。
 
-主席贡献说明是灰度功能，默认关闭。需要让 HTML 正文按块展示「这一段来自单一成员、多成员共识、主席编者注、综合整理或无法可靠归因」时，运行命令可追加 `--chairman-contribution-map`。启用后 Stage 3 会尝试写出 `stage3/contribution_map.json`，manifest 记录 `metadata.chairman_contribution`；HTML 只从 sidecar 的 blocks 确定性渲染来源说明，不按 Markdown 自然段事后猜。`validate` 只在该功能 enabled 时要求 sidecar 存在且结构、成员引用合法；legacy run 或默认关闭路径仍只渲染 `stage3/final.md`，不会因为缺 `contribution_map.json` 失败。该功能不输出贡献百分比，也不把 Stage 2 同侪排序解释成模型能力排行。
+主席贡献说明是灰度功能，默认关闭。需要让 HTML 正文按块展示「这一段来自单一成员、多成员共识、主席编者注、综合整理或无法可靠归因」时，运行命令可追加 `--chairman-contribution-map`。启用后 Stage 3 会尝试写出 `stage3/contribution_map.json`，manifest 记录 `metadata.chairman_contribution`；HTML 只从 sidecar 的 blocks 确定性渲染来源说明，不按 Markdown 自然段事后猜。单一成员和多成员共识来源会根据 `metadata.aggregate_rankings` 追加 `同侪#n`，作为主席无法改写的可验证锚点。`validate` 只在该功能 enabled 时要求 sidecar 存在且结构、成员引用合法；legacy run 或默认关闭路径仍只渲染 `stage3/final.md`，不会因为缺 `contribution_map.json` 失败。该功能不输出贡献百分比，也不把 Stage 2 同侪排序解释成模型能力排行。
 
 补位语义分两类。Stage 1 member backfill **（注释：成员补位，指候补模型生成新的 Stage 1 候选答案）** 只在有效回答不足 quorum 时发生；只有 Stage 1 quorum 不足，CLI 才会新增候选答案。Stage 2 reviewer-only backfill 发生在 Stage 1 quorum 已经满足、但 Stage 2 reviewer 失败或不足时；候补模型只评审既有有效 Stage 1 answers，不新增候选答案，也不会进入 `stage2/label_to_model.json` 的 subject mapping。
 
