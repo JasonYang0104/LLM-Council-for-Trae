@@ -472,3 +472,23 @@
   - validate 目前忽略 enabled contribution map 缺 sidecar 的非法状态。
   - HTML 目前仍只渲染 `stage3/final.md`，不渲染 `stage3/contribution_map.json` blocks。
   - Skill / README 缺完整 raw trigger matrix 和 agent-assisted 自选模型路径。
+
+### Commit
+
+- `57c13c4 test: define LCT experience upgrade contracts`
+
+## 阶段 3：HTML summary card 与输入策略文档
+
+### 阶段目标
+
+- 将 HTML 顶部 `Quorum 状态` 卡片改为「成员模型」卡片。
+- 新 run 只展示 `metadata.quorum.effective_stage1_members`；legacy 缺整个 quorum 时才 fallback 到 `config.members`。
+- Skill / README 补 raw / structured / negative triggers、operator envelope 和 agent-assisted 自选模型路径说明。
+
+### 阶段验证
+
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_html_summary_card_shows_effective_member_models_without_quorum_jargon tests.test_core.CouncilCoreTests.test_html_summary_card_legacy_falls_back_to_config_members_when_quorum_missing tests.test_core.CouncilCoreTests.test_html_summary_card_does_not_show_config_members_when_quorum_present_but_effective_missing tests.test_core.CouncilCoreTests.test_html_summary_preserves_quorum_backfill_metadata_evidence tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_raw_input_trigger_matrix tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_structured_input_trigger_matrix tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_negative_triggers_do_not_imply_rewrite tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_operator_envelope_never_enters_lct_question tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_selected_model_agent_assisted_path -v`
+  - 结果：9 个测试通过。
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`git diff --check`
+- 说明：完整 `make test` 暂不跑绿灯断言，因为阶段 4/5 红灯测试仍未实现，预期会失败。

@@ -219,6 +219,8 @@ chairman: DeepSeek-V4-Pro
 
 `--default-models` 始终使用这套静态默认阵容。run 内 auto-backfill 默认启用：默认 auto-backfill 只从成员整体优先级中选择候补，排除 primary members、已尝试成员、主席和当前不可用/不安全模型；不会追加未批准的 runtime safe models。显式传 `--backfill-members` 时，CLI 按显式列表过滤后使用。在同一个 run 内追加候补只为补足有效成员；它不整轮重跑，也不会把已成功 Stage 1 输出替换掉。交付索引里只能记录 terminal manifest 的 `metadata.quorum.backfill_candidates`；如果没有记录则写 `not recorded`，不得从默认成员阵容或 `models --recommend --json` 的 primary roster 替代。
 
+如果用户明确要挑成员或指定主席，外层 Agent 可以进入 agent-assisted 自选模型路径：先读取当前模型清单，必要时用 `AskUserQuestionTool` 展示选择卡片；工具不可用时使用文本 fallback。该路径必须调用独立参数 `--selected-members` / `--selected-chairman`，不要复用原生 `--members`。原生 `--members` 是 power-user 精确路径，给几个跑几个，不补足、不裁剪；agent-assisted 自选路径才会归一化到 4 并记录 `selection_surface=agent_assisted`、用户请求、解析结果、补足成员、裁剪成员和最终 config。
+
 补位语义分两类。Stage 1 member backfill **（注释：成员补位，指候补模型生成新的 Stage 1 候选答案）** 只在有效回答不足 quorum 时发生；只有 Stage 1 quorum 不足，CLI 才会新增候选答案。Stage 2 reviewer-only backfill 发生在 Stage 1 quorum 已经满足、但 Stage 2 reviewer 失败或不足时；候补模型只评审既有有效 Stage 1 answers，不新增候选答案，也不会进入 `stage2/label_to_model.json` 的 subject mapping。
 
 LCT 的模型询问是 CLI 自己的终端输入，不依赖 Agent 的 AskUserQuestion **（注释：Agent 用来向用户发起澄清问题的工具能力）**。如果外层 Agent 不能交互式输入，使用 `--default-models`、`--members/--chairman` 或 `--profile`。

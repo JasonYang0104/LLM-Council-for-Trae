@@ -41,7 +41,14 @@ LCT CLI 只消费 `_lct_question.md`；是否做轻量意图理解和 prompt sha
 - `council input`：用户真正要委员会回答的问题、必要事实背景、输出要求，以及 `Report topic: <中文议题>`。`Report topic` 是报告元数据，不是成员任务指令。
 - `operator envelope`：使用 LCT、运行 validate、写 final/index、生成 HTML、维护 notes.md、Git/PR/测试职责、开 branch、提交代码等外层执行职责。外层执行指令不得写入 _lct_question.md。
 
-默认保留用户原始实质问题。只有当用户明确要求思考真实意图、拆解问题、重构输入、加入事实包或结构化输出时，才使用 `structured by Agent` 模式：
+默认保留用户原始实质问题。输入模式按以下矩阵判断：
+
+- raw original input：用户说 `使用 LCT 回答`、`不要改写`、`按原文`、`只用原始输入`、`评估 LCT 对原问题的理解` 时使用。该模式只追加 `Report topic`，不得加 `Agent interpretation`，不得拆解、重写或补 fact pack。
+- structured by Agent：用户明确说 `先想我真正需要什么`、`站在架构师角度评估`、要求 `fact pack`、`最新资料` 或 `来源` 时使用。必须保留 `Original input`，fact pack 直接内嵌并标来源。
+- negative triggers：`详细分析`、`深入一点`、`给完整方案` 不得单凭字面触发结构化改写；只有上下文另有明确意图时才进入 `structured by Agent`。
+- operator envelope：`notes.md`、`validate`、生成 HTML、写 final/index、Git/PR、测试职责、开 branch、提交代码等外层执行职责，绝不进 `_lct_question.md`。
+
+只有当用户明确要求思考真实意图、拆解问题、重构输入、加入事实包或结构化输出时，才使用 `structured by Agent` 模式：
 
 1. 保留用户原始输入，使用清晰标题标注为 `Original input`。
 2. 可以补充 `Agent interpretation` 和 `Suggested council focus`，用于拆解约束、成功标准、需要正反论证的维度。
@@ -50,6 +57,15 @@ LCT CLI 只消费 `_lct_question.md`；是否做轻量意图理解和 prompt sha
 如果用户明确说 `按原始输入`、`不要改写`、`只用原文`、`我要评估 LCT 对原始问题的理解` 或类似表达，必须使用 `raw original input` 模式：不加 `Agent interpretation`、不拆解、不补 fact pack、不重写问题。仍应在原文下方追加 `Report topic: <中文议题>`；它是报告元数据，不是 prompt shaping。
 
 如果外层 Agent 需要补充事实背景，fact pack 必须直接嵌入 _lct_question.md，放在用户原始输入之后并清楚标注来源。fact pack 只包含事实背景和来源，不能包含执行指令；不要要求成员读取 sidecar 文件，也不要让模型去读取另一个 sidecar 文件。`notes.md` 只由外层 Agent 维护，用来记录执行过程、测试和风险；如果用户要求维护 notes.md，调用 Agent 应执行这个要求，但不得把它写入 council input。不要要求 council 成员创建、读取、修改或维护 notes.md，模型不要创建或修改 notes，也不要把 notes 当成 council 输入。
+
+## Model Selection
+
+默认不打扰用户选择模型。只有用户明确要挑成员、指定主席、比较模型阵容，或要求“我想自己选模型”时，外层 Agent 才进入自选模型体验。
+
+- 可用时可以用 `AskUserQuestionTool` 展示当前模型清单；不可用时必须提供文本 fallback。
+- Agent-assisted 自选路径必须调用独立 CLI surface：`--selected-members` / `--selected-chairman`。
+- 不要复用原生 `--members` 表达 agent-assisted 自选；原生 `--members` 是 power-user 精确路径，给几个跑几个，不补足、不裁剪。
+- 自选路径的运行索引和 manifest provenance 必须记录 `selection_surface=agent_assisted`、用户请求的 members、解析后的 members、补足成员、裁剪成员和最终 config。
 
 无论哪种模式，最终根目录 `$RUN_ID-index.md` 和对用户汇报都必须写明 `Input mode` 和证据字段；输入模式取值为：
 

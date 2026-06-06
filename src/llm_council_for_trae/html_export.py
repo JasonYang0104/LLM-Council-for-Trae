@@ -843,19 +843,14 @@ def render_summary_cards(manifest: dict[str, Any], aggregate: list[dict[str, Any
         f"<div class='summary-card'><h3>最高排序成员</h3><p>{esc(top_model)}</p></div>"
     ]
     if quorum:
-        effective = quorum.get("effective_valid_members")
-        minimum = quorum.get("min_valid_members")
-        quorum_status = "low quorum" if quorum.get("low_quorum_used") else ("normal quorum" if quorum.get("normal_quorum_met") else "quorum failed")
-        members = ", ".join(str(item) for item in quorum.get("effective_stage1_members") or [])
-        backfill = ", ".join(str(item) for item in quorum.get("backfill_attempted") or [])
-        meta_parts = []
-        if members:
-            meta_parts.append(f"有效成员：{members}")
-        if backfill:
-            meta_parts.append(f"auto-backfill：{backfill}")
+        effective_members = [
+            str(item)
+            for item in quorum.get("effective_stage1_members") or []
+            if isinstance(item, str) and item.strip()
+        ]
+        member_text = ", ".join(effective_members) if effective_members else "暂无有效成员记录"
         cards.append(
-            f"<div class='summary-card'><h3>Quorum 状态</h3><p>{esc(effective)} / {esc(minimum)} · {esc(quorum_status)}</p>"
-            f"<p class='meta'>{esc(' · '.join(meta_parts))}</p></div>"
+            f"<div class='summary-card'><h3>成员模型</h3><p>{esc(member_text)}</p></div>"
         )
     else:
         cards.append(f"<div class='summary-card'><h3>成员模型</h3><p>{esc(', '.join(config.get('members') or []))}</p></div>")
