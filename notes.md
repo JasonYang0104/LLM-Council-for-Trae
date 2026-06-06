@@ -590,3 +590,20 @@
 - 本地验证覆盖当前 branch checkout。
 - 全局 wrapper 当前不指向本分支；merge 后 v16 fresh-main E2E 需要重新同步并安装 / 确认 wrapper 指向最新 main。
 - 未跟踪 `CLAUDE.md` 保持不纳入提交。
+
+### v16 E2E 指定输入
+
+用户在本阶段补充：merge 后本地隔离 workspace 的 v16 fresh-main E2E 使用以下原始输入。到 v16 环节再执行，不在当前 PR smoke 中提前运行。
+
+```text
+使用LCT回答："""
+https://job-boards.greenhouse.io/anthropic/jobs/5247640008
+分析解读这个JD。先意图理解。
+"""
+```
+
+执行要求：
+
+- 保持用户原文作为 council input 基础。
+- 因用户明确说“先意图理解”，外层 Agent 可以进入 `structured by Agent`，但必须保留 `Original input`。
+- 如需要解析网页内容，fact pack 必须直接内嵌 `_lct_question.md` 并标来源；不要要求 council 成员读取 sidecar。
