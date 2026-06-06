@@ -530,6 +530,16 @@ th {{ background:var(--paper-deep); }}
 .warning {{ color:var(--warn); }}
 .failure-banner {{ border:1px solid var(--bad); background:#fff1eb; padding:12px 14px; margin:16px 0; }}
 .warning-banner {{ border:1px solid #c48233; background:#fff6df; padding:12px 14px; margin:16px 0; }}
+.chairman-note {{ border:1px solid #d6a642; background:#fff8df; color:#4b3f32; padding:12px 14px; margin:16px 0; }}
+.chairman-note strong {{
+  display:block;
+  margin:0 0 6px;
+  color:#8c5c00;
+  font:12px/1.4 var(--mono);
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}}
+.chairman-note p {{ margin:.45em 0 0; }}
 svg {{ width:100%; max-width:760px; height:auto; display:block; }}
 @media (max-width: 860px) {{
   .archive-shell {{ padding:0; }}
@@ -859,8 +869,9 @@ def render_contribution_map(root: Path, manifest: dict[str, Any]) -> str | None:
         if block_type == "heading":
             html_blocks.append(f"<h3>{esc(text)}</h3>")
         elif block_type == "editor_note":
+            note_text = clean_chairman_note_text(text)
             html_blocks.append(
-                f"<aside class='warning-banner'><strong>编者注</strong><p>{esc(text)}</p>{source_html}</aside>"
+                f"<aside class='chairman-note'><strong>主席评注</strong><p>{esc(note_text)}</p></aside>"
             )
         elif block_type == "disagreement":
             html_blocks.append(
@@ -869,6 +880,13 @@ def render_contribution_map(root: Path, manifest: dict[str, Any]) -> str | None:
         else:
             html_blocks.append(f"<p>{esc(text)}</p>{source_html}")
     return "".join(html_blocks) if html_blocks else None
+
+
+def clean_chairman_note_text(text: str) -> str:
+    cleaned = str(text or "").strip()
+    cleaned = re.sub(r"^\s*主席(?:注|评注)(?:\s*[:：]|\s+)\s*", "", cleaned)
+    cleaned = re.sub(r"\s*(?:\n\s*)?来源\s*[:：]\s*主席编者注\s*$", "", cleaned).strip()
+    return cleaned
 
 
 def contribution_peer_ranks(metadata: dict[str, Any]) -> dict[str, int]:
@@ -900,7 +918,7 @@ def contribution_source_html(attribution: dict[str, Any], peer_ranks: dict[str, 
     if kind == "multi_member_consensus" and members:
         return f"<p class='meta'>多成员共识：{', '.join(member_labels)}</p>"
     if kind == "editor_note":
-        return "<p class='meta'>来源：主席编者注</p>"
+        return ""
     if kind == "not_attributable":
         return "<p class='meta'>来源：无法可靠归因</p>"
     if kind == "synthesis":

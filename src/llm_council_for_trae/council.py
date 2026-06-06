@@ -16,7 +16,7 @@ from .store import ArtifactStore
 from .utils import utc_now, write_json
 
 
-DEFAULT_MEMBERS = ["DeepSeek-V4-Pro", "openrouter-1o", "GPT-5.4", "Gemini-3.1-Pro-Preview"]
+DEFAULT_MEMBERS = ["DeepSeek-V4-Pro", "openrouter-1o", "GPT-5.4", "Kimi-K2.6"]
 DEFAULT_CHAIRMAN = "DeepSeek-V4-Pro"
 DEFAULT_READER_LANGUAGE_INSTRUCTION = "默认面向中文读者，使用简体中文回答。若用户原始问题明确指定另一种输出语言，则遵循用户指定语言。"
 
