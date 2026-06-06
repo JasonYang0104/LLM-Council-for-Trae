@@ -186,7 +186,7 @@ llm-council-for-trae run --input _lct_question.md --default-models --member-tool
 
 answer_only 是可选工具模式，不强制 answer_only。外层 Agent 可以自行判断使用 LCT 内部搜索、先补 fact pack、使用 answer_only，或在只读代码/文件问题中使用 workspace_enabled；无论哪种路径，都必须在索引里保留 `agent_external_search_used` 等外层检索证据字段。
 
-如果没有传 `--members`、`--chairman`、`--profile` 或 `--default-models`，LCT 会先列出当前 traecli 可用模型，并给出推荐套装（仅限交互终端）。在 Agent 或脚本等非交互场景，必须显式指定 `--default-models`、`--members/--chairman` 或 `--profile`：
+如果没有传 `--members`、`--chairman`、`--profile`、`--selected-members/--selected-chairman` 或 `--default-models`，LCT 会先列出当前 traecli 可用模型，并给出推荐套装（仅限交互终端）。在 Agent 或脚本等非交互场景，非 TTY run 必须显式指定模型路径：可用 `--default-models` 走默认套装，可用 `--selected-members/--selected-chairman` 走 agent-assisted 自选归一化入口，可用原生 `--members/--chairman` 走 power-user 精确路径，也可用 `--profile`：
 
 ```text
 LCT 检测到当前 traecli 可用模型：
@@ -221,11 +221,13 @@ chairman: DeepSeek-V4-Pro
 
 如果用户明确要挑成员或指定主席，外层 Agent 可以进入 agent-assisted 自选模型路径：先读取当前模型清单，必要时用 `AskUserQuestionTool` 展示选择卡片；工具不可用时使用文本 fallback。该路径必须调用独立参数 `--selected-members` / `--selected-chairman`，不要复用原生 `--members`。原生 `--members` 是 power-user 精确路径，给几个跑几个，不补足、不裁剪；agent-assisted 自选路径才会归一化到 4 并记录 `selection_surface=agent_assisted`、用户请求、解析结果、补足成员、裁剪成员和最终 config。
 
-主席贡献说明是灰度功能，默认关闭。需要让 HTML 正文按块展示「这一段来自单一成员、多成员共识、主席编者注、综合整理或无法可靠归因」时，运行命令可追加 `--chairman-contribution-map`。启用后 Stage 3 会尝试写出 `stage3/contribution_map.json`，manifest 记录 `metadata.chairman_contribution`；HTML 只从 sidecar 的 blocks 确定性渲染来源说明，不按 Markdown 自然段事后猜。单一成员和多成员共识来源会根据 `metadata.aggregate_rankings` 追加 `同侪#n`，作为主席无法改写的可验证锚点。`validate` 只在该功能 enabled 时要求 sidecar 存在且结构、成员引用合法；legacy run 或默认关闭路径仍只渲染 `stage3/final.md`，不会因为缺 `contribution_map.json` 失败。该功能不输出贡献百分比，也不把 Stage 2 同侪排序解释成模型能力排行。
+模型选择意图边界必须分清。用户只问“有什么模型”时，只展示 `models --recommend --json` / 当前模型清单和推荐套装，不擅自启动 run。用户说“我想指定模型”“我想自己选模型”“想挑成员/指定主席/比较模型阵容”，但想指定模型但没有给具体模型时，外层 Agent 应先读取当前模型清单和推荐阵容，再追问用户或给文本 fallback；拿到选择后再传 `--selected-members/--selected-chairman`。`--selected-chairman` 当前不能单独出现；如果只想指定主席且成员保持默认，需明确改用原生 `--members/--chairman` 并说明这是 power-user 精确路径。
+
+主席贡献说明默认开启。默认 run 会请求 Stage 3 输出 `stage3/contribution_map.json`，让 HTML 正文按 blocks 展示「这一段来自单一成员、多成员共识、主席编者注、综合整理或无法可靠归因」；调用方不需要追加 `--chairman-contribution-map`。如果明确不想请求 contribution map，可追加 `--no-chairman-contribution-map`；`--chairman-contribution-map` 仍保留为兼容 alias。release / E2E strict gate 场景可追加 `--require-chairman-contribution-map`，即 `required=true`，要求 sidecar 缺失或结构非法时 validate hard fail。默认 requested 但不 required 时，manifest 记录 `metadata.chairman_contribution` 的 `requested / required / present / error`，HTML fallback 到 `stage3/final.md`，validate 记录非阻断 warning，不把可读 final answer 判死。单一成员和多成员共识来源会根据 `metadata.aggregate_rankings` 追加 `同侪#n`，作为主席无法改写的可验证锚点。legacy run 缺少 `metadata.chairman_contribution` 或显式 disabled 时不要求 sidecar。该功能不输出贡献百分比，也不把 Stage 2 同侪排序解释成模型能力排行。
 
 补位语义分两类。Stage 1 member backfill **（注释：成员补位，指候补模型生成新的 Stage 1 候选答案）** 只在有效回答不足 quorum 时发生；只有 Stage 1 quorum 不足，CLI 才会新增候选答案。Stage 2 reviewer-only backfill 发生在 Stage 1 quorum 已经满足、但 Stage 2 reviewer 失败或不足时；候补模型只评审既有有效 Stage 1 answers，不新增候选答案，也不会进入 `stage2/label_to_model.json` 的 subject mapping。
 
-LCT 的模型询问是 CLI 自己的终端输入，不依赖 Agent 的 AskUserQuestion **（注释：Agent 用来向用户发起澄清问题的工具能力）**。如果外层 Agent 不能交互式输入，使用 `--default-models`、`--members/--chairman` 或 `--profile`。
+LCT 的模型询问是 CLI 自己的终端输入，不依赖 Agent 的 AskUserQuestion **（注释：Agent 用来向用户发起澄清问题的工具能力）**。如果外层 Agent 不能交互式输入，仍可以先问用户再运行；最终命令必须显式选择一种模型路径：`--default-models`、`--selected-members/--selected-chairman`、原生 `--members/--chairman` 或 `--profile`。
 
 CLI 直接产物：
 

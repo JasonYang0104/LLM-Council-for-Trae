@@ -497,6 +497,76 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
                 for term in required_terms:
                     self.assertIn(term, text)
 
+    def test_readme_and_skills_document_default_on_chairman_contribution_map(self):
+        required_terms = [
+            "主席贡献说明默认开启",
+            "不需要追加 `--chairman-contribution-map`",
+            "--no-chairman-contribution-map",
+            "--require-chairman-contribution-map",
+            "默认 requested",
+            "required=true",
+            "warning",
+            "fallback",
+            "metadata.chairman_contribution",
+            "同侪#n",
+        ]
+        forbidden_terms = [
+            "默认不要打开主席贡献说明",
+            "默认关闭路径",
+            "默认关闭。需要让 HTML",
+            "Default off.",
+        ]
+        for relative in [
+            "README.md",
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+                for term in forbidden_terms:
+                    self.assertNotIn(term, text)
+
+    def test_readme_and_skills_document_model_selection_intent_boundaries(self):
+        required_terms = [
+            "用户只问“有什么模型”",
+            "不擅自启动 run",
+            "想指定模型但没有给具体模型",
+            "先读取当前模型清单",
+            "追问",
+            "--selected-members",
+            "--selected-chairman",
+            "非 TTY run 必须显式指定模型路径",
+            "--default-models",
+            "--members/--chairman",
+            "--profile",
+        ]
+        forbidden_terms = [
+            "必须使用 `--default-models`：Agent 非 TTY 场景不能交互选择模型",
+            "Agent 非 TTY 场景不能交互选择模型",
+        ]
+        for relative in [
+            "README.md",
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+                for term in forbidden_terms:
+                    self.assertNotIn(term, text)
+
+    def test_model_selection_docs_remove_stale_selected_members_red_expectation(self):
+        test_plan = self.read_text("docs/lct-experience-upgrade-test-plan-20260606.md")
+        spec = self.read_text("docs/lct-experience-upgrade-implementation-spec-20260606.md")
+
+        self.assertNotIn("当前没有 `--selected-members` / `--selected-chairman`", test_plan)
+        self.assertIn("模型选择与 Skill 口径一致性", test_plan)
+        self.assertNotIn("显式 `--members` 超过 4 个时进入新裁剪逻辑", spec)
+        self.assertIn("原生 `--members` 永不归一化", spec)
+
     def test_docs_use_current_user_skill_path_and_no_stale_skill_path(self):
         doc_paths = [
             "README.md",

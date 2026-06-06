@@ -51,7 +51,8 @@ class CouncilConfig:
     allow_low_quorum: bool = True
     low_quorum_floor: int = 2
     model_selection_provenance: dict[str, Any] | None = None
-    chairman_contribution_enabled: bool = False
+    chairman_contribution_enabled: bool = True
+    chairman_contribution_required: bool = False
 
     def agent_for_member(self, index: int) -> str | None:
         if not self.member_agents or index >= len(self.member_agents):
@@ -602,8 +603,10 @@ async def stage3_synthesize_final(
     if copy_check:
         final["chairman_copy_check"] = copy_check
         chairman_meta["copy_check"] = copy_check
+    final["contribution_map_enabled"] = bool(config.chairman_contribution_enabled)
+    final["contribution_map_requested"] = bool(config.chairman_contribution_enabled)
+    final["contribution_map_required"] = bool(config.chairman_contribution_required)
     if config.chairman_contribution_enabled:
-        final["contribution_map_enabled"] = True
         final["contribution_map_path"] = "stage3/contribution_map.json"
         contribution_map = extract_contribution_map(call.response)
         if contribution_map is None:
@@ -808,7 +811,7 @@ def build_stage3_prompt(
     stage1_results: list[dict[str, Any]],
     stage2_results: list[dict[str, Any]],
     aggregate_rankings: list[dict[str, Any]] | None = None,
-    contribution_map_enabled: bool = False,
+    contribution_map_enabled: bool = True,
 ) -> str:
     stage1_text = "\n\n".join(
         f"{result.get('label', 'Response ?')}:\nModel: {result['model']}\nResponse: {result['response']}" for result in stage1_results
@@ -844,7 +847,9 @@ def build_stage3_prompt(
         contribution_instruction = """
 
 贡献说明灰度要求：
-- 除最终综述正文外，必须输出一个 JSON contribution_map，供系统保存为 stage3/contribution_map.json。
+- 除最终综述正文外，最后必须输出唯一一个 fenced `json` 代码块，代码块内只放 contribution_map JSON 对象，供系统保存为 stage3/contribution_map.json。
+- contribution_map JSON 必须能被 `json.loads` 直接解析；JSON 字符串内如需引用引号，必须转义英文双引号，或改用中文引号 / 单引号，禁止写未转义的 `"`。
+- JSON 代码块之后不要再输出任何解释、注释或 Markdown。
 - JSON 必须包含 schema_version=1、enabled=true、source 和 blocks。
 - blocks 中每个 block 必须有 id、type、text、attribution。
 - block.type 只能使用 heading、paragraph、editor_note、disagreement。
@@ -1184,14 +1189,12 @@ async def run_full_council(
     )
     manifest["stages"]["stage3"] = stage3_result
     manifest["metadata"]["chairman"] = chairman_meta
-    if config.chairman_contribution_enabled:
-        contribution_path = "stage3/contribution_map.json"
-        manifest["metadata"]["chairman_contribution"] = {
-            "enabled": True,
-            "path": contribution_path,
-            "present": (store.root / contribution_path).exists(),
-            "source": "chairman_structured_output",
-        }
+    contribution_path = "stage3/contribution_map.json"
+    manifest["metadata"]["chairman_contribution"] = chairman_contribution_metadata(
+        config,
+        present=(store.root / contribution_path).exists(),
+        error=stage3_result.get("contribution_map_error"),
+    )
     copy_check = stage3_result.get("chairman_copy_check") or chairman_meta.get("copy_check")
     if copy_check and copy_check.get("triggered") and not copy_check.get("resolved"):
         matched_labels = [
@@ -1236,17 +1239,39 @@ def initial_manifest(run_id: str, user_query: str, config: CouncilConfig) -> dic
             "html": "html/index.html",
         },
         "stages": {"stage1": [], "stage2": [], "stage3": None},
-        "metadata": (
-            {
-                "label_to_model": {},
-                "aggregate_rankings": [],
-                "model_selection": config.model_selection_provenance,
-            }
-            if config.model_selection_provenance
-            else {"label_to_model": {}, "aggregate_rankings": []}
-        ),
+        "metadata": initial_metadata(config),
         "warnings": [],
         "failures": [],
+    }
+
+
+def initial_metadata(config: CouncilConfig) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        "label_to_model": {},
+        "aggregate_rankings": [],
+        "chairman_contribution": chairman_contribution_metadata(config),
+    }
+    if config.model_selection_provenance:
+        metadata["model_selection"] = config.model_selection_provenance
+    return metadata
+
+
+def chairman_contribution_metadata(
+    config: CouncilConfig,
+    *,
+    present: bool = False,
+    error: str | None = None,
+) -> dict[str, Any]:
+    requested = bool(config.chairman_contribution_enabled)
+    path = "stage3/contribution_map.json" if requested else None
+    return {
+        "enabled": requested,
+        "requested": requested,
+        "required": bool(config.chairman_contribution_required),
+        "present": bool(present),
+        "path": path,
+        "source": "chairman_structured_output" if requested and present else None,
+        "error": error,
     }
 
 
@@ -1281,6 +1306,7 @@ def config_to_json(config: CouncilConfig) -> dict[str, Any]:
         "low_quorum_floor": config.low_quorum_floor,
         "model_selection_provenance": config.model_selection_provenance,
         "chairman_contribution_enabled": config.chairman_contribution_enabled,
+        "chairman_contribution_required": config.chairman_contribution_required,
     }
 
 

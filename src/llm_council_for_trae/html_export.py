@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .contribution_map import contribution_map_semantic_checks
 from .store import ArtifactStore
 from .utils import read_text, utc_now
 
@@ -855,6 +856,11 @@ def render_contribution_map(root: Path, manifest: dict[str, Any]) -> str | None:
         return None
     blocks = data.get("blocks") if isinstance(data, dict) else None
     if not isinstance(blocks, list):
+        return None
+    stages = manifest.get("stages") if isinstance(manifest.get("stages"), dict) else {}
+    stage1 = stages.get("stage1") if isinstance(stages.get("stage1"), list) else []
+    semantic_checks = contribution_map_semantic_checks(data, [item for item in stage1 if isinstance(item, dict)])
+    if any(not check.get("ok") for check in semantic_checks):
         return None
 
     peer_ranks = contribution_peer_ranks(metadata)

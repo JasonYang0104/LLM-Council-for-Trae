@@ -9,7 +9,7 @@
 1. HTML 顶部摘要卡片说人话，但不删除 quorum / backfill / search 证据。
 2. Skill 输入改写规则默认 raw，结构化必须有明确触发，operator envelope 不进入 `_lct_question.md`。
 3. 自选模型走独立 opt-in 通道归一化到 4，原生 `--members` 行为不变，并持久记录 provenance。
-4. 主席贡献说明默认关闭；开启后使用 `stage3/contribution_map.json` blocks contract，HTML 确定性渲染，validate 做 additive + legacy-compatible 校验。
+4. 主席贡献说明默认开启；默认请求 `stage3/contribution_map.json` blocks contract，HTML 确定性渲染；`--no-chairman-contribution-map` 可关闭；`--require-chairman-contribution-map` 才把缺失或非法 sidecar 作为 hard failure；validate 做 additive + legacy-compatible 校验。
 
 ## 2. 基线验证
 
@@ -72,6 +72,8 @@ git diff --check
 
 ## 5. 自选模型归一化与 Provenance
 
+### 模型选择与 Skill 口径一致性
+
 测试落点：`tests/test_core.py`、`tests/test_lct_model_productization.py`。
 
 新增或更新测试：
@@ -102,10 +104,20 @@ git diff --check
   - 断言：manifest `metadata.model_selection` 或等价字段包含 requested members、resolved members、trimmed members、final config、selection surface。
 - `test_validate_accepts_legacy_manifest_without_model_selection_provenance`
   - 断言：新增 provenance 校验 additive，旧 run 不因缺字段失败。
+- `test_readme_and_skills_document_model_selection_intent_boundaries`
+  - 断言：用户只问“有什么模型”时只展示当前模型清单和推荐套装，不擅自启动 run。
+  - 断言：用户想指定模型但没有给具体模型时先读取当前模型清单和推荐阵容，再追问或给文本 fallback。
+  - 断言：非 TTY run 必须显式指定模型路径，但允许 `--default-models`、`--selected-members/--selected-chairman`、原生 `--members/--chairman` 或 `--profile`。
+- `test_non_tty_model_selection_error_mentions_agent_assisted_path`
+  - 断言：CLI 非交互错误提示列出 `--selected-members/--selected-chairman`，不把非 TTY 简化成只能 `--default-models`。
+- `test_selected_chairman_requires_selected_members`
+  - 断言：`--selected-chairman` 不能单独出现；只指定主席且成员保持默认时，当前产品口径必须改用原生 `--members/--chairman` 并说明语义。
 
-红灯预期：当前没有 `--selected-members` / `--selected-chairman`，没有 `normalize_user_model_selection(...)`，`CouncilConfig` 也没有持久 provenance 通道。
+一致性回归预期：当前代码已有 `--selected-members` / `--selected-chairman`、`normalize_user_model_selection(...)` 和持久 provenance；本轮重点防止 Skill / README 仍把 Agent 非 TTY 写成只能 `--default-models`，或把“有什么模型 / 想指定但未给模型”误跑成默认 run。
 
 ## 6. 主席贡献说明 Blocks Contract
+
+本节已从第一版「默认关闭灰度」更新为「默认请求、可关闭、可 strict」。默认 requested 但 not required 的缺失或非法 sidecar 是 warning + HTML fallback；strict required 才是 validate failure。
 
 实现层 contract 选型：`stage3/contribution_map.json`，schema version 1。建议最小结构：
 
@@ -145,16 +157,24 @@ git diff --check
 
 新增测试：
 
-- `test_contribution_map_disabled_by_default_preserves_markdown_rendering`
-  - 默认 run 不要求 sidecar，HTML 使用 `stage3/final.md` 现有 Markdown 渲染。
-- `test_stage3_prompt_requests_contribution_blocks_only_when_enabled`
-  - 默认 prompt 不要求 blocks；启用 flag 后主席 prompt 明确要求输出 blocks / contribution map，不丢 Stage 1、Stage 2、aggregate rankings。
+- `test_chairman_contribution_map_requested_by_default`
+  - 默认 `CouncilConfig` / CLI config 的 `chairman_contribution_requested` 为 true，`required` 为 false。
+- `test_chairman_contribution_map_can_be_disabled`
+  - `--no-chairman-contribution-map` 后 requested 为 false，Stage 3 prompt 不要求 blocks。
+- `test_chairman_contribution_map_compat_flag_is_accepted`
+  - `--chairman-contribution-map` 仍可传入，且保持 requested 为 true。
+- `test_require_chairman_contribution_map_sets_strict_gate`
+  - `--require-chairman-contribution-map` 后 requested=true、required=true。
+- `test_stage3_prompt_requests_contribution_blocks_by_default`
+  - 默认 prompt 明确要求输出 blocks / contribution map，不丢 Stage 1、Stage 2、aggregate rankings；disabled 后不要求 blocks。
 - `test_store_writes_contribution_map_when_enabled`
   - 启用 flag 且 chairman 返回合法结构时，写出 `stage3/contribution_map.json`，manifest / final.json 标记 enabled。
 - `test_validate_accepts_legacy_run_without_contribution_map`
   - legacy run 缺 sidecar 不失败。
-- `test_validate_fails_enabled_run_missing_contribution_map`
-  - enabled 标记为 true 但 sidecar 缺失，validate verdict 为 `invalid_artifacts`。
+- `test_validate_warns_default_requested_run_missing_contribution_map`
+  - requested=true、required=false 且 sidecar 缺失时，validate status 仍可为 ok，输出非阻断 warning / check。
+- `test_validate_fails_required_run_missing_contribution_map`
+  - requested=true、required=true 且 sidecar 缺失时，validate verdict 为 `invalid_artifacts`。
 - `test_validate_rejects_contribution_map_unknown_member_reference`
   - sidecar 引用不在有效 Stage 1 成员内的模型，validate 失败。
 - `test_validate_rejects_consensus_with_fewer_than_two_members`
@@ -166,7 +186,7 @@ git diff --check
 - `test_html_contribution_view_does_not_emit_percentages_or_model_ranking_language`
   - 断言 HTML 不含贡献百分比，不把同侪排名表达成模型强弱排行。
 
-红灯预期：当前 Stage 3 只写 `final.md` / `final.json`，没有 feature flag、sidecar、validation 或 HTML blocks 渲染。
+实现前红灯预期：旧实现是 `CouncilConfig.chairman_contribution_enabled=False`、CLI help 声明默认关闭、默认 prompt 不要求 contribution map，且 enabled 即 hard fail；default-on、opt-out 和 strict gate 测试应失败。
 
 ## 7. 文档、README 与 Brief
 

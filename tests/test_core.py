@@ -403,12 +403,60 @@ FINAL RANKING:
         self.assertIn("不得逐字或近似复用任何 Stage 1 回答", stage3_prompt)
         self.assertIn("必须显式融合 top-ranked responses", stage3_prompt)
 
-    def test_chairman_contribution_map_disabled_by_default(self):
+    def test_chairman_contribution_map_requested_by_default(self):
         config = CouncilConfig(members=["GPT-5.4"], chairman="GPT-5.4")
 
-        self.assertFalse(config.chairman_contribution_enabled)
+        self.assertTrue(config.chairman_contribution_enabled)
+        self.assertFalse(config.chairman_contribution_required)
 
-    def test_stage3_prompt_requests_contribution_blocks_only_when_enabled(self):
+    def test_build_config_can_disable_chairman_contribution_map(self):
+        parser = build_parser()
+        args = parser.parse_args(["run", "--input", "question.md", "--default-models", "--no-chairman-contribution-map"])
+        args.selected_model_choice = resolve_run_model_choice(args)
+
+        config = build_config(args)
+
+        self.assertFalse(config.chairman_contribution_enabled)
+        self.assertFalse(config.chairman_contribution_required)
+
+    def test_build_config_accepts_compat_chairman_contribution_map(self):
+        parser = build_parser()
+        args = parser.parse_args(["run", "--input", "question.md", "--default-models", "--chairman-contribution-map"])
+        args.selected_model_choice = resolve_run_model_choice(args)
+
+        config = build_config(args)
+
+        self.assertTrue(config.chairman_contribution_enabled)
+        self.assertFalse(config.chairman_contribution_required)
+
+    def test_build_config_requires_chairman_contribution_map_strict(self):
+        parser = build_parser()
+        args = parser.parse_args(["run", "--input", "question.md", "--default-models", "--require-chairman-contribution-map"])
+        args.selected_model_choice = resolve_run_model_choice(args)
+
+        config = build_config(args)
+
+        self.assertTrue(config.chairman_contribution_enabled)
+        self.assertTrue(config.chairman_contribution_required)
+
+    def test_build_config_rejects_required_contribution_map_when_disabled(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "run",
+                "--input",
+                "question.md",
+                "--default-models",
+                "--no-chairman-contribution-map",
+                "--require-chairman-contribution-map",
+            ]
+        )
+        args.selected_model_choice = resolve_run_model_choice(args)
+
+        with self.assertRaisesRegex(ValueError, "--require-chairman-contribution-map cannot be combined"):
+            build_config(args)
+
+    def test_stage3_prompt_requests_contribution_blocks_by_default(self):
         question = "Explain trust improvements."
         stage1_results = [
             {"label": "Response A", "model": "GPT-5.4", "response": "A says transparency matters."},
@@ -424,7 +472,13 @@ FINAL RANKING:
             }
         ]
 
-        default_prompt = build_stage3_prompt(question, stage1_results, stage2_results)
+        default_prompt = build_stage3_prompt(
+            question,
+            stage1_results,
+            stage2_results,
+            aggregate_rankings=[{"label": "Response A", "model": "GPT-5.4", "average_rank": 1.0, "rankings_count": 1, "positions": [1]}],
+        )
+        disabled_prompt = build_stage3_prompt(question, stage1_results, stage2_results, contribution_map_enabled=False)
         enabled_prompt = build_stage3_prompt(
             question,
             stage1_results,
@@ -433,12 +487,46 @@ FINAL RANKING:
             contribution_map_enabled=True,
         )
 
-        self.assertNotIn("contribution_map", default_prompt)
+        self.assertIn("contribution_map.json", default_prompt)
+        self.assertIn("blocks", default_prompt)
+        self.assertNotIn("contribution_map", disabled_prompt)
         self.assertIn("contribution_map.json", enabled_prompt)
         self.assertIn("blocks", enabled_prompt)
         self.assertIn("single_member", enabled_prompt)
         self.assertIn("multi_member_consensus", enabled_prompt)
         self.assertIn("editor_note", enabled_prompt)
+
+    def test_stage3_prompt_requires_json_parseable_contribution_map(self):
+        prompt = build_stage3_prompt(
+            "Explain trust improvements.",
+            [{"label": "Response A", "model": "GPT-5.4", "response": "A says transparency matters."}],
+            [
+                {
+                    "model": "GPT-5.4",
+                    "ranking": "FINAL RANKING:\n1. Response A",
+                    "parsed_ranking": ["Response A"],
+                    "status": "ok",
+                }
+            ],
+            aggregate_rankings=[{"label": "Response A", "model": "GPT-5.4", "average_rank": 1.0, "rankings_count": 1, "positions": [1]}],
+        )
+
+        self.assertIn("唯一一个 fenced `json` 代码块", prompt)
+        self.assertIn("必须能被 `json.loads` 直接解析", prompt)
+        self.assertIn("禁止写未转义的 `\"`", prompt)
+        self.assertIn("JSON 代码块之后不要再输出任何解释", prompt)
+
+    def test_initial_manifest_records_default_chairman_contribution_metadata(self):
+        config = CouncilConfig(members=["GPT-5.4"], chairman="GPT-5.4")
+
+        manifest = initial_manifest("run-default-contribution", "question", config)
+
+        contribution = manifest["metadata"]["chairman_contribution"]
+        self.assertTrue(contribution["enabled"])
+        self.assertTrue(contribution["requested"])
+        self.assertFalse(contribution["required"])
+        self.assertFalse(contribution["present"])
+        self.assertEqual(contribution["path"], "stage3/contribution_map.json")
 
     def test_default_prompts_are_chinese_reader_facing(self):
         question = "Explain one practical tradeoff."
@@ -766,6 +854,21 @@ FINAL RANKING:
             )
 
             with self.assertRaisesRegex(ValueError, "--selected-members/--selected-chairman cannot be combined"):
+                resolve_run_model_choice(args)
+
+    def test_selected_chairman_requires_selected_members(self):
+        parser = build_parser()
+        args = parser.parse_args(["run", "--input", "question.md", "--selected-chairman", "DeepSeek-V4-Pro"])
+
+        with self.assertRaisesRegex(ValueError, "--selected-chairman requires --selected-members"):
+            resolve_run_model_choice(args)
+
+    def test_non_tty_model_selection_error_mentions_agent_assisted_path(self):
+        parser = build_parser()
+        args = parser.parse_args(["run", "--input", "question.md"])
+
+        with patch("sys.stdin.isatty", return_value=False):
+            with self.assertRaisesRegex(ValueError, "--selected-members/--selected-chairman"):
                 resolve_run_model_choice(args)
 
     def test_initial_manifest_persists_model_selection_provenance(self):
@@ -1253,13 +1356,42 @@ FINAL RANKING:
                 validation["failures"],
             )
 
-    def test_validate_fails_enabled_contribution_map_missing_sidecar(self):
+    def test_validate_warns_default_requested_contribution_map_missing_sidecar(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = ArtifactStore.create(Path(tmp), "run-missing-contribution-map")
             write_minimal_valid_direct_run(store)
             manifest = store.read_manifest()
             manifest["metadata"]["chairman_contribution"] = {
                 "enabled": True,
+                "requested": True,
+                "required": False,
+                "present": False,
+                "path": "stage3/contribution_map.json",
+            }
+            store.write_manifest(manifest)
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["status"], "ok", validation["failures"])
+            self.assertFalse(
+                any(check["name"] == "contribution_map_present" for check in validation["failures"]),
+                validation["failures"],
+            )
+            self.assertTrue(
+                any(check["name"] == "contribution_map_present" for check in validation["warnings"]),
+                validation["warnings"],
+            )
+
+    def test_validate_fails_required_contribution_map_missing_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-required-missing-contribution-map")
+            write_minimal_valid_direct_run(store)
+            manifest = store.read_manifest()
+            manifest["metadata"]["chairman_contribution"] = {
+                "enabled": True,
+                "requested": True,
+                "required": True,
+                "present": False,
                 "path": "stage3/contribution_map.json",
             }
             store.write_manifest(manifest)
@@ -1272,6 +1404,87 @@ FINAL RANKING:
                 validation["failures"],
             )
 
+    def test_validate_fails_required_contribution_map_missing_block_fields(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-required-bad-contribution-fields")
+            write_minimal_valid_direct_run(store)
+            manifest = store.read_manifest()
+            manifest["metadata"]["chairman_contribution"] = {
+                "enabled": True,
+                "requested": True,
+                "required": True,
+                "present": True,
+                "path": "stage3/contribution_map.json",
+            }
+            store.write_manifest(manifest)
+            store.write_json(
+                "stage3/contribution_map.json",
+                {
+                    "schema_version": 1,
+                    "enabled": True,
+                    "source": "chairman_structured_output",
+                    "blocks": [
+                        {
+                            "type": "paragraph",
+                            "attribution": {"kind": "single_member", "members": ["GPT-5.4"]},
+                        }
+                    ],
+                },
+            )
+
+            validation = validate_run(store)
+
+            self.assertIn(validation["status"], {"failed", "invalid_artifacts"})
+            self.assertTrue(
+                any(check["name"] == "contribution_map_block_fields" for check in validation["failures"]),
+                validation["failures"],
+            )
+
+    def test_validate_warns_default_requested_contribution_map_unknown_member_reference(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-soft-bad-contribution-member")
+            write_minimal_valid_direct_run(store)
+            manifest = store.read_manifest()
+            manifest["metadata"]["chairman_contribution"] = {
+                "enabled": True,
+                "requested": True,
+                "required": False,
+                "present": True,
+                "path": "stage3/contribution_map.json",
+            }
+            store.write_manifest(manifest)
+            store.write_json(
+                "stage3/contribution_map.json",
+                {
+                    "schema_version": 1,
+                    "enabled": True,
+                    "source": "chairman_structured_output",
+                    "blocks": [
+                        {
+                            "id": "b1",
+                            "type": "paragraph",
+                            "text": "Unknown member reference.",
+                            "attribution": {
+                                "kind": "single_member",
+                                "members": ["Unknown-Model"],
+                            },
+                        }
+                    ],
+                },
+            )
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["status"], "ok", validation["failures"])
+            self.assertFalse(
+                any(check["name"] == "contribution_map_member_refs" for check in validation["failures"]),
+                validation["failures"],
+            )
+            self.assertTrue(
+                any(check["name"] == "contribution_map_member_refs" for check in validation["warnings"]),
+                validation["warnings"],
+            )
+
     def test_validate_rejects_contribution_map_unknown_member_reference(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = ArtifactStore.create(Path(tmp), "run-bad-contribution-member")
@@ -1279,6 +1492,8 @@ FINAL RANKING:
             manifest = store.read_manifest()
             manifest["metadata"]["chairman_contribution"] = {
                 "enabled": True,
+                "requested": True,
+                "required": True,
                 "path": "stage3/contribution_map.json",
             }
             store.write_manifest(manifest)
@@ -1317,6 +1532,8 @@ FINAL RANKING:
             manifest = store.read_manifest()
             manifest["metadata"]["chairman_contribution"] = {
                 "enabled": True,
+                "requested": True,
+                "required": True,
                 "path": "stage3/contribution_map.json",
             }
             store.write_manifest(manifest)
@@ -3334,6 +3551,62 @@ The user is not merely asking whether local inference hardware will improve they
         self.assertNotIn('<aside class="warning-banner"', html)
         self.assertNotIn("<strong>编者注</strong>", html)
         self.assertNotIn("贡献 37%", html)
+
+    def test_html_falls_back_when_contribution_map_has_invalid_member_reference(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "stage3").mkdir()
+            (root / "input.md").write_text("Report topic: 贡献说明 fallback 测试\n", encoding="utf-8")
+            (root / "stage3" / "final.md").write_text("fallback markdown answer\n", encoding="utf-8")
+            (root / "stage3" / "chairman.prompt.md").write_text("prompt\n", encoding="utf-8")
+            (root / "stage3" / "contribution_map.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "enabled": True,
+                        "source": "chairman_structured_output",
+                        "blocks": [
+                            {
+                                "id": "p1",
+                                "type": "paragraph",
+                                "text": "invalid sidecar should not render",
+                                "attribution": {"kind": "single_member", "members": ["Unknown-Model"]},
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            manifest = {
+                "schema_version": 1,
+                "run_id": "run-html-invalid-contribution",
+                "status": "ok",
+                "config": {"members": ["GPT-5.4"], "chairman": "GPT-5.4", "provider_mode": "direct", "runtime_command": "fake"},
+                "metadata": {
+                    "aggregate_rankings": [{"label": "Response A", "model": "GPT-5.4", "average_rank": 1.0}],
+                    "chairman_contribution": {
+                        "enabled": True,
+                        "requested": True,
+                        "required": False,
+                        "present": True,
+                        "path": "stage3/contribution_map.json",
+                    },
+                },
+                "stages": {
+                    "stage1": [{"label": "Response A", "file_label": "A", "model": "GPT-5.4", "status": "ok"}],
+                    "stage2": [],
+                    "stage3": {"model": "GPT-5.4", "status": "ok"},
+                },
+                "warnings": [],
+                "failures": [],
+            }
+
+            html = render_html(root, manifest)
+
+        self.assertIn("fallback markdown answer", html)
+        self.assertNotIn("invalid sidecar should not render", html)
+        self.assertNotIn("Unknown-Model", html)
 
     def test_chairman_note_text_strips_loose_prefix_and_source_line(self):
         from llm_council_for_trae.html_export import clean_chairman_note_text

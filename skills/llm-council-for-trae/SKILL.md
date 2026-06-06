@@ -62,22 +62,30 @@ LCT CLI 只消费 `_lct_question.md`；是否做轻量意图理解和 prompt sha
 
 默认不打扰用户选择模型。只有用户明确要挑成员、指定主席、比较模型阵容，或要求“我想自己选模型”时，外层 Agent 才进入自选模型体验。
 
+- 用户只问“有什么模型”时，只展示 `models --recommend --json` / 当前模型清单和推荐套装，不擅自启动 run。
+- 用户说“我想指定模型”“我想自己选模型”“想挑成员/指定主席/比较模型阵容”，但想指定模型但没有给具体模型时，先读取当前模型清单和推荐阵容，再追问用户或给文本 fallback。
+- 非 TTY run 必须显式指定模型路径：允许 `--default-models`、`--selected-members/--selected-chairman`、原生 `--members/--chairman` 或 `--profile`，具体取决于用户意图；外层 Agent 可先追问用户后再运行。
 - 可用时可以用 `AskUserQuestionTool` 展示当前模型清单；不可用时必须提供文本 fallback。
 - Agent-assisted 自选路径必须调用独立 CLI surface：`--selected-members` / `--selected-chairman`。
 - 不要复用原生 `--members` 表达 agent-assisted 自选；原生 `--members` 是 power-user 精确路径，给几个跑几个，不补足、不裁剪。
 - 自选路径的运行索引和 manifest provenance 必须记录 `selection_surface=agent_assisted`、用户请求的 members、解析后的 members、补足成员、裁剪成员和最终 config。
+- `--selected-chairman` 当前不能单独出现；如果用户只想指定主席、成员保持默认，必须明确改用原生 `--members/--chairman` 并说明该路径是 power-user 精确语义。
 
 ## Chairman Contribution Map
 
-默认不要打开主席贡献说明。只有用户明确要求解释 final answer 各段来源、展示成员贡献、或评估综合答案如何融合成员观点时，才在 `run` 命令追加 `--chairman-contribution-map`。
+主席贡献说明默认开启。日常 `run` 不需要追加 `--chairman-contribution-map`；该兼容 flag 仍可传入，但默认路径已经会请求主席输出 contribution map。
 
-启用后必须在索引和最终汇报中记录：
+如明确不想请求主席贡献说明，运行时追加 `--no-chairman-contribution-map`。如本次是 release / E2E strict gate，运行时追加 `--require-chairman-contribution-map`，让缺失或非法 sidecar 成为 validate failure。
 
-- `chairman_contribution_enabled: true`
-- `contribution_map_path: stage3/contribution_map.json`
-- `contribution_map_validate_status: ok|failed|missing`
+索引和最终汇报必须记录：
 
-该功能只使用 Stage 3 写出的 `stage3/contribution_map.json` blocks 渲染 HTML 来源说明；不要在外层 Agent 或 HTML 阶段按 Markdown 自然段猜来源。HTML 会根据 `metadata.aggregate_rankings` 给单一成员和多成员共识来源追加 `同侪#n`，作为主席无法改写的可验证锚点。`validate` 只在 manifest 标记 enabled 时要求 sidecar 合法；legacy run 或默认关闭路径缺少 contribution map 不算失败。不要输出贡献百分比，不要把 Stage 2 同侪排序解释成模型能力排行。
+- `chairman_contribution_requested: true|false`
+- `chairman_contribution_required: true|false`
+- `chairman_contribution_present: true|false`
+- `contribution_map_path: stage3/contribution_map.json|none`
+- `contribution_map_validate_status: ok|warning|failed|missing|disabled`
+
+该功能只使用 Stage 3 写出的 `stage3/contribution_map.json` blocks 渲染 HTML 来源说明；不要在外层 Agent 或 HTML 阶段按 Markdown 自然段猜来源。HTML 会根据 `metadata.aggregate_rankings` 给单一成员和多成员共识来源追加 `同侪#n`，作为主席无法改写的可验证锚点。默认 requested 但不 required 时，缺 sidecar 或结构非法只记录 warning，并 fallback 到 `stage3/final.md`；只有 `required=true` 才把缺失或非法 sidecar 判为 validate failure。legacy run 缺少 `metadata.chairman_contribution` 或显式 disabled 不要求 contribution map。不要输出贡献百分比，不要把 Stage 2 同侪排序解释成模型能力排行。
 
 无论哪种模式，最终根目录 `$RUN_ID-index.md` 和对用户汇报都必须写明 `Input mode` 和证据字段；输入模式取值为：
 
@@ -273,7 +281,7 @@ cat ".llm-council-for-trae/runs/$FINAL_RUN_ID/stage3/final.md"
 
 ## Hard Constraints
 
-- 必须使用 `--default-models`：Agent 非 TTY 场景不能交互选择模型。
+- 非 TTY run 必须显式指定模型路径：可用 `--default-models`、`--selected-members/--selected-chairman`、原生 `--members/--chairman` 或 `--profile`；不要把 Agent 非 TTY 简化成只能 `--default-models`。
 - 必须使用 `--json`：外层 Agent 需要结构化输出。
 - 必须运行 `validate`：run 完成不等于 artifact 可信。
 - 默认 runtime 仍是 traecli；coco 只在显式 override 中使用。
