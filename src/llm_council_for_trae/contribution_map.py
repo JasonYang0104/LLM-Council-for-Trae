@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 from typing import Any
 
 
@@ -11,6 +13,91 @@ ALLOWED_ATTRIBUTION_KINDS = {
     "synthesis",
     "not_attributable",
 }
+
+
+def extract_contribution_map(text: str) -> dict[str, Any] | None:
+    candidates = []
+    stripped = text.strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        candidates.append(stripped)
+    candidates.extend(re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", text))
+    for candidate in candidates:
+        data = parse_contribution_map_candidate(candidate)
+        if isinstance(data, dict) and isinstance(data.get("blocks"), list):
+            data.setdefault("schema_version", 1)
+            data.setdefault("enabled", True)
+            data.setdefault("source", "chairman_structured_output")
+            return data
+    return None
+
+
+def parse_contribution_map_candidate(candidate: str) -> Any | None:
+    try:
+        return json.loads(candidate)
+    except Exception:
+        pass
+    if not looks_like_contribution_map_candidate(candidate):
+        return None
+    repaired = repair_unescaped_quotes_in_json_strings(candidate)
+    if repaired == candidate:
+        return None
+    try:
+        return json.loads(repaired)
+    except Exception:
+        return None
+
+
+def looks_like_contribution_map_candidate(candidate: str) -> bool:
+    return '"blocks"' in candidate and '"attribution"' in candidate and '"schema_version"' in candidate
+
+
+def repair_unescaped_quotes_in_json_strings(candidate: str) -> str:
+    repaired: list[str] = []
+    in_string = False
+    escape = False
+    length = len(candidate)
+    for index, char in enumerate(candidate):
+        if not in_string:
+            repaired.append(char)
+            if char == '"':
+                in_string = True
+                escape = False
+            continue
+        if escape:
+            repaired.append(char)
+            escape = False
+            continue
+        if char == "\\":
+            repaired.append(char)
+            escape = True
+            continue
+        if char != '"':
+            repaired.append(char)
+            continue
+        next_nonspace = ""
+        for lookahead in range(index + 1, length):
+            if not candidate[lookahead].isspace():
+                next_nonspace = candidate[lookahead]
+                break
+        if next_nonspace in {":", ",", "}", "]"}:
+            repaired.append(char)
+            in_string = False
+        else:
+            repaired.append('\\"')
+    return "".join(repaired)
+
+
+def strip_contribution_map_fence(text: str) -> str:
+    match = re.search(r"\n?```(?:json)?\s*([\s\S]*?)\s*```\s*$", text.rstrip())
+    if not match:
+        return text
+    candidate = match.group(1)
+    data = parse_contribution_map_candidate(candidate)
+    if isinstance(data, dict) and isinstance(data.get("blocks"), list):
+        return text[: match.start()].rstrip()
+    if looks_like_contribution_map_candidate(candidate):
+        return text[: match.start()].rstrip()
+    return text
 
 
 def contribution_map_semantic_checks(data: dict[str, Any], stage1: list[dict[str, Any]]) -> list[dict[str, Any]]:

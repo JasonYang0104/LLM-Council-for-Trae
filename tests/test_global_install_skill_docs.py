@@ -509,6 +509,9 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
             "fallback",
             "metadata.chairman_contribution",
             "同侪#n",
+            "常见未转义英文双引号",
+            "复制 Markdown",
+            "尾部 contribution JSON 块",
         ]
         forbidden_terms = [
             "默认不要打开主席贡献说明",

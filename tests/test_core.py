@@ -2724,6 +2724,87 @@ The user is not merely asking whether local inference hardware will improve they
         import asyncio
         asyncio.run(_run())
 
+    def test_stage3_repairs_unescaped_quotes_in_contribution_map_and_strips_final_markdown(self):
+        async def _run():
+            from llm_council_for_trae.council import stage3_synthesize_final, CouncilConfig
+            from llm_council_for_trae.provider import ModelCallResult, TraeCliProvider
+            from llm_council_for_trae.store import ArtifactStore
+            from unittest.mock import AsyncMock
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s3-contribution-map-repair")
+            config = CouncilConfig(
+                members=["DeepSeek-V4-Pro", "GPT-5.4", "Kimi-K2.6"],
+                chairman="DeepSeek-V4-Pro",
+                chairman_contribution_enabled=True,
+            )
+            response = """
+最终综述正文。
+
+```json
+{
+  "schema_version": 1,
+  "enabled": true,
+  "source": "chairman_structured_output",
+  "blocks": [
+    {
+      "id": "p1",
+      "type": "paragraph",
+      "text": "一份好 JD 暴露的不是"我要什么人"，而是"我们卡在哪里"。",
+      "attribution": {"kind": "multi_member_consensus", "members": ["DeepSeek-V4-Pro", "GPT-5.4"]}
+    },
+    {
+      "id": "n1",
+      "type": "editor_note",
+      "text": "主席注：Kimi-K2.6 的"三语者"比喻被融入结论。",
+      "attribution": {"kind": "editor_note", "members": []}
+    }
+  ]
+}
+```
+""".strip()
+            ok_call = ModelCallResult(
+                expected_model="DeepSeek-V4-Pro", actual_model="DeepSeek-V4-Pro", response=response,
+                status="ok", session_id="s1", command=["traecli"], exit_code=0,
+                stdout_path="out.jsonl", stderr_path="err.log",
+            )
+            provider = TraeCliProvider.__new__(TraeCliProvider)
+            provider.query_model = AsyncMock(return_value=ok_call)
+
+            final, _meta = await stage3_synthesize_final(
+                "test query",
+                [
+                    {"label": "Response A", "model": "DeepSeek-V4-Pro", "response": "A", "status": "ok"},
+                    {"label": "Response B", "model": "GPT-5.4", "response": "B", "status": "ok"},
+                    {"label": "Response C", "model": "Kimi-K2.6", "response": "C", "status": "ok"},
+                ],
+                [
+                    {
+                        "model": "Reviewer",
+                        "ranking": "FINAL RANKING:\n1. Response B\n2. Response A\n3. Response C",
+                        "parsed_ranking": ["Response B", "Response A", "Response C"],
+                        "status": "ok",
+                        "parse_status": "ok",
+                    }
+                ],
+                config, provider, store,
+            )
+
+            sidecar = store.path("stage3/contribution_map.json")
+            sidecar_json = json.loads(sidecar.read_text(encoding="utf-8"))
+
+            self.assertTrue(sidecar.exists())
+            self.assertNotIn("contribution_map_error", final)
+            self.assertTrue(final["contribution_map_stripped_from_response"])
+            self.assertEqual(final["response"], "最终综述正文。")
+            self.assertIn("raw_response", final)
+            self.assertIn("```json", final["raw_response"])
+            self.assertEqual(store.path("stage3/final.md").read_text(encoding="utf-8").strip(), "最终综述正文。")
+            self.assertEqual(sidecar_json["blocks"][0]["text"], '一份好 JD 暴露的不是"我要什么人"，而是"我们卡在哪里"。')
+            self.assertEqual(sidecar_json["blocks"][1]["text"], '主席注：Kimi-K2.6 的"三语者"比喻被融入结论。')
+
+        import asyncio
+        asyncio.run(_run())
+
     def test_stage3_retries_when_final_copies_stage1_response(self):
         async def _run():
             from llm_council_for_trae.council import stage3_synthesize_final, CouncilConfig
@@ -3607,6 +3688,115 @@ The user is not merely asking whether local inference hardware will improve they
         self.assertIn("fallback markdown answer", html)
         self.assertNotIn("invalid sidecar should not render", html)
         self.assertNotIn("Unknown-Model", html)
+
+    def test_html_fallback_strips_trailing_contribution_json_block_when_sidecar_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "stage3").mkdir()
+            (root / "input.md").write_text("Report topic: 缺失 sidecar fallback 测试\n", encoding="utf-8")
+            (root / "stage3" / "chairman.prompt.md").write_text("prompt\n", encoding="utf-8")
+            (root / "stage3" / "final.md").write_text(
+                """
+fallback markdown answer
+
+```json
+{
+  "schema_version": 1,
+  "enabled": true,
+  "source": "chairman_structured_output",
+  "blocks": [
+    {
+      "id": "p1",
+      "type": "paragraph",
+      "text": "raw contribution block should not render, even with "bad quotes".",
+      "attribution": {"kind": "single_member", "members": ["GPT-5.4"]}
+    }
+  ]
+}
+```
+""".strip()
+                + "\n",
+                encoding="utf-8",
+            )
+            manifest = {
+                "schema_version": 1,
+                "run_id": "run-html-missing-contribution",
+                "status": "ok",
+                "config": {"members": ["GPT-5.4"], "chairman": "GPT-5.4", "provider_mode": "direct", "runtime_command": "fake"},
+                "metadata": {
+                    "aggregate_rankings": [{"label": "Response A", "model": "GPT-5.4", "average_rank": 1.0}],
+                    "chairman_contribution": {
+                        "enabled": True,
+                        "requested": True,
+                        "required": False,
+                        "present": False,
+                        "path": "stage3/contribution_map.json",
+                        "error": "missing_or_invalid_contribution_map_json",
+                    },
+                },
+                "stages": {
+                    "stage1": [{"label": "Response A", "file_label": "A", "model": "GPT-5.4", "status": "ok"}],
+                    "stage2": [],
+                    "stage3": {"model": "GPT-5.4", "status": "ok"},
+                },
+                "warnings": [],
+                "failures": [],
+            }
+
+            html = render_html(root, manifest)
+
+        self.assertIn("fallback markdown answer", html)
+        self.assertNotIn("raw contribution block should not render", html)
+        self.assertNotIn("bad quotes", html)
+
+    def test_html_fallback_keeps_non_contribution_trailing_json_block(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "stage3").mkdir()
+            (root / "input.md").write_text("Report topic: 普通 JSON 示例测试\n", encoding="utf-8")
+            (root / "stage3" / "chairman.prompt.md").write_text("prompt\n", encoding="utf-8")
+            (root / "stage3" / "final.md").write_text(
+                """
+final answer with a JSON example
+
+```json
+{
+  "not_a_contribution": "keep this visible"
+}
+```
+""".strip()
+                + "\n",
+                encoding="utf-8",
+            )
+            manifest = {
+                "schema_version": 1,
+                "run_id": "run-html-ordinary-json",
+                "status": "ok",
+                "config": {"members": ["GPT-5.4"], "chairman": "GPT-5.4", "provider_mode": "direct", "runtime_command": "fake"},
+                "metadata": {
+                    "aggregate_rankings": [{"label": "Response A", "model": "GPT-5.4", "average_rank": 1.0}],
+                    "chairman_contribution": {
+                        "enabled": True,
+                        "requested": True,
+                        "required": False,
+                        "present": False,
+                        "path": "stage3/contribution_map.json",
+                    },
+                },
+                "stages": {
+                    "stage1": [{"label": "Response A", "file_label": "A", "model": "GPT-5.4", "status": "ok"}],
+                    "stage2": [],
+                    "stage3": {"model": "GPT-5.4", "status": "ok"},
+                },
+                "warnings": [],
+                "failures": [],
+            }
+
+            html = render_html(root, manifest)
+
+        self.assertIn("final answer with a JSON example", html)
+        self.assertIn("not_a_contribution", html)
+        self.assertIn("keep this visible", html)
 
     def test_chairman_note_text_strips_loose_prefix_and_source_line(self):
         from llm_council_for_trae.html_export import clean_chairman_note_text
