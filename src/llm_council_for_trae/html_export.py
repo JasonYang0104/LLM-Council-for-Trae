@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .contribution_map import contribution_map_semantic_checks
+from .contribution_map import contribution_map_semantic_checks, strip_contribution_map_fence
 from .store import ArtifactStore
 from .utils import read_text, utc_now
 
@@ -321,7 +321,7 @@ def render_html(root: Path, manifest: dict[str, Any]) -> str:
         ],
     )
 
-    final_html = render_contribution_map(root, manifest) or render_markdown(final_text)
+    final_html = render_contribution_map(root, manifest) or render_markdown(strip_contribution_map_fence(final_text))
     metadata_html = render_metadata(manifest, warnings, failures)
     trace_html = render_trace(stage1, stage2, stage3)
     ranking_html = render_ranking_matrix(aggregate)
@@ -1221,6 +1221,7 @@ def render_flow_svg() -> str:
 def build_markdown_export(manifest: dict[str, Any], input_text: str, final_text: str) -> str:
     aggregate = manifest.get("metadata", {}).get("aggregate_rankings") or []
     ranking = "\n".join(f"- {item.get('model')}: average rank {item.get('average_rank')}" for item in aggregate)
+    clean_final_text = strip_contribution_map_fence(final_text)
     return f"""# LLM Council for Trae 运行 {manifest.get('run_id')}
 
 状态：{manifest.get('status')}
@@ -1235,7 +1236,7 @@ def build_markdown_export(manifest: dict[str, Any], input_text: str, final_text:
 
 ## 最终答案
 
-{final_text}
+{clean_final_text}
 """
 
 

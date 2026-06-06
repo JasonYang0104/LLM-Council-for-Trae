@@ -85,7 +85,7 @@ LCT CLI 只消费 `_lct_question.md`；是否做轻量意图理解和 prompt sha
 - `contribution_map_path: stage3/contribution_map.json|none`
 - `contribution_map_validate_status: ok|warning|failed|missing|disabled`
 
-该功能只使用 Stage 3 写出的 `stage3/contribution_map.json` blocks 渲染 HTML 来源说明；不要在外层 Agent 或 HTML 阶段按 Markdown 自然段猜来源。HTML 会根据 `metadata.aggregate_rankings` 给单一成员和多成员共识来源追加 `同侪#n`，作为主席无法改写的可验证锚点。默认 requested 但不 required 时，缺 sidecar 或结构非法只记录 warning，并 fallback 到 `stage3/final.md`；只有 `required=true` 才把缺失或非法 sidecar 判为 validate failure。legacy run 缺少 `metadata.chairman_contribution` 或显式 disabled 不要求 contribution map。不要输出贡献百分比，不要把 Stage 2 同侪排序解释成模型能力排行。
+该功能只使用 Stage 3 写出的 `stage3/contribution_map.json` blocks 渲染 HTML 来源说明；不要在外层 Agent 或 HTML 阶段按 Markdown 自然段猜来源。HTML 会根据 `metadata.aggregate_rankings` 给单一成员和多成员共识来源追加 `同侪#n`，作为主席无法改写的可验证锚点。默认 requested 但不 required 时，缺 sidecar 或结构非法只记录 warning，并 fallback 到 `stage3/final.md`；Stage 3 会对 contribution map JSON 字符串里的常见未转义英文双引号做有限修复；无论 sidecar 是否可用，`stage3/final.md`、HTML 正文和复制 Markdown 都不会展示尾部 contribution JSON 块。只有 `required=true` 才把缺失或非法 sidecar 判为 validate failure。legacy run 缺少 `metadata.chairman_contribution` 或显式 disabled 不要求 contribution map。不要输出贡献百分比，不要把 Stage 2 同侪排序解释成模型能力排行。
 
 无论哪种模式，最终根目录 `$RUN_ID-index.md` 和对用户汇报都必须写明 `Input mode` 和证据字段；输入模式取值为：
 

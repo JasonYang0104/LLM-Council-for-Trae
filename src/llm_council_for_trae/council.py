@@ -11,6 +11,7 @@ from typing import Any
 
 from .models import doctor as runtime_doctor
 from .models import get_models, require_models_available
+from .contribution_map import extract_contribution_map, strip_contribution_map_fence
 from .provider import ModelCallResult, TraeCliProvider, tool_policy_for_mode
 from .store import ArtifactStore
 from .utils import utc_now, write_json
@@ -579,13 +580,14 @@ async def stage3_synthesize_final(
             copy_check["unresolved_reason"] = "retry_failed"
             copy_check["retry_error"] = retry_call.error
 
+    final_response = strip_contribution_map_fence(call.response) if config.chairman_contribution_enabled else call.response
     final = {
         "model": used,
         "expected_model": call.expected_model,
         "actual_model": call.actual_model,
         "agent": call.agent,
         "subagent_invocation": call.subagent_invocation,
-        "response": call.response,
+        "response": final_response,
         "status": call.status,
         "error": call.error,
         "prompt_path": prompt_path,
@@ -598,6 +600,8 @@ async def stage3_synthesize_final(
         "retried": call.retried,
         "retry_error": call.retry_error,
     } | tool_policy_record(call)
+    if final_response != call.response:
+        final["raw_response"] = call.response
     if original_prompt_path:
         final["original_prompt_path"] = original_prompt_path
     if copy_check:
@@ -613,7 +617,8 @@ async def stage3_synthesize_final(
             final["contribution_map_error"] = "missing_or_invalid_contribution_map_json"
         else:
             store.write_json("stage3/contribution_map.json", contribution_map)
-    store.write_text("stage3/final.md", call.response + "\n")
+        final["contribution_map_stripped_from_response"] = final_response != call.response
+    store.write_text("stage3/final.md", final_response + "\n")
     store.write_json("stage3/final.meta.json", call.to_json() | {"captured_at": utc_now()})
     store.write_json("stage3/final.json", final)
     return final, chairman_meta
@@ -886,25 +891,6 @@ Stage 2 综合排序（按 average_rank 从低到高，越靠前代表同侪排�
 - 你的输出应该是针对原始问题的综述性最终答案，而不是对各模型表现的评价或排名。不要评价哪个模型更好，不要输出模型排名对比。直接回答用户的问题。
 - 不得逐字或近似复用任何 Stage 1 回答；不能把某个候选回答原封不动当成最终答案。
 - 如果某个 Stage 1 回答整体最好，也必须重新组织、压缩、补足边界，并融合其他高排名回答的有效洞察。{contribution_instruction}"""
-
-
-def extract_contribution_map(text: str) -> dict[str, Any] | None:
-    candidates = []
-    stripped = text.strip()
-    if stripped.startswith("{") and stripped.endswith("}"):
-        candidates.append(stripped)
-    candidates.extend(re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", text))
-    for candidate in candidates:
-        try:
-            data = json.loads(candidate)
-        except Exception:
-            continue
-        if isinstance(data, dict) and isinstance(data.get("blocks"), list):
-            data.setdefault("schema_version", 1)
-            data.setdefault("enabled", True)
-            data.setdefault("source", "chairman_structured_output")
-            return data
-    return None
 
 
 def parse_ranking_from_text(ranking_text: str) -> list[str]:
