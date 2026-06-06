@@ -599,9 +599,15 @@ FINAL RANKING:
         self.assertIn("推荐 council 模型套", stderr.getvalue())
 
     def test_interactive_model_selection_accepts_custom_numbered_models(self):
-        models = [{"name": "GPT-5.4"}, {"name": "GLM-5.1"}, {"name": "DeepSeek-V4-Pro"}]
+        models = [
+            {"name": "GPT-5.4"},
+            {"name": "GLM-5.1"},
+            {"name": "DeepSeek-V4-Pro"},
+            {"name": "openrouter-1o"},
+            {"name": "Gemini-3.1-Pro-Preview"},
+        ]
         choice = select_model_choice_interactively(models, stdin=StringIO("c\n1,3\n3\n"), stderr=StringIO())
-        self.assertEqual(choice.members, ["GPT-5.4", "DeepSeek-V4-Pro"])
+        self.assertEqual(choice.members, ["GPT-5.4", "DeepSeek-V4-Pro", "openrouter-1o", "Gemini-3.1-Pro-Preview"])
         self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
         self.assertEqual(resolve_model_tokens("2, GPT-5.4", ["GPT-5.4", "GLM-5.1"]), ["GLM-5.1", "GPT-5.4"])
 
@@ -686,6 +692,18 @@ FINAL RANKING:
                 selection_surface="agent_assisted",
             )
 
+    def test_normalize_user_model_selection_fails_closed_when_available_fillers_cannot_reach_four(self):
+        normalize = getattr(model_selection, "normalize_user_model_selection", None)
+        self.assertIsNotNone(normalize, "missing normalize_user_model_selection")
+
+        with self.assertRaisesRegex(ValueError, "无法归一化到 4 个成员"):
+            normalize(
+                requested_members=["MiniMax-M2.7"],
+                requested_chairman=None,
+                models=[{"name": "MiniMax-M2.7"}, {"name": "DeepSeek-V4-Pro"}],
+                selection_surface="agent_assisted",
+            )
+
     def test_native_members_build_config_is_not_normalized(self):
         parser = build_parser()
         args = parser.parse_args(["run", "--input", "question.md", "--members", "M1,M2,M3", "--chairman", "Chair"])
@@ -724,6 +742,29 @@ FINAL RANKING:
         self.assertEqual(config.chairman, "DeepSeek-V4-Pro")
         self.assertEqual(config.model_selection_provenance["selection_surface"], "agent_assisted")
         self.assertEqual(config.model_selection_provenance["requested_members"], ["Kimi-K2.6", "GPT-5.4"])
+
+    def test_selected_members_cli_path_cannot_be_combined_with_profile(self):
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            profile_path = Path(tmpdir) / "profile.json"
+            profile_path.write_text(
+                json.dumps({"provider_mode": "direct", "members": ["M1"], "chairman": "Chair"}),
+                encoding="utf-8",
+            )
+            args = parser.parse_args(
+                [
+                    "run",
+                    "--input",
+                    "question.md",
+                    "--profile",
+                    str(profile_path),
+                    "--selected-members",
+                    "DeepSeek-V4-Pro",
+                ]
+            )
+
+            with self.assertRaisesRegex(ValueError, "--selected-members/--selected-chairman cannot be combined"):
+                resolve_run_model_choice(args)
 
     def test_initial_manifest_persists_model_selection_provenance(self):
         config = CouncilConfig(

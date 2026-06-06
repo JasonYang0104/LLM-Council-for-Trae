@@ -288,11 +288,14 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
 
 
 def resolve_run_model_choice(args: argparse.Namespace) -> ModelChoice | None:
-    if getattr(args, "profile", None):
-        return None
     if getattr(args, "selected_members", None) or getattr(args, "selected_chairman", None):
-        if getattr(args, "members", None) or getattr(args, "chairman", None) or getattr(args, "default_models", False):
-            raise ValueError("--selected-members/--selected-chairman cannot be combined with --members/--chairman or --default-models")
+        if (
+            getattr(args, "members", None)
+            or getattr(args, "chairman", None)
+            or getattr(args, "default_models", False)
+            or getattr(args, "profile", None)
+        ):
+            raise ValueError("--selected-members/--selected-chairman cannot be combined with --members/--chairman, --default-models, or --profile")
         if not getattr(args, "selected_members", None):
             raise ValueError("--selected-chairman requires --selected-members")
         models = get_models(args.runtime_command)
@@ -302,6 +305,8 @@ def resolve_run_model_choice(args: argparse.Namespace) -> ModelChoice | None:
             models=models,
             selection_surface="agent_assisted",
         )
+    if getattr(args, "profile", None):
+        return None
     if getattr(args, "default_models", False):
         return ModelChoice(list(DEFAULT_MEMBERS), DEFAULT_CHAIRMAN, "static-default")
     if getattr(args, "members", None) or getattr(args, "chairman", None):

@@ -607,3 +607,32 @@ https://job-boards.greenhouse.io/anthropic/jobs/5247640008
 - 保持用户原文作为 council input 基础。
 - 因用户明确说“先意图理解”，外层 Agent 可以进入 `structured by Agent`，但必须保留 `Original input`。
 - 如需要解析网页内容，fact pack 必须直接内嵌 `_lct_question.md` 并标来源；不要要求 council 成员读取 sidecar。
+
+## 阶段 8：只读 reviewer P2 修复
+
+### Reviewer 结论
+
+- 只读 subagent reviewer Nash 结论：fail。
+- P1：None。
+- P2：
+  - `--selected-*` 与 `--profile` 同时传入时会被 `profile` 分支静默吞掉，导致 selected provenance 缺失。
+  - `normalize_user_model_selection(...)` 在可用 preferred fillers 不足 4 个时仍返回少于 4 个成员，违反自选路径归一化到 4 的产品合同。
+- P3：
+  - contribution map validate 还可进一步收紧 `schema_version == 1`、`enabled == true`、block `id/text` 必填。
+  - 未跟踪 `CLAUDE.md` 不在 HEAD；继续避免误 stage。
+
+### 修复
+
+- `resolve_run_model_choice()` 将 selected conflict 检查前置到 profile return 之前，并禁止 `--selected-members/--selected-chairman` 与 `--profile` 混用。
+- `normalize_user_model_selection(...)` 在补足后仍不足 `target_members` 时 fail closed，错误信息说明当前可用且批准的成员模型不足。
+- 更新 TTY custom 选择测试：自选路径现在同样归一化到 4。
+
+### 红绿验证
+
+- 红灯：`PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_fails_closed_when_available_fillers_cannot_reach_four tests.test_core.CouncilCoreTests.test_selected_members_cli_path_cannot_be_combined_with_profile -v`
+  - 结果：2 个测试失败，分别复现 reviewer 的两个 P2。
+- 绿灯：同一命令再次运行通过，2 个测试 `OK`。
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_fills_to_four_by_preferred_members tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_trims_to_four_by_preferred_members tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_keeps_exact_four_user_order tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_fails_closed_for_unknown_model tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_fails_closed_when_available_fillers_cannot_reach_four tests.test_core.CouncilCoreTests.test_native_members_build_config_is_not_normalized tests.test_core.CouncilCoreTests.test_selected_members_cli_path_is_normalized_and_records_provenance tests.test_core.CouncilCoreTests.test_selected_members_cli_path_cannot_be_combined_with_profile tests.test_core.CouncilCoreTests.test_initial_manifest_persists_model_selection_provenance tests.test_core.CouncilCoreTests.test_interactive_model_selection_accepts_custom_numbered_models -v`
+  - 结果：10 个测试通过。
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`git diff --check`

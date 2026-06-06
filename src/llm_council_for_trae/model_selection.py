@@ -103,6 +103,11 @@ def normalize_user_model_selection(
             if preferred in names and preferred not in final_members:
                 final_members.append(preferred)
                 filled_members.append(preferred)
+        if len(final_members) < target_members:
+            raise ValueError(
+                f"无法归一化到 {target_members} 个成员：当前可用且批准的成员模型不足。"
+                f" resolved={final_members}"
+            )
     elif len(resolved_requested_members) > target_members:
         requested_order = {name: index for index, name in enumerate(resolved_requested_members)}
         preferred_order = {name: index for index, name in enumerate(PREFERRED_MEMBERS)}
