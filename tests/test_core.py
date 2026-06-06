@@ -2434,6 +2434,77 @@ The user is not merely asking whether local inference hardware will improve they
         import asyncio
         asyncio.run(_run())
 
+    def test_stage3_writes_contribution_map_when_enabled(self):
+        async def _run():
+            from llm_council_for_trae.council import stage3_synthesize_final, CouncilConfig
+            from llm_council_for_trae.provider import ModelCallResult, TraeCliProvider
+            from llm_council_for_trae.store import ArtifactStore
+            from unittest.mock import AsyncMock
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s3-contribution-map")
+            config = CouncilConfig(
+                members=["GPT-5.4", "DeepSeek-V4-Pro"],
+                chairman="GPT-5.4",
+                chairman_contribution_enabled=True,
+            )
+            response = """
+最终综述正文。
+
+```json
+{
+  "schema_version": 1,
+  "enabled": true,
+  "source": "chairman_structured_output",
+  "blocks": [
+    {
+      "id": "p1",
+      "type": "paragraph",
+      "text": "两个成员都强调了这个风险。",
+      "attribution": {"kind": "multi_member_consensus", "members": ["GPT-5.4", "DeepSeek-V4-Pro"]}
+    }
+  ]
+}
+```
+""".strip()
+            ok_call = ModelCallResult(
+                expected_model="GPT-5.4", actual_model="GPT-5.4", response=response,
+                status="ok", session_id="s1", command=["traecli"], exit_code=0,
+                stdout_path="out.jsonl", stderr_path="err.log",
+            )
+            provider = TraeCliProvider.__new__(TraeCliProvider)
+            provider.query_model = AsyncMock(return_value=ok_call)
+
+            final, _meta = await stage3_synthesize_final(
+                "test query",
+                [
+                    {"label": "Response A", "model": "GPT-5.4", "response": "A", "status": "ok"},
+                    {"label": "Response B", "model": "DeepSeek-V4-Pro", "response": "B", "status": "ok"},
+                ],
+                [
+                    {
+                        "model": "Reviewer",
+                        "ranking": "FINAL RANKING:\n1. Response A\n2. Response B",
+                        "parsed_ranking": ["Response A", "Response B"],
+                        "status": "ok",
+                        "parse_status": "ok",
+                    }
+                ],
+                config, provider, store,
+            )
+
+            sidecar = store.path("stage3/contribution_map.json")
+            final_json = json.loads(store.path("stage3/final.json").read_text(encoding="utf-8"))
+            sidecar_json = json.loads(sidecar.read_text(encoding="utf-8"))
+
+            self.assertTrue(final["contribution_map_enabled"])
+            self.assertEqual(final["contribution_map_path"], "stage3/contribution_map.json")
+            self.assertTrue(sidecar.exists())
+            self.assertEqual(final_json["contribution_map_path"], "stage3/contribution_map.json")
+            self.assertEqual(sidecar_json["blocks"][0]["attribution"]["members"], ["GPT-5.4", "DeepSeek-V4-Pro"])
+
+        import asyncio
+        asyncio.run(_run())
+
     def test_stage3_retries_when_final_copies_stage1_response(self):
         async def _run():
             from llm_council_for_trae.council import stage3_synthesize_final, CouncilConfig
@@ -3184,6 +3255,12 @@ The user is not merely asking whether local inference hardware will improve they
                                 "attribution": {"kind": "single_member", "members": ["GPT-5.4"]},
                             },
                             {
+                                "id": "p2",
+                                "type": "paragraph",
+                                "text": "两个成员都强调了同一个产品风险。",
+                                "attribution": {"kind": "multi_member_consensus", "members": ["GPT-5.4", "DeepSeek-V4-Pro"]},
+                            },
+                            {
                                 "id": "n1",
                                 "type": "editor_note",
                                 "text": "这是主席基于成员素材延伸的取舍建议。",
@@ -3200,13 +3277,19 @@ The user is not merely asking whether local inference hardware will improve they
                 "schema_version": 1,
                 "run_id": "run-html-contribution",
                 "status": "ok",
-                "config": {"members": ["GPT-5.4"], "chairman": "GPT-5.4", "provider_mode": "direct", "runtime_command": "fake"},
+                "config": {"members": ["GPT-5.4", "DeepSeek-V4-Pro"], "chairman": "GPT-5.4", "provider_mode": "direct", "runtime_command": "fake"},
                 "metadata": {
-                    "aggregate_rankings": [{"label": "Response A", "model": "GPT-5.4", "average_rank": 1.0}],
+                    "aggregate_rankings": [
+                        {"label": "Response A", "model": "GPT-5.4", "average_rank": 1.0},
+                        {"label": "Response B", "model": "DeepSeek-V4-Pro", "average_rank": 2.0},
+                    ],
                     "chairman_contribution": {"enabled": True, "path": "stage3/contribution_map.json"},
                 },
                 "stages": {
-                    "stage1": [{"label": "Response A", "file_label": "A", "model": "GPT-5.4", "status": "ok"}],
+                    "stage1": [
+                        {"label": "Response A", "file_label": "A", "model": "GPT-5.4", "status": "ok"},
+                        {"label": "Response B", "file_label": "B", "model": "DeepSeek-V4-Pro", "status": "ok"},
+                    ],
                     "stage2": [],
                     "stage3": {"model": "GPT-5.4", "status": "ok"},
                 },
@@ -3218,7 +3301,8 @@ The user is not merely asking whether local inference hardware will improve they
 
         self.assertIn("可信度为什么提升", html)
         self.assertIn("用户能看到哪些模型实际参与了结论", html)
-        self.assertIn("来源：GPT-5.4", html)
+        self.assertIn("来源：GPT-5.4（同侪#1）", html)
+        self.assertIn("多成员共识：GPT-5.4（同侪#1）, DeepSeek-V4-Pro（同侪#2）", html)
         self.assertIn("编者注", html)
         self.assertNotIn("贡献 37%", html)
 

@@ -850,6 +850,7 @@ def build_stage3_prompt(
 - attribution.kind 只能使用 single_member、multi_member_consensus、editor_note、synthesis、not_attributable。
 - single_member 的 members 必须只引用真实在场 Stage 1 成员。
 - multi_member_consensus 的 members 至少 2 个。
+- members 只写模型名，不要自行写同侪排名；系统会根据 Stage 2 综合排序渲染"同侪#n"。
 - editor_note 必须明确表示主席基于成员素材延伸的编者注。
 - 不要输出贡献百分比，不要把同侪排序写成模型能力排行。
 """

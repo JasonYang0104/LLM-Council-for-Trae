@@ -1,3 +1,30 @@
+# LCT contribution map anchor 修复记录
+
+日期：2026-06-06
+分支：`codex/lct-contribution-anchors-20260606`
+
+## Review 触发
+
+- 用户指出 PR #16 的 post-merge E2E 没有启用 `--chairman-contribution-map`，因此不能证明主席综述来源/贡献可见性完整落地。
+- 用户进一步指出当前 HTML enabled 渲染只显示 `来源：模型名` / `多成员共识：模型名`，缺少规格要求的 `同侪#n` 可验证锚点。
+- 结论调整：PR #16 已落地顶部卡片简化和 selected-members normalization；主席贡献透明度只完成默认关闭骨架，仍需要修复 PR 补 enabled 来源锚点和 live E2E。
+
+## TDD 证据
+
+- 红灯：`PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_html_renders_contribution_blocks_deterministically -v`
+- 失败点：HTML 只包含 `来源：GPT-5.4`，不包含 `来源：GPT-5.4（同侪#1）`。
+- 修复：`html_export.py` 从 `metadata.aggregate_rankings` 生成 deterministic peer-rank map，单一成员和多成员共识来源渲染为 `模型名（同侪#n）`。
+- 补测：新增 `test_stage3_writes_contribution_map_when_enabled`，覆盖 enabled Stage 3 写出 `stage3/contribution_map.json` 和 `final.json` provenance。
+
+## 当前验证
+
+- 通过：贡献相关目标测试 7 项。
+- 通过：Skill 同步 diff 无差异。
+- 通过：`git diff --check`。
+- 待做：完整 `compileall` / `make test`、只读 review、PR、merge 后 enabled live E2E。
+
+---
+
 # LCT runtime override Skill/文档规范实施记录
 
 日期：2026-06-05

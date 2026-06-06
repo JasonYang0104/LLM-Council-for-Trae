@@ -847,6 +847,7 @@ def render_contribution_map(root: Path, manifest: dict[str, Any]) -> str | None:
     if not isinstance(blocks, list):
         return None
 
+    peer_ranks = contribution_peer_ranks(metadata)
     html_blocks: list[str] = []
     for block in blocks:
         if not isinstance(block, dict):
@@ -854,7 +855,7 @@ def render_contribution_map(root: Path, manifest: dict[str, Any]) -> str | None:
         block_type = block.get("type")
         text = str(block.get("text") or "")
         attribution = block.get("attribution") if isinstance(block.get("attribution"), dict) else {}
-        source_html = contribution_source_html(attribution)
+        source_html = contribution_source_html(attribution, peer_ranks)
         if block_type == "heading":
             html_blocks.append(f"<h3>{esc(text)}</h3>")
         elif block_type == "editor_note":
@@ -870,13 +871,34 @@ def render_contribution_map(root: Path, manifest: dict[str, Any]) -> str | None:
     return "".join(html_blocks) if html_blocks else None
 
 
-def contribution_source_html(attribution: dict[str, Any]) -> str:
+def contribution_peer_ranks(metadata: dict[str, Any]) -> dict[str, int]:
+    aggregate = metadata.get("aggregate_rankings") if isinstance(metadata.get("aggregate_rankings"), list) else []
+    ranks: dict[str, int] = {}
+    for index, item in enumerate(aggregate, start=1):
+        if not isinstance(item, dict):
+            continue
+        model = item.get("model")
+        if isinstance(model, str) and model and model not in ranks:
+            ranks[model] = index
+    return ranks
+
+
+def contribution_member_label(member: str, peer_ranks: dict[str, int]) -> str:
+    rank = peer_ranks.get(member)
+    if rank is None:
+        return esc(member)
+    return f"{esc(member)}（同侪#{rank}）"
+
+
+def contribution_source_html(attribution: dict[str, Any], peer_ranks: dict[str, int] | None = None) -> str:
     kind = attribution.get("kind")
     members = [str(member) for member in attribution.get("members") or [] if isinstance(member, str)]
+    ranks = peer_ranks or {}
+    member_labels = [contribution_member_label(member, ranks) for member in members]
     if kind == "single_member" and members:
-        return f"<p class='meta'>来源：{esc(', '.join(members))}</p>"
+        return f"<p class='meta'>来源：{', '.join(member_labels)}</p>"
     if kind == "multi_member_consensus" and members:
-        return f"<p class='meta'>多成员共识：{esc(', '.join(members))}</p>"
+        return f"<p class='meta'>多成员共识：{', '.join(member_labels)}</p>"
     if kind == "editor_note":
         return "<p class='meta'>来源：主席编者注</p>"
     if kind == "not_attributable":
