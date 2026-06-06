@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LCT Experience Upgrade Director Brief</title>
+  <style>
+    :root {
+      --paper: #f5f4ed;
+      --paper-2: #efeee5;
+      --ink: #1f1d18;
+      --muted: #6b665b;
+      --rule: #d4d1c5;
+      --accent: #1B365D;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Noto Serif SC", "Songti SC", "Source Han Serif SC", serif;
+      line-height: 1.54;
+    }
+    .page {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 64px 40px 72px;
+    }
+    [role="banner"] {
+      border-top: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+      padding: 34px 0 28px;
+      margin-bottom: 34px;
+    }
+    .kicker {
+      color: var(--accent);
+      font-size: 13px;
+      letter-spacing: 0;
+      margin: 0 0 14px;
+    }
+    h1 {
+      font-size: 42px;
+      line-height: 1.18;
+      font-weight: 500;
+      margin: 0;
+      max-width: 760px;
+    }
+    .lede {
+      font-size: 19px;
+      color: var(--muted);
+      max-width: 760px;
+      margin: 22px 0 0;
+    }
+    h2 {
+      font-size: 24px;
+      font-weight: 500;
+      margin: 42px 0 14px;
+      padding-top: 18px;
+      border-top: 1px solid var(--rule);
+    }
+    h3 {
+      font-size: 18px;
+      font-weight: 500;
+      margin: 26px 0 10px;
+      color: var(--accent);
+    }
+    p, li {
+      font-size: 16px;
+    }
+    ul, ol {
+      padding-left: 24px;
+    }
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    pre {
+      background: var(--paper-2);
+      border: 1px solid var(--rule);
+      padding: 14px 16px;
+      overflow: auto;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    code {
+      color: var(--accent);
+      font-size: 0.92em;
+    }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--rule);
+      border: 1px solid var(--rule);
+      margin: 28px 0 36px;
+    }
+    .cell {
+      background: var(--paper);
+      padding: 18px;
+      min-height: 116px;
+    }
+    .cell .label {
+      color: var(--muted);
+      font-size: 13px;
+      margin: 0 0 10px;
+    }
+    .cell .value {
+      font-size: 22px;
+      line-height: 1.28;
+      margin: 0;
+    }
+    .note {
+      border-left: 3px solid var(--accent);
+      padding: 10px 0 10px 18px;
+      color: var(--muted);
+      margin: 22px 0;
+    }
+    [role="contentinfo"] {
+      border-top: 1px solid var(--rule);
+      margin-top: 54px;
+      padding-top: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    @media (max-width: 760px) {
+      .page { padding: 38px 22px 54px; }
+      h1 { font-size: 32px; }
+      .summary { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page" role="main">
+    <div role="banner">
+      <p class="kicker">2026-06-06 · PM Director Brief</p>
+      <h1>LCT Experience Upgrade</h1>
+      <p class="lede">本轮没有进入实现，而是把“已可用产品的体验升级”整理成架构师可评估的任务输入，并用白纸 subagent 做了清晰度审查。</p>
+    </div>
+
+    <div class="summary" aria-label="Key facts">
+      <div class="cell">
+        <p class="label">交付物</p>
+        <p class="value">架构师 brief + PM brief</p>
+      </div>
+      <div class="cell">
+        <p class="label">状态</p>
+        <p class="value">评估输入完成</p>
+      </div>
+      <div class="cell">
+        <p class="label">实现范围</p>
+        <p class="value">未改产品代码</p>
+      </div>
+    </div>
+
+    <h2>结论</h2>
+    <p>LCT 已经可用，当前要解决的是用户理解、控制和信任结果的体验问题。最终文档把这次升级限定为体验增强，不是 runtime 重写，也不是模型 benchmark。</p>
+    <p>架构师任务文档位于 <code>docs/lct-experience-upgrade-architect-brief-20260606.md</code>。它已经补入现有 artifact 结构、责任边界、输入判定矩阵、模型裁剪规则、主席贡献说明可信标准和回归测试。</p>
+
+    <h2>为什么要做</h2>
+    <p>当前 HTML 顶部展示 <code>Quorum 状态 4 / 3 · normal quorum</code>，工程上可解释，但用户不需要在第一眼看到 quorum 阈值。用户需要看到的是参与最终结果的成员模型。</p>
+    <p>主席综述也存在透明度问题：用户难以判断最终答案中哪些观点来自哪些模型、哪些是共识、哪些是主席新增判断。这需要更强的 provenance，但不能伪造成精确贡献百分比。</p>
+
+    <h2>过程</h2>
+    <ol>
+      <li>还原当前 LCT 事实：三阶段 council、validate 门槛、默认 4 成员、最低 3 个有效成员、HTML 确定性导出。</li>
+      <li>写出架构师任务文档第一版，覆盖 HTML 简化、主席贡献说明、输入改造、用户自选模型四个体验需求。</li>
+      <li>让白纸 subagent 审查文档清晰度，不做实现方案。</li>
+      <li>根据审查反馈补齐 artifact 样例、责任边界、判定矩阵、模型优先级、失败行为和测试标准。</li>
+    </ol>
+
+    <h2>最终判断</h2>
+    <h3>HTML summary card</h3>
+    <pre>成员模型
+DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Gemini-3.1-Pro-Preview</pre>
+    <p>不在 summary card 展示 <code>Quorum 状态</code>、<code>4 / 3</code>、<code>normal quorum</code>、<code>有效成员：</code>。底层 quorum 证据仍保留。</p>
+
+    <h3>主席贡献说明</h3>
+    <p>不建议输出精确比例。建议用“共识观点、主要采纳、分歧处理、主席新增、未明显采用”这类可审计表达，并校验引用的 Response label 和 model 是否真实存在。</p>
+
+    <h3>输入改造</h3>
+    <p>默认 raw。只有用户明确要求意图理解、架构评估、结构化或 fact pack 时，才允许 structured。即使 structured，也必须保留 Original input，并排除 operator envelope。</p>
+
+    <h3>用户自选模型</h3>
+    <p>默认不问。只有用户表达模型选择意图时才触发。最终 members/chairman 必须来自当前 <code>traecli models --json</code>。members 最多 4 个，产品路径要求至少 3 个 candidates。超过 4 个时按 LCT 成员优先级裁剪。</p>
+
+    <h2>风险</h2>
+    <ul>
+      <li>贡献说明如果无证据，会变成假透明。</li>
+      <li>AskUserQuestionTool 如果成为 core 依赖，会破坏 CLI 和其他宿主环境。</li>
+      <li>模型自选如果不受当前模型清单约束，会破坏 expected/actual model 校验。</li>
+      <li>输入改造如果过宽，会重现 Agent 悄悄改写用户问题的问题。</li>
+      <li>HTML 简化如果误删 quorum/backfill/search 证据，会削弱可复盘性。</li>
+    </ul>
+
+    <h2>建议推进</h2>
+    <p>不要一次性塞进一个大 PR。建议按三阶段推进：低风险展示与 Skill 规则、模型选择交互产品化、主席贡献说明。每一阶段都应有独立测试，并保留 <code>compileall</code>、<code>make test</code>、<code>git diff --check</code> 的回归门槛。</p>
+
+    <p class="note">当前完成的是评估输入，不是实现。下一步可以把架构师 brief 交给架构评审，要求其给出正式架构建议、风险和分阶段实施路线。</p>
+
+    <div role="contentinfo">
+      Source Markdown: docs/lct-experience-upgrade-director-brief-20260606.md
+    </div>
+  </div>
+</body>
+</html>
