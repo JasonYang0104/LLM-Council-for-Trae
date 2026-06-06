@@ -70,6 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--member-tool-mode", choices=["answer_only", "search_enabled", "workspace_enabled"], default="search_enabled", help="Tool capability policy for direct member runtime.")
     run_p.add_argument("--member-runtime-cwd-mode", choices=["isolated_temp", "inherit"], default="isolated_temp", help="Working-directory isolation mode for direct member runtime when --runtime-cwd is omitted.")
     run_p.add_argument("--skip-html", action="store_true", help="Skip automatic HTML export after Stage 3.")
+    run_p.add_argument("--chairman-contribution-map", action="store_true", help="Ask Stage 3 to emit a contribution-map sidecar. Default off.")
     run_p.add_argument("--json", dest="json_output", action="store_true", default=argparse.SUPPRESS)
     run_p.set_defaults(func=cmd_run)
 
@@ -282,6 +283,7 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
         allow_low_quorum=True,
         low_quorum_floor=getattr(args, "low_quorum_floor", 2),
         model_selection_provenance=model_selection_provenance,
+        chairman_contribution_enabled=getattr(args, "chairman_contribution_map", False),
     )
 
 

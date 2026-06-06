@@ -320,7 +320,7 @@ def render_html(root: Path, manifest: dict[str, Any]) -> str:
         ],
     )
 
-    final_html = render_markdown(final_text)
+    final_html = render_contribution_map(root, manifest) or render_markdown(final_text)
     metadata_html = render_metadata(manifest, warnings, failures)
     trace_html = render_trace(stage1, stage2, stage3)
     ranking_html = render_ranking_matrix(aggregate)
@@ -829,6 +829,61 @@ def render_ranking_matrix(aggregate: list[dict[str, Any]]) -> str:
     )
     empty = '<p class="meta">暂无聚合排序。</p>'
     return f"<div class='matrix'>{cells or empty}</div>"
+
+
+def render_contribution_map(root: Path, manifest: dict[str, Any]) -> str | None:
+    metadata = manifest.get("metadata") if isinstance(manifest.get("metadata"), dict) else {}
+    contribution = metadata.get("chairman_contribution") if isinstance(metadata.get("chairman_contribution"), dict) else {}
+    if contribution.get("enabled") is not True:
+        return None
+    path = root / str(contribution.get("path") or "stage3/contribution_map.json")
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    blocks = data.get("blocks") if isinstance(data, dict) else None
+    if not isinstance(blocks, list):
+        return None
+
+    html_blocks: list[str] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        block_type = block.get("type")
+        text = str(block.get("text") or "")
+        attribution = block.get("attribution") if isinstance(block.get("attribution"), dict) else {}
+        source_html = contribution_source_html(attribution)
+        if block_type == "heading":
+            html_blocks.append(f"<h3>{esc(text)}</h3>")
+        elif block_type == "editor_note":
+            html_blocks.append(
+                f"<aside class='warning-banner'><strong>编者注</strong><p>{esc(text)}</p>{source_html}</aside>"
+            )
+        elif block_type == "disagreement":
+            html_blocks.append(
+                f"<section class='cell'><h3>观点分歧</h3><p>{esc(text)}</p>{source_html}</section>"
+            )
+        else:
+            html_blocks.append(f"<p>{esc(text)}</p>{source_html}")
+    return "".join(html_blocks) if html_blocks else None
+
+
+def contribution_source_html(attribution: dict[str, Any]) -> str:
+    kind = attribution.get("kind")
+    members = [str(member) for member in attribution.get("members") or [] if isinstance(member, str)]
+    if kind == "single_member" and members:
+        return f"<p class='meta'>来源：{esc(', '.join(members))}</p>"
+    if kind == "multi_member_consensus" and members:
+        return f"<p class='meta'>多成员共识：{esc(', '.join(members))}</p>"
+    if kind == "editor_note":
+        return "<p class='meta'>来源：主席编者注</p>"
+    if kind == "not_attributable":
+        return "<p class='meta'>来源：无法可靠归因</p>"
+    if kind == "synthesis":
+        return "<p class='meta'>来源：综合整理</p>"
+    return ""
 
 
 def render_summary_cards(manifest: dict[str, Any], aggregate: list[dict[str, Any]]) -> str:

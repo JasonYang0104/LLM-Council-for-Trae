@@ -146,6 +146,14 @@ HTML_EXPORT_JSON_SCHEMA: dict[str, JsonTypeCheck] = {
 }
 
 
+CONTRIBUTION_MAP_SCHEMA: dict[str, JsonTypeCheck] = {
+    "schema_version": is_int,
+    "enabled": is_bool,
+    "source": is_str,
+    "blocks": is_list_of_dict,
+}
+
+
 SUBAGENT_INVOCATION_SCHEMA: dict[str, JsonTypeCheck] = {
     "required": is_bool,
     "expected_agent": is_str_or_none,

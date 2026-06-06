@@ -265,6 +265,28 @@
 
 ### Commit
 
+- `57d411a feat: add explicit selected-model normalization`
+
+## 阶段 5：主席贡献说明 sidecar
+
+### 阶段目标
+
+- 新增 `--chairman-contribution-map` 与 `CouncilConfig.chairman_contribution_enabled`，默认关闭。
+- Stage 3 仅在 enabled 时要求主席输出 `stage3/contribution_map.json` sidecar。
+- `validate` 仅在 manifest 标记 enabled 时检查 contribution map 的存在、结构、成员引用与 consensus 成员数。
+- HTML 在 enabled 且 sidecar 合法可读时渲染 blocks；legacy / disabled run 继续渲染 `stage3/final.md`。
+
+### 阶段验证
+
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_chairman_contribution_map_disabled_by_default tests.test_core.CouncilCoreTests.test_stage3_prompt_requests_contribution_blocks_only_when_enabled tests.test_core.CouncilCoreTests.test_validate_fails_enabled_contribution_map_missing_sidecar tests.test_core.CouncilCoreTests.test_validate_rejects_contribution_map_unknown_member_reference tests.test_core.CouncilCoreTests.test_validate_rejects_contribution_map_consensus_with_fewer_than_two_members tests.test_core.CouncilCoreTests.test_html_renders_contribution_blocks_deterministically -v`
+  - 结果：6 个测试通过。
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`git diff --check`
+- 通过：`make test`
+  - 结果：243 个测试通过，`OK`；输出末尾包含 `degraded_ok` fixture 预期路径。
+
+### Commit
+
 - `be7a285 feat: record effective web tool delivery evidence`
 
 ## 阶段 4：HTML / validate 搜索生效展示

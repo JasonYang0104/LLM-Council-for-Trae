@@ -97,6 +97,10 @@
 - `normalize_user_model_selection(...)` 是唯一归一化函数，CLI TTY custom 和 agent-assisted 自选都走它。
 - `CouncilConfig.model_selection_provenance` 是持久通道；`initial_manifest()` 将其写入 `metadata.model_selection`。
 - provenance 至少记录：`selection_surface`、`requested_members`、`requested_chairman`、`resolved_requested_members`、`resolved_members`、`resolved_chairman`、`filled_members`、`trimmed_members`、`final_members`、`final_chairman`。
+- 主席贡献说明 feature flag 采用 `--chairman-contribution-map` / `CouncilConfig.chairman_contribution_enabled`，默认关闭。
+- 启用后 manifest 使用 `metadata.chairman_contribution = {"enabled": true, "path": "stage3/contribution_map.json", ...}` 标记 sidecar。
+- `stage3/contribution_map.json` 使用 blocks contract：`schema_version=1`、`enabled=true`、`source`、`blocks[]`；block type 只允许 `heading`、`paragraph`、`editor_note`、`disagreement`；attribution kind 只允许 `single_member`、`multi_member_consensus`、`editor_note`、`synthesis`、`not_attributable`。
+- `validate` 只在 enabled 时要求 sidecar 合法；legacy run 缺 sidecar 不失败。校验范围是结构与成员引用合法性，不声称验证真实贡献程度。
 
 ### 推翻条件
 
