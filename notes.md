@@ -1,3 +1,63 @@
+# LCT v19 主席评注与 Kimi 默认成员调整记录
+
+日期：2026-06-06
+分支：`codex/lct-v19-chairman-note-kimi-default-20260606`
+起始 commit：`f417dcea4de4b633cf2975c7f2d627c840fdc2eb`
+
+## 目标
+
+- 主席贡献图中的 `editor_note` 改成黄色边框块，标题固定「主席评注」。
+- 评注正文去掉开头 `主席注` / `主席评注` 包装词。
+- 不再渲染 `来源：主席编者注`。
+- 默认 direct 成员模型改为 `DeepSeek-V4-Pro`、`openrouter-1o`、`GPT-5.4`、`Kimi-K2.6`。
+- 成员整体优先级中 `Kimi-K2.6` 与 `Gemini-3.1-Pro-Preview` 调换位置。
+
+## 已读与基线
+
+- 已读：`docs/lct-experience-upgrade-implementation-handoff-20260606.md`
+- 已读：`docs/lct-experience-upgrade-implementation-spec-20260606.md`
+- 已读：`docs/lct-experience-upgrade-execution-plan-20260606.md`
+- 已读：`docs/lct-experience-upgrade-mockup-20260606.html`
+- 已读核心代码：`html_export.py`、`model_selection.py`、`council.py`、`roster.py`、相关 tests。
+- 基线通过：`PYTHONPATH=src python3 -m compileall src`
+- 基线通过：`make test`（246 个 unittest 通过）
+- 基线通过：`git diff --check`
+
+## 设计 / 测试方案
+
+- 新增设计测试方案文档：`docs/lct-v19-chairman-note-and-kimi-default-design-20260606.md`
+- 样式方案选择：新增专用 `.chairman-note`，不复用 `warning-banner`。
+- 模型方案选择：精确调换 `PREFERRED_MEMBERS` 中 Kimi 与 Gemini 的位置，`DEFAULT_MEMBERS` 取新前 4。
+
+## TDD 证据
+
+- 红灯命令：
+
+```bash
+PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_default_direct_roster_uses_current_priority_suite tests.test_core.CouncilCoreTests.test_html_renders_contribution_blocks_deterministically tests.test_lct_model_productization.LctModelProductizationTests.test_default_roster_uses_current_priority_suite tests.test_lct_model_productization.LctModelProductizationTests.test_recommendation_caps_primary_members_at_four tests.test_auto_backfill_quorum.AutoBackfillQuorumTests.test_default_backfill_candidates_use_defined_member_roster_only -v
+```
+
+- 红灯结果：5 项全部失败，失败点分别是旧默认第 4 成员仍为 `Gemini-3.1-Pro-Preview`、贡献图 `editor_note` 仍渲染为 `warning-banner` / `编者注` / `来源：主席编者注`、默认 backfill 候补排序仍把 `Kimi-K2.6` 当剩余候补。
+- 修复：`html_export.py` 新增 `.chairman-note` 和 `clean_chairman_note_text(...)`；`editor_note` 固定渲染标题「主席评注」，去掉 `主席注` / `主席评注` 前缀和 `来源：主席编者注` 尾部来源行。
+- 修复：`DEFAULT_MEMBERS`、`PREFERRED_MEMBERS`、`DEFAULT_CANDIDATES`、`profiles/subagents.json`、README、design 和 Skill 文档同步为 `DeepSeek-V4-Pro`、`openrouter-1o`、`GPT-5.4`、`Kimi-K2.6`。
+- 绿灯结果：同一目标测试 5 项已通过。
+
+## 当前本地验证
+
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`make test`（246 个 unittest 通过）
+- 通过：`git diff --check`
+
+## Subagent review
+
+- Reviewer：`Helmholtz`（只读 review，未改文件）
+- 结果：无 P1/P2；提出 2 个 P3。
+- P3 已修复：`clean_chairman_note_text(...)` 支持 `主席注 这是...` 和 `主席评注\n这是...` 这类无冒号包装。
+- P3 已修复：HTML 测试明确断言 contribution `editor_note` 不再输出 `<aside class='warning-banner'>`。
+- 目标测试通过：`test_html_renders_contribution_blocks_deterministically`、`test_chairman_note_text_strips_loose_prefix_and_source_line`。
+
+---
+
 # LCT Stage 3 fallback meta 修复记录
 
 日期：2026-06-06

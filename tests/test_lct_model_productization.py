@@ -7,6 +7,7 @@ from pathlib import Path
 from llm_council_for_trae.council import DEFAULT_CHAIRMAN, DEFAULT_MEMBERS
 from llm_council_for_trae.html_export import summarize_search_usage
 from llm_council_for_trae.model_selection import (
+    PREFERRED_MEMBERS,
     model_exclusion_reasons,
     parse_queue_heat_percent,
     recommend_model_choice,
@@ -23,9 +24,10 @@ class LctModelProductizationTests(unittest.TestCase):
     def test_default_roster_uses_current_priority_suite(self):
         self.assertEqual(
             DEFAULT_MEMBERS,
-            ["DeepSeek-V4-Pro", "openrouter-1o", "GPT-5.4", "Gemini-3.1-Pro-Preview"],
+            ["DeepSeek-V4-Pro", "openrouter-1o", "GPT-5.4", "Kimi-K2.6"],
         )
         self.assertEqual(DEFAULT_CHAIRMAN, "DeepSeek-V4-Pro")
+        self.assertLess(PREFERRED_MEMBERS.index("Kimi-K2.6"), PREFERRED_MEMBERS.index("Gemini-3.1-Pro-Preview"))
 
     def test_recommendation_uses_safe_openrouter_to_fill_four_members(self):
         choice = recommend_model_choice(
@@ -37,7 +39,7 @@ class LctModelProductizationTests(unittest.TestCase):
             ]
         )
 
-        self.assertEqual(choice.members, ["openrouter-1o", "GPT-5.2", "openrouter-1", "Kimi-K2.6"])
+        self.assertEqual(choice.members, ["openrouter-1o", "Kimi-K2.6", "GPT-5.2", "openrouter-1"])
         self.assertEqual(choice.chairman, "Kimi-K2.6")
 
     def test_recommendation_caps_primary_members_at_four(self):
@@ -46,12 +48,13 @@ class LctModelProductizationTests(unittest.TestCase):
                 {"name": "DeepSeek-V4-Pro"},
                 {"name": "openrouter-1o"},
                 {"name": "GPT-5.4"},
+                {"name": "Kimi-K2.6"},
                 {"name": "Gemini-3.1-Pro-Preview"},
                 {"name": "openrouter-2o"},
             ]
         )
 
-        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "openrouter-1o", "GPT-5.4", "Gemini-3.1-Pro-Preview"])
+        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "openrouter-1o", "GPT-5.4", "Kimi-K2.6"])
         self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
 
     def test_recommendation_excludes_hard_ban_beta_and_hot_queue(self):
@@ -237,7 +240,7 @@ class LctModelProductizationTests(unittest.TestCase):
         ):
             text = self.read_text(relative)
             self.assertNotIn("6 个成员模型", text, relative)
-            self.assertIn("DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Gemini-3.1-Pro-Preview", text, relative)
+            self.assertIn("DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Kimi-K2.6", text, relative)
 
     def test_canonical_skill_and_readme_split_lct_and_agent_search_evidence(self):
         for relative in ("README.md", "skills/llm-council-for-trae/SKILL.md"):
@@ -286,10 +289,10 @@ class LctModelProductizationTests(unittest.TestCase):
                 "DeepSeek-V4-Pro",
                 "openrouter-1o",
                 "GPT-5.4",
-                "Gemini-3.1-Pro-Preview",
+                "Kimi-K2.6",
                 "GPT-5.2",
                 "openrouter-1",
-                "Kimi-K2.6",
+                "Gemini-3.1-Pro-Preview",
                 "DeepSeek-V4-Flash",
                 "MiniMax-M2.7",
                 "Qwen3.6-Plus",

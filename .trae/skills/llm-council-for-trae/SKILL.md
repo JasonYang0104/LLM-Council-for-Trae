@@ -149,7 +149,7 @@ llm-council-for-trae models --recommend --json
 当前静态默认模型套是：
 
 ```text
-members: DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Gemini-3.1-Pro-Preview
+members: DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Kimi-K2.6
 chairman: DeepSeek-V4-Pro
 ```
 

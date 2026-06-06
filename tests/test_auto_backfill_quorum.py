@@ -28,13 +28,13 @@ class AutoBackfillQuorumTests(unittest.TestCase):
                 {"name": "Kimi-K2.5"},
                 {"name": "MiniMax-M2.5"},
             ],
-            primary_members=["DeepSeek-V4-Pro", "openrouter-1o", "GPT-5.4", "Gemini-3.1-Pro-Preview"],
+            primary_members=["DeepSeek-V4-Pro", "openrouter-1o", "GPT-5.4", "Kimi-K2.6"],
             chairman="DeepSeek-V4-Pro",
         )
 
         self.assertEqual(
             candidates,
-            ["GPT-5.2", "openrouter-1", "Kimi-K2.6", "DeepSeek-V4-Flash", "MiniMax-M2.7", "Qwen3.6-Plus"],
+            ["GPT-5.2", "openrouter-1", "Gemini-3.1-Pro-Preview", "DeepSeek-V4-Flash", "MiniMax-M2.7", "Qwen3.6-Plus"],
         )
         self.assertNotIn("openrouter-3o", candidates)
         self.assertNotIn("openrouter-2o", candidates)

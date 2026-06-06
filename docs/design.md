@@ -574,7 +574,7 @@ members:
   - DeepSeek-V4-Pro
   - openrouter-1o
   - GPT-5.4
-  - Gemini-3.1-Pro-Preview
+  - Kimi-K2.6
 chairman: DeepSeek-V4-Pro
 provider_mode: direct
 ---
@@ -664,8 +664,8 @@ Qwen3.5-Plus
 
 ```text
 general:
-  members: DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Gemini-3.1-Pro-Preview
-  member_priority: DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Gemini-3.1-Pro-Preview, GPT-5.2, openrouter-1, Kimi-K2.6, DeepSeek-V4-Flash, MiniMax-M2.7, Qwen3.6-Plus
+  members: DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Kimi-K2.6
+  member_priority: DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Kimi-K2.6, GPT-5.2, openrouter-1, Gemini-3.1-Pro-Preview, DeepSeek-V4-Flash, MiniMax-M2.7, Qwen3.6-Plus
   default_backfill: remaining available member_priority models only
   chairman: DeepSeek-V4-Pro
   chairman_fallback: Kimi-K2.6, DeepSeek-V4-Flash, GPT-5.2, openrouter-1

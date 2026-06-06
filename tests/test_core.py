@@ -473,7 +473,7 @@ FINAL RANKING:
     def test_default_direct_roster_uses_current_priority_suite(self):
         self.assertEqual(
             DEFAULT_MEMBERS,
-            ["DeepSeek-V4-Pro", "openrouter-1o", "GPT-5.4", "Gemini-3.1-Pro-Preview"],
+            ["DeepSeek-V4-Pro", "openrouter-1o", "GPT-5.4", "Kimi-K2.6"],
         )
         self.assertEqual(DEFAULT_CHAIRMAN, "DeepSeek-V4-Pro")
 
@@ -604,10 +604,11 @@ FINAL RANKING:
             {"name": "GLM-5.1"},
             {"name": "DeepSeek-V4-Pro"},
             {"name": "openrouter-1o"},
+            {"name": "Kimi-K2.6"},
             {"name": "Gemini-3.1-Pro-Preview"},
         ]
         choice = select_model_choice_interactively(models, stdin=StringIO("c\n1,3\n3\n"), stderr=StringIO())
-        self.assertEqual(choice.members, ["GPT-5.4", "DeepSeek-V4-Pro", "openrouter-1o", "Gemini-3.1-Pro-Preview"])
+        self.assertEqual(choice.members, ["GPT-5.4", "DeepSeek-V4-Pro", "openrouter-1o", "Kimi-K2.6"])
         self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
         self.assertEqual(resolve_model_tokens("2, GPT-5.4", ["GPT-5.4", "GLM-5.1"]), ["GLM-5.1", "GPT-5.4"])
 
@@ -618,8 +619,8 @@ FINAL RANKING:
             {"name": "DeepSeek-V4-Pro"},
             {"name": "openrouter-1o"},
             {"name": "GPT-5.4"},
-            {"name": "Gemini-3.1-Pro-Preview"},
             {"name": "Kimi-K2.6"},
+            {"name": "Gemini-3.1-Pro-Preview"},
         ]
 
         choice = normalize(
@@ -642,8 +643,8 @@ FINAL RANKING:
             {"name": "DeepSeek-V4-Pro"},
             {"name": "openrouter-1o"},
             {"name": "GPT-5.4"},
-            {"name": "Gemini-3.1-Pro-Preview"},
             {"name": "Kimi-K2.6"},
+            {"name": "Gemini-3.1-Pro-Preview"},
             {"name": "Unranked-Model"},
         ]
 
@@ -665,6 +666,7 @@ FINAL RANKING:
             {"name": "DeepSeek-V4-Pro"},
             {"name": "openrouter-1o"},
             {"name": "GPT-5.4"},
+            {"name": "Kimi-K2.6"},
             {"name": "Gemini-3.1-Pro-Preview"},
         ]
 
@@ -731,8 +733,8 @@ FINAL RANKING:
             {"name": "DeepSeek-V4-Pro"},
             {"name": "openrouter-1o"},
             {"name": "GPT-5.4"},
-            {"name": "Gemini-3.1-Pro-Preview"},
             {"name": "Kimi-K2.6"},
+            {"name": "Gemini-3.1-Pro-Preview"},
         ]
         with patch("llm_council_for_trae.cli.get_models", return_value=models):
             args.selected_model_choice = resolve_run_model_choice(args)
@@ -3283,7 +3285,7 @@ The user is not merely asking whether local inference hardware will improve they
                             {
                                 "id": "n1",
                                 "type": "editor_note",
-                                "text": "这是主席基于成员素材延伸的取舍建议。",
+                                "text": "主席注：这是主席基于成员素材延伸的取舍建议。\n\n来源：主席编者注",
                                 "attribution": {"kind": "editor_note", "members": []},
                             },
                         ],
@@ -3323,8 +3325,27 @@ The user is not merely asking whether local inference hardware will improve they
         self.assertIn("用户能看到哪些模型实际参与了结论", html)
         self.assertIn("来源：GPT-5.4（同侪#1）", html)
         self.assertIn("多成员共识：GPT-5.4（同侪#1）, DeepSeek-V4-Pro（同侪#2）", html)
-        self.assertIn("编者注", html)
+        self.assertIn("chairman-note", html)
+        self.assertIn("主席评注", html)
+        self.assertIn("这是主席基于成员素材延伸的取舍建议。", html)
+        self.assertNotIn("主席注：", html)
+        self.assertNotIn("来源：主席编者注", html)
+        self.assertNotIn("<aside class='warning-banner'", html)
+        self.assertNotIn('<aside class="warning-banner"', html)
+        self.assertNotIn("<strong>编者注</strong>", html)
         self.assertNotIn("贡献 37%", html)
+
+    def test_chairman_note_text_strips_loose_prefix_and_source_line(self):
+        from llm_council_for_trae.html_export import clean_chairman_note_text
+
+        self.assertEqual(
+            clean_chairman_note_text("主席注 这是主席扩展判断。\n来源：主席编者注"),
+            "这是主席扩展判断。",
+        )
+        self.assertEqual(
+            clean_chairman_note_text("主席评注\n这是主席扩展判断。\n\n来源: 主席编者注"),
+            "这是主席扩展判断。",
+        )
 
     def test_html_summary_shows_chairman_fallback_card(self):
         from llm_council_for_trae.html_export import render_summary_cards
