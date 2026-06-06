@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>REST 迁移 GraphQL 决策：多模型智囊团评估</title>
+<style>
+:root {
+  --bg:#e9e0cf;
+  --paper:#fbf6ea;
+  --paper-deep:#f3ead9;
+  --ink:#221b14;
+  --body:#33291f;
+  --muted:#766b5a;
+  --line:#b9a98f;
+  --line-soft:#d6c7ad;
+  --accent:#7b2d26;
+  --accent-soft:#efe1d7;
+  --bad:#9f1d16;
+  --warn:#8c4a12;
+  --code:#241d17;
+  --code-ink:#fbf6ea;
+  --shadow:0 24px 70px rgba(55,42,22,.16);
+  --serif:Georgia,"Times New Roman",serif;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+* { box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+body { margin:0; font:17px/1.72 var(--serif); color:var(--ink); background:var(--bg); }
+a { color:var(--accent); text-decoration-thickness:1px; text-underline-offset:3px; }
+button, summary { font:inherit; }
+button {
+  border:1px solid var(--line); background:transparent; color:var(--ink);
+  border-radius:2px; padding:8px 11px; cursor:pointer; font:13px/1.2 var(--sans);
+}
+button:hover { border-color:var(--accent); color:var(--accent); }
+.archive-shell { padding:32px 18px 70px; }
+.sheet {
+  max-width:980px; margin:0 auto; background:var(--paper);
+  border:1px solid rgba(90,72,45,.28); box-shadow:var(--shadow); padding:52px 64px 58px;
+}
+.folio {
+  display:flex; justify-content:space-between; gap:16px; border-bottom:1px solid var(--line);
+  padding-bottom:12px; color:var(--muted); font:12px/1.4 var(--mono);
+  text-transform:uppercase; letter-spacing:.06em;
+}
+.archive-hero { display:block; padding:42px 0 28px; border-bottom:1px solid var(--line); }
+h1 { margin:0; font-size:58px; line-height:1.05; font-weight:400; }
+.question-context {
+  margin:18px 0 0; padding:16px 20px; border-left:3px solid var(--accent);
+  background:var(--accent-soft); color:var(--body); font:15px/1.65 var(--serif); max-width:72ch;
+}
+.question-context summary { cursor:pointer; font-weight:600; color:var(--ink); }
+.question-context .details-body { margin-top:12px; padding-top:12px; border-top:1px solid rgba(123,45,38,.25); }
+.question-context ul { margin:0; padding-left:1.2rem; }
+.question-context li { margin:.2em 0; }
+.run-meta { margin:14px 0 0; color:var(--muted); font:13px/1.55 var(--mono); }
+.toolbar { display:flex; flex-wrap:wrap; gap:8px; max-width:420px; margin-top:24px; }
+
+.reader { min-width:0; }
+.answer { position:relative; padding:34px 0 18px; }
+.reader-label { margin:0 0 14px; color:var(--accent); font:12px/1.4 var(--mono); text-transform:uppercase; letter-spacing:.06em; }
+.stamp {
+  float:right; margin:0 0 18px 30px; border:1px solid var(--accent); color:var(--accent);
+  padding:10px 12px; font:12px/1.3 var(--mono); text-transform:uppercase; letter-spacing:.06em; transform:rotate(1deg);
+}
+.markdown-body { max-width:72ch; color:var(--body); }
+.markdown-body h2, .markdown-body h3 { line-height:1.25; margin:1.6em 0 .5em; color:var(--ink); font-weight:400; }
+.markdown-body h2 { font-size:27px; }
+.markdown-body h3 { font-size:19px; padding-bottom:5px; border-bottom:1px solid var(--line-soft); }
+.markdown-body h2:first-child, .markdown-body h3:first-child { margin-top:0; }
+.markdown-body p { margin:.8em 0; }
+.markdown-body blockquote { margin:1.1em 0; padding:2px 0 2px 16px; border-left:3px solid var(--accent); color:#4b3f32; }
+pre { white-space:pre-wrap; overflow:auto; background:var(--code); color:var(--code-ink); border-radius:2px; padding:14px; }
+code { font-family:var(--mono); font-size:.92em; }
+:not(pre) > code { background:var(--paper-deep); color:var(--ink); padding:1px 4px; border-radius:2px; }
+table { width:100%; border-collapse:collapse; margin:1em 0; font-size:14px; }
+th, td { border:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top; }
+th { background:var(--paper-deep); }
+td.rk { font-family:var(--mono); color:var(--accent); }
+.status-ok { color:var(--accent); }
+
+.summary-strip {
+  display:grid; grid-template-columns:repeat(4,minmax(0,1fr));
+  border-top:1px solid var(--line); border-bottom:1px solid var(--line); margin:0 0 24px;
+}
+.summary-card { padding:14px; border-right:1px solid var(--line); min-width:0; }
+.summary-card:last-child { border-right:0; }
+.summary-card h3 { margin:0 0 6px; color:var(--muted); font:11px/1.4 var(--mono); text-transform:uppercase; letter-spacing:.06em; }
+.summary-card p { margin:0; color:var(--ink); font-size:15px; overflow-wrap:anywhere; }
+
+.appendix { margin-top:26px; }
+.appendix-title { margin:0 0 10px; color:var(--muted); font:12px/1.4 var(--mono); text-transform:uppercase; letter-spacing:.06em; }
+.appendix details { border-top:1px solid var(--line); padding:0; }
+.appendix details:last-child { border-bottom:1px solid var(--line); }
+.appendix summary { cursor:pointer; padding:16px 0; font-weight:600; color:var(--ink); }
+.details-body { border-top:1px solid var(--line-soft); padding:16px 0 18px; overflow:auto; }
+.meta { color:var(--muted); font:13px/1.55 var(--sans); }
+.matrix { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; }
+.cell { border:1px solid var(--line); background:rgba(255,255,255,.28); padding:12px; }
+.cell h3 { margin:0 0 8px; font-size:16px; }
+.cell p { margin:5px 0; }
+.ev { font:13px/1.95 var(--mono); color:#5c5446; }
+.ev .k { color:var(--muted); }
+
+/* ===== 迭代新增（同一套 idiom：mono 标签 / 方角边框 / accent） ===== */
+.answer-intro { margin:0 0 18px; padding:10px 14px; background:var(--paper-deep); border:1px solid var(--line-soft); color:var(--muted); font:12px/1.6 var(--mono); max-width:72ch; }
+.para { margin:0 0 18px; }
+.para p { margin:0 0 5px; }
+.src { font:12px/1.5 var(--mono); padding-left:16px; position:relative; }
+.src::before { content:"└─"; position:absolute; left:0; color:var(--muted); }
+.src .rank { display:inline-block; border:1px solid var(--line); border-radius:2px; padding:0 5px; margin-left:6px; font-size:10.5px; color:var(--accent); }
+.src .tag { display:inline-block; border:1px solid var(--accent); border-radius:2px; padding:0 5px; margin-left:6px; font-size:10.5px; color:var(--accent); background:var(--accent-soft); }
+.src-single { color:var(--muted); }
+.src-consensus { color:var(--accent); }
+.src-synth { color:var(--muted); font-style:italic; }
+.editor-note { margin:6px 0; padding:10px 14px; border-left:3px solid var(--accent); background:var(--accent-soft); color:#4b3f32; font:15px/1.6 var(--serif); max-width:72ch; }
+.editor-note .lbl { font:11px/1.4 var(--mono); color:var(--accent); text-transform:uppercase; letter-spacing:.06em; margin-right:6px; }
+.diverge { border:1px solid var(--line); background:rgba(255,255,255,.28); margin:.8em 0; max-width:72ch; }
+.diverge-head { background:var(--paper-deep); padding:8px 12px; border-bottom:1px solid var(--line); color:var(--accent); font:12px/1.4 var(--mono); text-transform:uppercase; letter-spacing:.06em; }
+.drow { display:grid; grid-template-columns:auto 1fr auto; gap:12px; align-items:center; padding:10px 12px; border-bottom:1px solid var(--line-soft); font-size:15px; color:var(--body); }
+.drow .v { border:1px solid var(--line); background:var(--paper); font:11px/1.4 var(--mono); color:var(--accent); padding:2px 7px; white-space:nowrap; }
+.drow .s { font:11px/1.4 var(--mono); color:var(--muted); white-space:nowrap; }
+.diverge .editor-note { margin:0; border-left:none; border-top:1px solid var(--line-soft); max-width:none; }
+
+@media (max-width: 860px) {
+  .archive-shell { padding:0; }
+  .sheet { max-width:none; min-height:100vh; border-left:0; border-right:0; box-shadow:none; padding:34px 24px 44px; }
+  h1 { font-size:46px; }
+  .summary-strip { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .summary-card:nth-child(2n) { border-right:0; }
+  .summary-card:nth-child(-n+2) { border-bottom:1px solid var(--line); }
+  .drow { grid-template-columns:1fr; gap:4px; }
+}
+@media (max-width: 520px) {
+  body { font-size:16px; }
+  h1 { font-size:40px; }
+  .stamp { float:none; display:inline-block; margin:0 0 18px; }
+  .summary-strip { grid-template-columns:1fr; }
+  .summary-card, .summary-card:nth-child(2n) { border-right:0; border-bottom:1px solid var(--line); }
+  .summary-card:last-child { border-bottom:0; }
+}
+</style>
+</head>
+<body>
+<main class="archive-shell">
+  <div class="sheet">
+    <header class="folio">
+      <span>LLM Council for Trae / 归档副本</span>
+      <span>lct-20260606-141233</span>
+    </header>
+    <section class="archive-hero" aria-label="运行标题">
+      <div>
+        <h1>REST 迁移 GraphQL 决策：多模型智囊团评估</h1>
+        <details id="input-prompt" class="question-context"><summary>输入提示词</summary><div class="details-body">团队当前用 REST，要不要迁移到 GraphQL？请给出判断与节奏建议。<br>Report topic: REST 迁移 GraphQL 决策</div></details>
+        <p class="run-meta">运行 lct-20260606-141233 · 状态 <strong class="status-ok">ok</strong> · 导出 2026-06-06 14:13 UTC</p>
+      </div>
+      <div class="toolbar" aria-label="导出操作">
+        <button type="button">复制 Markdown</button>
+        <button type="button">复制 JSON</button>
+        <button type="button">复制主席提示词</button>
+      </div>
+    </section>
+
+    <section id="decision-summary" class="summary-strip" aria-label="决策摘要">
+      <div class="summary-card"><h3>成员模型</h3><p>DeepSeek-V4-Pro、openrouter-1o、GPT-5.4、Gemini-3.1-Pro-Preview</p></div>
+      <div class="summary-card"><h3>主席 · 资深编辑</h3><p>DeepSeek-V4-Pro</p></div>
+      <div class="summary-card"><h3>同侪最高排序</h3><p>GPT-5.4</p></div>
+      <div class="summary-card"><h3>结果状态</h3><p>完整可交付</p></div>
+    </section>
+
+    <article id="final-answer" class="reader answer">
+      <div class="stamp">已验证<br>阶段 3</div>
+      <p class="reader-label">阶段 3 · 主席综合（资深编辑 / 逐段署名）</p>
+      <div class="markdown-body">
+        <h3>结论</h3>
+        <div class="para">
+          <p>总体建议：<strong>不要一次性全量迁移到 GraphQL</strong>，而应以高价值、读多写少的聚合型接口为切入点，小范围验证收益后再决定推广节奏。多数成员在这一点上判断一致。</p>
+          <div class="src src-consensus">来源：DeepSeek-V4-Pro、GPT-5.4、openrouter-1o<span class="tag">多成员共识</span></div>
+        </div>
+
+        <h3>价值与成本评估</h3>
+        <div class="para">
+          <p>GraphQL 的核心价值在于让前端按需取数、减少 over-fetching 与接口往返，尤其适合多端、字段差异大的聚合场景；但它把复杂度从「多个 REST 端点」转移到了「单一 schema 与解析层」，并不会凭空消失。</p>
+          <div class="src src-single">来源：GPT-5.4<span class="rank">同侪#1</span></div>
+        </div>
+        <div class="para">
+          <p>成本主要集中在双轨运行期：schema 设计、N+1 查询治理、权限粒度下沉到字段级、以及团队学习曲线。把迁移拆成开发、双轨运行、培训三块分别估算，比笼统估一个总数更可靠。</p>
+          <div class="src src-single">来源：GPT-5.4<span class="rank">同侪#1</span></div>
+        </div>
+
+        <h3>回滚风险</h3>
+        <div class="para">
+          <p>回滚风险被普遍低估：一旦客户端开始依赖 GraphQL 的灵活查询，回退到固定 REST 端点的代价很高，因此切换前应预留明确的回滚窗口与并行兜底。</p>
+          <div class="src src-consensus">来源：DeepSeek-V4-Pro、GPT-5.4<span class="tag">多成员共识</span></div>
+        </div>
+
+        <h3>迁移节奏 · 成员有分歧</h3>
+        <div class="para">
+          <p>这一点上成员判断不一致，值得你单独权衡：</p>
+          <div class="diverge">
+            <div class="diverge-head">⚖ 迁移节奏 · 成员有分歧</div>
+            <div class="drow"><span class="v">观点甲</span><span>先小范围试点，再逐步推开，控制双轨期风险</span><span class="s">GPT-5.4 · 同侪#1</span></div>
+            <div class="drow"><span class="v">观点乙</span><span>团队规模小时，长期双轨成本高，主张直接整体迁移</span><span class="s">DeepSeek-V4-Pro · 同侪#2</span></div>
+            <div class="editor-note"><span class="lbl">编者注</span>两方各有道理。若你们团队人数偏少，乙提出的「双轨成本」担忧确实更突出；建议折中为<strong>压缩版试点</strong>——把试点期控制在 4 周内，既验证收益又不让双轨拖太久。（基于成员素材延伸，非成员原话）</div>
+          </div>
+        </div>
+
+        <h3>落地前提与编者补充</h3>
+        <div class="para">
+          <p>无论走哪条节奏，前提都是团队具备 schema 治理与查询性能监控能力；缺这一环时，GraphQL 的灵活性反而会放大线上风险。</p>
+          <div class="src src-single">来源：openrouter-1o<span class="rank">同侪#3</span></div>
+        </div>
+
+        <div class="editor-note"><span class="lbl">编者注 · 主席补充</span>综合各成员素材后补充一条落地判据：如果当前 REST 的主要痛点是「客户端要的字段和后端给的对不上」，迁移收益高；如果痛点是「写操作复杂、事务一致性」，GraphQL 帮助有限，应优先排查别的方案。（基于成员观点延伸）</div>
+
+        <div class="para">
+          <p>关于「迁移后团队协作模式如何变化」，各成员给出的判断分散、彼此并不一致，难以可靠归并到某个单一来源，此处仅做综合提示，不下结论。</p>
+          <div class="src src-synth">来源：综合整理（拆不到具体成员，未强行归因）</div>
+        </div>
+      </div>
+    </article>
+
+    <section id="evidence" class="appendix" aria-label="证据层">
+      <h2 class="appendix-title">证据附录</h2>
+      <details id="stage1"><summary>附录 A · 阶段 1 候选回答</summary><div class="details-body"><p class="meta">Response A–D 原始回答 tabs……（沿用现有渲染）</p></div></details>
+      <details id="stage2" open><summary>附录 B · 阶段 2 匿名互评</summary><div class="details-body">
+        <table>
+          <tr><th>名次</th><th>Response</th><th>模型</th><th>平均名次</th><th>评审数</th></tr>
+          <tr><td class="rk">#1</td><td>Response C</td><td>GPT-5.4</td><td>1.5</td><td>3</td></tr>
+          <tr><td class="rk">#2</td><td>Response A</td><td>DeepSeek-V4-Pro</td><td>2.0</td><td>3</td></tr>
+          <tr><td class="rk">#3</td><td>Response B</td><td>openrouter-1o</td><td>2.8</td><td>3</td></tr>
+          <tr><td class="rk">#4</td><td>Response D</td><td>Gemini-3.1-Pro-Preview</td><td>3.7</td><td>3</td></tr>
+        </table>
+        <p class="meta">各评审者排序明细 tabs……（沿用现有渲染）</p>
+      </div></details>
+      <details id="trace"><summary>附录 C · Provider trace</summary><div class="details-body"><p class="meta">沿用现有渲染</p></div></details>
+      <details id="metadata"><summary>附录 D · Manifest metadata</summary><div class="details-body ev">
+        <div><span class="k">quorum：</span>effective 4 / min 3 · normal_quorum_met: true · low_quorum_used: false</div>
+        <div><span class="k">effective_stage1_members：</span>DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Gemini-3.1-Pro-Preview</div>
+        <div><span class="k">backfill_candidates：</span>GPT-5.2, openrouter-1&nbsp;·&nbsp;<span class="k">backfill_attempted：</span>[]</div>
+        <div><span class="k">stage2_reviewers：</span>DeepSeek-V4-Pro, GPT-5.4, openrouter-1o&nbsp;·&nbsp;reviewer_count: 3</div>
+        <div><span class="k">lct_search_allowed：</span>true&nbsp;·&nbsp;<span class="k">lct_search_used：</span>false</div>
+        <p class="meta">以上字段本就在 manifest.metadata（沿用现有渲染）；顶部不再展示，可审计性不丢。</p>
+      </div></details>
+      <details id="flow"><summary>附录 E · Council flow</summary><div class="details-body"><p class="meta">沿用现有 SVG</p></div></details>
+    </section>
+  </div>
+</main>
+</body>
+</html>

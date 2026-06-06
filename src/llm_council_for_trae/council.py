@@ -50,6 +50,8 @@ class CouncilConfig:
     stage2_auto_backfill: bool = True
     allow_low_quorum: bool = True
     low_quorum_floor: int = 2
+    model_selection_provenance: dict[str, Any] | None = None
+    chairman_contribution_enabled: bool = False
 
     def agent_for_member(self, index: int) -> str | None:
         if not self.member_agents or index >= len(self.member_agents):
@@ -483,6 +485,7 @@ async def stage3_synthesize_final(
         stage1_results,
         stage2_results,
         aggregate_rankings=aggregate_rankings,
+        contribution_map_enabled=config.chairman_contribution_enabled,
     )
     store.write_text("stage3/chairman.prompt.md", chairman_prompt + "\n")
 
@@ -599,6 +602,14 @@ async def stage3_synthesize_final(
     if copy_check:
         final["chairman_copy_check"] = copy_check
         chairman_meta["copy_check"] = copy_check
+    if config.chairman_contribution_enabled:
+        final["contribution_map_enabled"] = True
+        final["contribution_map_path"] = "stage3/contribution_map.json"
+        contribution_map = extract_contribution_map(call.response)
+        if contribution_map is None:
+            final["contribution_map_error"] = "missing_or_invalid_contribution_map_json"
+        else:
+            store.write_json("stage3/contribution_map.json", contribution_map)
     store.write_text("stage3/final.md", call.response + "\n")
     store.write_json("stage3/final.json", final)
     return final, chairman_meta
@@ -796,6 +807,7 @@ def build_stage3_prompt(
     stage1_results: list[dict[str, Any]],
     stage2_results: list[dict[str, Any]],
     aggregate_rankings: list[dict[str, Any]] | None = None,
+    contribution_map_enabled: bool = False,
 ) -> str:
     stage1_text = "\n\n".join(
         f"{result.get('label', 'Response ?')}:\nModel: {result['model']}\nResponse: {result['response']}" for result in stage1_results
@@ -826,6 +838,21 @@ def build_stage3_prompt(
                 f"rankings_count={item.get('rankings_count')} | positions={positions}"
             )
         aggregate_text = "\n".join(aggregate_lines)
+    contribution_instruction = ""
+    if contribution_map_enabled:
+        contribution_instruction = """
+
+贡献说明灰度要求：
+- 除最终综述正文外，必须输出一个 JSON contribution_map，供系统保存为 stage3/contribution_map.json。
+- JSON 必须包含 schema_version=1、enabled=true、source 和 blocks。
+- blocks 中每个 block 必须有 id、type、text、attribution。
+- block.type 只能使用 heading、paragraph、editor_note、disagreement。
+- attribution.kind 只能使用 single_member、multi_member_consensus、editor_note、synthesis、not_attributable。
+- single_member 的 members 必须只引用真实在场 Stage 1 成员。
+- multi_member_consensus 的 members 至少 2 个。
+- editor_note 必须明确表示主席基于成员素材延伸的编者注。
+- 不要输出贡献百分比，不要把同侪排序写成模型能力排行。
+"""
     return f"""你是 LLM Council 的主席。多个 AI 模型已经回答了用户问题，并对彼此的回答进行了排序。
 
 {DEFAULT_READER_LANGUAGE_INSTRUCTION}
@@ -851,7 +878,26 @@ Stage 2 综合排序（按 average_rank 从低到高，越靠前代表同侪排�
 重要：
 - 你的输出应该是针对原始问题的综述性最终答案，而不是对各模型表现的评价或排名。不要评价哪个模型更好，不要输出模型排名对比。直接回答用户的问题。
 - 不得逐字或近似复用任何 Stage 1 回答；不能把某个候选回答原封不动当成最终答案。
-- 如果某个 Stage 1 回答整体最好，也必须重新组织、压缩、补足边界，并融合其他高排名回答的有效洞察。"""
+- 如果某个 Stage 1 回答整体最好，也必须重新组织、压缩、补足边界，并融合其他高排名回答的有效洞察。{contribution_instruction}"""
+
+
+def extract_contribution_map(text: str) -> dict[str, Any] | None:
+    candidates = []
+    stripped = text.strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        candidates.append(stripped)
+    candidates.extend(re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", text))
+    for candidate in candidates:
+        try:
+            data = json.loads(candidate)
+        except Exception:
+            continue
+        if isinstance(data, dict) and isinstance(data.get("blocks"), list):
+            data.setdefault("schema_version", 1)
+            data.setdefault("enabled", True)
+            data.setdefault("source", "chairman_structured_output")
+            return data
+    return None
 
 
 def parse_ranking_from_text(ranking_text: str) -> list[str]:
@@ -1136,6 +1182,14 @@ async def run_full_council(
     )
     manifest["stages"]["stage3"] = stage3_result
     manifest["metadata"]["chairman"] = chairman_meta
+    if config.chairman_contribution_enabled:
+        contribution_path = "stage3/contribution_map.json"
+        manifest["metadata"]["chairman_contribution"] = {
+            "enabled": True,
+            "path": contribution_path,
+            "present": (store.root / contribution_path).exists(),
+            "source": "chairman_structured_output",
+        }
     copy_check = stage3_result.get("chairman_copy_check") or chairman_meta.get("copy_check")
     if copy_check and copy_check.get("triggered") and not copy_check.get("resolved"):
         matched_labels = [
@@ -1180,7 +1234,15 @@ def initial_manifest(run_id: str, user_query: str, config: CouncilConfig) -> dic
             "html": "html/index.html",
         },
         "stages": {"stage1": [], "stage2": [], "stage3": None},
-        "metadata": {"label_to_model": {}, "aggregate_rankings": []},
+        "metadata": (
+            {
+                "label_to_model": {},
+                "aggregate_rankings": [],
+                "model_selection": config.model_selection_provenance,
+            }
+            if config.model_selection_provenance
+            else {"label_to_model": {}, "aggregate_rankings": []}
+        ),
         "warnings": [],
         "failures": [],
     }
@@ -1215,6 +1277,8 @@ def config_to_json(config: CouncilConfig) -> dict[str, Any]:
         "stage2_auto_backfill": config.stage2_auto_backfill,
         "allow_low_quorum": config.allow_low_quorum,
         "low_quorum_floor": config.low_quorum_floor,
+        "model_selection_provenance": config.model_selection_provenance,
+        "chairman_contribution_enabled": config.chairman_contribution_enabled,
     }
 
 

@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LCT Experience Upgrade Implementation Brief</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17202a;
+      --muted: #5f6b78;
+      --line: #d8dee6;
+      --paper: #ffffff;
+      --band: #f4f7fa;
+      --accent: #0f766e;
+      --accent-soft: #e6f5f2;
+      --warn: #8a4b12;
+      --warn-soft: #fff4df;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--band);
+      line-height: 1.64;
+    }
+    header {
+      background: var(--paper);
+      border-bottom: 1px solid var(--line);
+    }
+    .wrap {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 40px 24px;
+    }
+    .kicker {
+      margin: 0 0 8px;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 34px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 34px 0 12px;
+      font-size: 22px;
+      line-height: 1.28;
+      letter-spacing: 0;
+    }
+    h3 {
+      margin: 24px 0 8px;
+      font-size: 17px;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+    p {
+      margin: 0 0 14px;
+    }
+    .meta {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    main {
+      background: var(--paper);
+    }
+    .lead {
+      padding: 18px 20px;
+      border: 1px solid var(--line);
+      border-left: 5px solid var(--accent);
+      background: var(--accent-soft);
+      border-radius: 6px;
+      font-size: 17px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin: 18px 0;
+    }
+    .cell {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 16px;
+      background: #fbfcfd;
+    }
+    .cell h3 {
+      margin-top: 0;
+    }
+    ul {
+      margin: 10px 0 18px;
+      padding-left: 22px;
+    }
+    li {
+      margin: 6px 0;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.94em;
+      background: #eef2f5;
+      border-radius: 4px;
+      padding: 1px 4px;
+    }
+    pre {
+      margin: 14px 0 20px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      background: #111827;
+      color: #e5e7eb;
+      border-radius: 6px;
+      line-height: 1.45;
+    }
+    pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+    }
+    .warning {
+      padding: 16px 18px;
+      border: 1px solid #f1c27d;
+      border-left: 5px solid var(--warn);
+      background: var(--warn-soft);
+      border-radius: 6px;
+    }
+    footer {
+      border-top: 1px solid var(--line);
+      background: var(--band);
+      color: var(--muted);
+    }
+    @media (max-width: 760px) {
+      .wrap {
+        padding: 28px 18px;
+      }
+      h1 {
+        font-size: 28px;
+      }
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <p class="kicker">Implementation Brief</p>
+      <h1>LCT Experience Upgrade</h1>
+      <p class="meta">日期：2026-06-06 · 分支：<code>codex/lct-experience-upgrade-20260606</code></p>
+    </div>
+  </header>
+  <main>
+    <div class="wrap">
+      <section class="lead">
+        LCT 本轮体验升级已经把三个容易误解的用户界面问题收进可测试合同：HTML 顶部不再把 quorum 黑话当作主信息，输入改写边界写进 Skill/README，自选模型路径和主席贡献说明都有独立 opt-in surface 与 provenance。默认运行路径保持兼容；新增能力只在明确触发时生效。
+      </section>
+
+      <h2>这轮解决了什么</h2>
+      <div class="grid">
+        <section class="cell">
+          <h3>报告首屏</h3>
+          <p>HTML 顶部从「Quorum 状态」改成「成员模型」。新 run 读取 <code>metadata.quorum.effective_stage1_members</code>，legacy run 只在缺少 quorum metadata 时 fallback 到 <code>config.members</code>。</p>
+        </section>
+        <section class="cell">
+          <h3>输入边界</h3>
+          <p>默认 <code>raw original input</code>。只有明确要求真实意图拆解、架构视角、fact pack、最新资料或来源时，外层 Agent 才能进入 <code>structured by Agent</code>。</p>
+        </section>
+        <section class="cell">
+          <h3>自选模型</h3>
+          <p>新增 <code>--selected-members</code> / <code>--selected-chairman</code>。agent-assisted 自选路径归一化到 4 并写 provenance；原生 <code>--members</code> 保持精确语义。</p>
+        </section>
+        <section class="cell">
+          <h3>贡献说明</h3>
+          <p><code>--chairman-contribution-map</code> 默认关闭。启用后 Stage 3 写 <code>stage3/contribution_map.json</code>，HTML 从 blocks 确定性渲染来源说明。</p>
+        </section>
+      </div>
+
+      <h2>关键实现</h2>
+      <h3>HTML summary card</h3>
+      <p><code>src/llm_council_for_trae/html_export.py</code> 的 summary card 改为「成员模型」卡片。新逻辑优先使用有效 Stage 1 成员，并在 quorum metadata 存在但有效成员为空时显示 <code>暂无有效成员记录</code>。</p>
+      <p class="meta">对应提交：<code>9f1a097 feat: simplify LCT report summary and input policy docs</code></p>
+
+      <h3>Input policy docs</h3>
+      <p><code>README.md</code>、canonical Skill 和 <code>.trae</code> Skill 增加 raw / structured / negative trigger matrix，明确 operator envelope 不得写入 <code>_lct_question.md</code>。</p>
+      <p class="meta">对应提交：<code>9f1a097 feat: simplify LCT report summary and input policy docs</code></p>
+
+      <h3>Selected model normalization</h3>
+      <p><code>normalize_user_model_selection(...)</code> 处理用户自选模型：少于 4 个补足，超过 4 个裁剪，正好 4 个保留用户顺序；并写入 <code>manifest.metadata.model_selection</code>。</p>
+      <p class="meta">对应提交：<code>57d411a feat: add explicit selected-model normalization</code></p>
+
+      <h3>Chairman contribution map</h3>
+      <p>Stage 3 只在 enabled 时写 sidecar；validate 只在 enabled 时检查结构、成员引用和 consensus 成员数；HTML 不调模型、不按自然段猜来源。</p>
+      <p class="meta">对应提交：<code>5fa99e2 feat: add gated chairman contribution map</code></p>
+
+      <h2>测试证据</h2>
+      <p>本轮按 TDD 推进，先写红灯测试，再分阶段实现。阶段验证已覆盖 HTML、Skill、原生成员兼容、自选归一化、provenance、contribution map flag、validate 和 HTML blocks 渲染。</p>
+      <pre><code>PYTHONPATH=src python3 -m compileall src
+git diff --check
+make test</code></pre>
+      <p>截至 <code>5fa99e2</code> 后，全量 <code>make test</code> 通过 243 个 unittest，输出末尾包含既有 fixture 预期的 <code>degraded_ok</code>。最终 PR 前仍会重新执行完整门禁，并在 live runtime 可用时补 live run 和 validate。</p>
+
+      <h2>兼容性边界</h2>
+      <ul>
+        <li><code>--default-models</code> 不变。</li>
+        <li>原生 <code>--members</code> / <code>--chairman</code> 不变，不补足、不裁剪。</li>
+        <li><code>profile</code> 和 subagent 路径不走 selected normalization。</li>
+        <li><code>--chairman-contribution-map</code> 默认关闭；legacy run 缺 sidecar 不失败。</li>
+        <li>contribution map validate 只验证结构和引用合法性，不声称验证真实贡献程度。</li>
+      </ul>
+
+      <h2>剩余风险</h2>
+      <section class="warning">
+        <p>contribution map 依赖主席按要求输出结构化 JSON。validate 能拦结构错误，但不能证明主席归因绝对正确。live runtime 的最终证据仍取决于当前 <code>traecli</code> 状态；PR 前和 merge 后 v16 会重新验证。</p>
+      </section>
+
+      <h2>交付索引</h2>
+      <ul>
+        <li><code>docs/lct-experience-upgrade-implementation-spec-20260606.md</code></li>
+        <li><code>docs/lct-experience-upgrade-execution-plan-20260606.md</code></li>
+        <li><code>docs/lct-experience-upgrade-test-plan-20260606.md</code></li>
+        <li><code>notes.md</code></li>
+        <li><code>docs/lct-experience-upgrade-implementation-brief-20260606.md</code></li>
+        <li><code>docs/lct-experience-upgrade-implementation-brief-20260606.html</code></li>
+      </ul>
+    </div>
+  </main>
+  <footer>
+    <div class="wrap">
+      <p>Generated as a source-backed implementation brief for the LCT experience upgrade branch.</p>
+    </div>
+  </footer>
+</body>
+</html>

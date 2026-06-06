@@ -371,3 +371,268 @@
 ### Commit
 
 - `docs: add search delivery implementation brief`
+
+---
+
+# LCT 体验升级实现运行日志
+
+日期：2026-06-06
+
+## 阶段 0：启动与范围确认
+
+### 阶段目标
+
+- 按 `docs/lct-experience-upgrade-implementation-handoff-20260606.md` 执行 LCT 体验升级实现。
+- 从最新 `main` 新建 `codex/lct-experience-upgrade-20260606`，不继续旧 architect brief 分支。
+- 保留本轮架构/规格/交接输入文档，避免实现 diff 和输入资产混在一起。
+- 先跑 baseline verification，再补测试方案与 TDD 红灯测试。
+- 本地验证通过后做只读 subagent review，再推进 PR、merge、v16 fresh-main E2E 与输出 review。
+
+### 初始观察
+
+- 原工作区在 `codex/lct-experience-architect-brief-20260606`。
+- 当前 `origin/main`：`427850da4dfd6ea53d195e1df1af4ee3bded7042`。
+- 新实现分支：`codex/lct-experience-upgrade-20260606`。
+- 已 cherry-pick 旧文档分支提交 `965e3a5`，新提交为 `f9bed036a8a61a8727c70e8599e816004e41c4c3`，带入 `docs/lct-experience-upgrade-architect-brief-20260606.md`、director brief Markdown 和 HTML。
+- 未跟踪 `CLAUDE.md` 是本地角色文件，不在本轮交接要求范围内；保留但不纳入 PR。
+
+### 已读事实源
+
+- `AGENTS.md`
+- `DECISIONS.md`
+- `docs/lct-experience-upgrade-implementation-handoff-20260606.md`
+- `docs/lct-experience-upgrade-execution-plan-20260606.md`
+- `docs/lct-experience-upgrade-implementation-spec-20260606.md`
+- `docs/lct-experience-upgrade-architect-brief-20260606.md`
+- `README.md`
+- `docs/design.md`
+- `docs/lct-input-boundary-docs-design-20260604.md`
+- `docs/lct-auto-backfill-quorum-design-20260603.md`
+- `docs/lct-search-delivery-and-index-design-20260604.md`
+- `docs/lct-global-install-skill-design-20260601.md`
+- `skills/llm-council-for-trae/SKILL.md`
+
+### 当前关键裁决
+
+- 顶部 summary card 改为「成员模型」，新 run 只信 `metadata.quorum.effective_stage1_members`；只有整个 `metadata.quorum` 缺失时才 legacy fallback 到 `config.members`。
+- 输入改写仍属于 Skill / outer Agent，不下沉 CLI；默认 raw，结构化必须有明确触发；operator envelope 不进入 `_lct_question.md`。
+- 原生 `--members` 永远保持精确语义，不补足、不裁剪；自选体验必须走独立 opt-in 通道。
+- 自选体验路径归一化到 4 个成员，并持久记录 provenance。
+- 主席贡献说明默认关闭；开启后使用 sidecar / 块模型，HTML export 只读 artifacts，不调用模型、不按自然段猜来源。
+
+### 待验证
+
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+  - 结果：exit 0。
+- 通过：`make test`
+  - 结果：exit 0，222 个 unittest 通过，输出末尾为 `OK` / `degraded_ok`。
+- 通过：`git diff --check`
+  - 结果：exit 0，无输出。
+
+### Commit
+
+- `f9bed03 docs: brief LCT experience upgrade`
+- `3a7e526 docs: add LCT experience upgrade implementation inputs`
+
+## 阶段 1：测试方案
+
+### 阶段目标
+
+- 新增 `docs/lct-experience-upgrade-test-plan-20260606.md`。
+- 将四个产品点拆成可执行测试矩阵：HTML summary card、Skill 输入边界、自选模型归一化与 provenance、主席贡献说明 sidecar / blocks contract。
+- 先固定 Stage 3 实现层 contract：`stage3/contribution_map.json`，`schema_version=1`，以 blocks 作为正文和来源的对齐机制。
+
+### 实现决定
+
+- 自选模型测试严格保护原生 `--members`：不补足、不裁剪。
+- 自选体验走独立参数，例如 `--selected-members` / `--selected-chairman`，并落到 `normalize_user_model_selection(...)`。
+- Stage 3 contribution map 默认关闭；enabled 时 sidecar 缺失或非法才让 validate 失败，legacy run 缺 sidecar 不失败。
+
+### Commit
+
+- `7b2e138 docs: add LCT experience upgrade test plan`
+
+## 阶段 2：TDD 红灯测试
+
+### 阶段目标
+
+- 先写覆盖本轮四个产品点的失败测试，不直接改实现。
+- 红灯范围：HTML summary card、Skill 输入矩阵、自选模型归一化 / CLI surface / provenance、Stage 3 contribution map feature flag / sidecar / validate / HTML。
+
+### 红灯证据
+
+- 失败命令：`PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_html_summary_card_shows_effective_member_models_without_quorum_jargon tests.test_core.CouncilCoreTests.test_html_summary_card_does_not_show_config_members_when_quorum_present_but_effective_missing tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_fills_to_four_by_preferred_members tests.test_core.CouncilCoreTests.test_selected_members_cli_path_is_normalized_and_records_provenance tests.test_core.CouncilCoreTests.test_chairman_contribution_map_disabled_by_default tests.test_core.CouncilCoreTests.test_stage3_prompt_requests_contribution_blocks_only_when_enabled tests.test_core.CouncilCoreTests.test_validate_fails_enabled_contribution_map_missing_sidecar tests.test_core.CouncilCoreTests.test_html_renders_contribution_blocks_deterministically tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_raw_input_trigger_matrix tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_selected_model_agent_assisted_path -v`
+- 结果：exit 1；10 个测试运行，失败/错误符合当前缺口。
+- 关键失败点：
+  - HTML 仍输出 `Quorum 状态`、`4 / 3`、`normal quorum`、`有效成员：...`。
+  - `normalize_user_model_selection` 不存在。
+  - CLI 不认识 `--selected-members` / `--selected-chairman`。
+  - `CouncilConfig` 没有 `chairman_contribution_enabled`。
+  - `build_stage3_prompt()` 不支持 `contribution_map_enabled`。
+  - validate 目前忽略 enabled contribution map 缺 sidecar 的非法状态。
+  - HTML 目前仍只渲染 `stage3/final.md`，不渲染 `stage3/contribution_map.json` blocks。
+  - Skill / README 缺完整 raw trigger matrix 和 agent-assisted 自选模型路径。
+
+### Commit
+
+- `57c13c4 test: define LCT experience upgrade contracts`
+
+## 阶段 3：HTML summary card 与输入策略文档
+
+### 阶段目标
+
+- 将 HTML 顶部 `Quorum 状态` 卡片改为「成员模型」卡片。
+- 新 run 只展示 `metadata.quorum.effective_stage1_members`；legacy 缺整个 quorum 时才 fallback 到 `config.members`。
+- Skill / README 补 raw / structured / negative triggers、operator envelope 和 agent-assisted 自选模型路径说明。
+
+### 阶段验证
+
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_html_summary_card_shows_effective_member_models_without_quorum_jargon tests.test_core.CouncilCoreTests.test_html_summary_card_legacy_falls_back_to_config_members_when_quorum_missing tests.test_core.CouncilCoreTests.test_html_summary_card_does_not_show_config_members_when_quorum_present_but_effective_missing tests.test_core.CouncilCoreTests.test_html_summary_preserves_quorum_backfill_metadata_evidence tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_raw_input_trigger_matrix tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_structured_input_trigger_matrix tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_negative_triggers_do_not_imply_rewrite tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_operator_envelope_never_enters_lct_question tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_selected_model_agent_assisted_path -v`
+  - 结果：9 个测试通过。
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`git diff --check`
+- 说明：完整 `make test` 暂不跑绿灯断言，因为阶段 4/5 红灯测试仍未实现，预期会失败。
+
+### Commit
+
+- `9f1a097 feat: simplify LCT report summary and input policy docs`
+
+## 阶段 4：自选模型归一化
+
+### 阶段目标
+
+- 新增 `normalize_user_model_selection(...)`。
+- 新增 CLI opt-in 参数 `--selected-members` / `--selected-chairman`。
+- 原生 `--members` / `--chairman` 保持精确语义，不补足、不裁剪。
+- 将 selected model provenance 持久化到 `CouncilConfig.model_selection_provenance` 与 `manifest.metadata.model_selection`。
+
+### 阶段验证
+
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_fills_to_four_by_preferred_members tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_trims_to_four_by_preferred_members tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_keeps_exact_four_user_order tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_fails_closed_for_unknown_model tests.test_core.CouncilCoreTests.test_native_members_build_config_is_not_normalized tests.test_core.CouncilCoreTests.test_selected_members_cli_path_is_normalized_and_records_provenance tests.test_core.CouncilCoreTests.test_initial_manifest_persists_model_selection_provenance tests.test_core.CouncilCoreTests.test_interactive_model_selection_accepts_custom_numbered_models -v`
+  - 结果：8 个测试通过。
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`git diff --check`
+
+### Commit
+
+- `57d411a feat: add explicit selected-model normalization`
+
+## 阶段 5：主席贡献说明 sidecar
+
+### 阶段目标
+
+- 新增 `--chairman-contribution-map` 与 `CouncilConfig.chairman_contribution_enabled`，默认关闭。
+- Stage 3 仅在 enabled 时要求主席输出 `stage3/contribution_map.json` sidecar。
+- `validate` 仅在 manifest 标记 enabled 时检查 contribution map 的存在、结构、成员引用与 consensus 成员数。
+- HTML 在 enabled 且 sidecar 合法可读时渲染 blocks；legacy / disabled run 继续渲染 `stage3/final.md`。
+
+### 阶段验证
+
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_chairman_contribution_map_disabled_by_default tests.test_core.CouncilCoreTests.test_stage3_prompt_requests_contribution_blocks_only_when_enabled tests.test_core.CouncilCoreTests.test_validate_fails_enabled_contribution_map_missing_sidecar tests.test_core.CouncilCoreTests.test_validate_rejects_contribution_map_unknown_member_reference tests.test_core.CouncilCoreTests.test_validate_rejects_contribution_map_consensus_with_fewer_than_two_members tests.test_core.CouncilCoreTests.test_html_renders_contribution_blocks_deterministically -v`
+  - 结果：6 个测试通过。
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`git diff --check`
+- 通过：`make test`
+  - 结果：243 个测试通过，`OK`；输出末尾包含 `degraded_ok` fixture 预期路径。
+
+### Commit
+
+- `5fa99e2 feat: add gated chairman contribution map`
+
+## 阶段 6：用户侧文档与 implementation brief
+
+### 阶段目标
+
+- README / canonical Skill / `.trae` Skill 补充 `--chairman-contribution-map` 的灰度触发、sidecar 路径、validate 状态和默认关闭边界。
+- 新增 `docs/lct-experience-upgrade-implementation-brief-20260606.md`。
+- 新增 `docs/lct-experience-upgrade-implementation-brief-20260606.html`。
+- 不提前声称 PR、CI、merge 或 v16 E2E 已完成；brief 只记录当前实现、兼容边界、阶段验证和剩余风险。
+
+### 阶段验证
+
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_raw_input_trigger_matrix tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_structured_input_trigger_matrix tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_negative_triggers_do_not_imply_rewrite tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_operator_envelope_never_enters_lct_question tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_selected_model_agent_assisted_path -v`
+  - 结果：5 个测试通过。
+- 通过：`git diff --check`
+
+### Commit
+
+- `bcbd899 docs: summarize LCT experience upgrade implementation`
+
+## 阶段 7：本地完整门禁与 live smoke
+
+### 静态 / 单测门禁
+
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+  - exit 0。
+- 通过：`git diff --check && git diff --check origin/main..HEAD`
+  - exit 0，无输出。
+- 通过：`make test`
+  - exit 0；243 个 unittest 通过，`OK`；输出末尾包含 `degraded_ok` fixture 预期路径。
+
+### Live runtime 观察
+
+- 全局 wrapper：`/Users/bytedance/.local/bin/llm-council-for-trae`
+  - 当前指向 `/Users/bytedance/.LCT/src`，不是本分支 checkout。
+  - 因此本地 PR smoke 使用 `PYTHONPATH=src python3 -m llm_council_for_trae.cli ...` 验证当前分支代码。
+- 通过：`PYTHONPATH=src python3 -m llm_council_for_trae.cli models --recommend --json`
+  - exit 0；返回 20 个模型。
+  - recommendation members：`DeepSeek-V4-Pro`、`openrouter-1o`、`GPT-5.4`、`Gemini-3.1-Pro-Preview`。
+  - chairman：`DeepSeek-V4-Pro`。
+- 通过：`PYTHONPATH=src python3 -m llm_council_for_trae.cli run --input examples/question.md --default-models --run-id experience-upgrade-local-smoke-20260606-121305 --json`
+  - exit 0；`status=ok`，`degraded=false`，`failures=[]`。
+  - HTML：`.llm-council-for-trae/runs/experience-upgrade-local-smoke-20260606-121305/html/index.html`。
+  - warnings：`traecli doctor reported warnings`。
+- 通过：`PYTHONPATH=src python3 -m llm_council_for_trae.cli validate experience-upgrade-local-smoke-20260606-121305 --json`
+  - exit 0；`status=ok`，`terminal=true`，`usable_final=true`，`verdict=complete_ok_final`，`failed_stage_records=[]`。
+
+### 当前边界
+
+- 本地验证覆盖当前 branch checkout。
+- 全局 wrapper 当前不指向本分支；merge 后 v16 fresh-main E2E 需要重新同步并安装 / 确认 wrapper 指向最新 main。
+- 未跟踪 `CLAUDE.md` 保持不纳入提交。
+
+### v16 E2E 指定输入
+
+用户在本阶段补充：merge 后本地隔离 workspace 的 v16 fresh-main E2E 使用以下原始输入。到 v16 环节再执行，不在当前 PR smoke 中提前运行。
+
+```text
+使用LCT回答："""
+https://job-boards.greenhouse.io/anthropic/jobs/5247640008
+分析解读这个JD。先意图理解。
+"""
+```
+
+执行要求：
+
+- 保持用户原文作为 council input 基础。
+- 因用户明确说“先意图理解”，外层 Agent 可以进入 `structured by Agent`，但必须保留 `Original input`。
+- 如需要解析网页内容，fact pack 必须直接内嵌 `_lct_question.md` 并标来源；不要要求 council 成员读取 sidecar。
+
+## 阶段 8：只读 reviewer P2 修复
+
+### Reviewer 结论
+
+- 只读 subagent reviewer Nash 结论：fail。
+- P1：None。
+- P2：
+  - `--selected-*` 与 `--profile` 同时传入时会被 `profile` 分支静默吞掉，导致 selected provenance 缺失。
+  - `normalize_user_model_selection(...)` 在可用 preferred fillers 不足 4 个时仍返回少于 4 个成员，违反自选路径归一化到 4 的产品合同。
+- P3：
+  - contribution map validate 还可进一步收紧 `schema_version == 1`、`enabled == true`、block `id/text` 必填。
+  - 未跟踪 `CLAUDE.md` 不在 HEAD；继续避免误 stage。
+
+### 修复
+
+- `resolve_run_model_choice()` 将 selected conflict 检查前置到 profile return 之前，并禁止 `--selected-members/--selected-chairman` 与 `--profile` 混用。
+- `normalize_user_model_selection(...)` 在补足后仍不足 `target_members` 时 fail closed，错误信息说明当前可用且批准的成员模型不足。
+- 更新 TTY custom 选择测试：自选路径现在同样归一化到 4。
+
+### 红绿验证
+
+- 红灯：`PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_fails_closed_when_available_fillers_cannot_reach_four tests.test_core.CouncilCoreTests.test_selected_members_cli_path_cannot_be_combined_with_profile -v`
+  - 结果：2 个测试失败，分别复现 reviewer 的两个 P2。
+- 绿灯：同一命令再次运行通过，2 个测试 `OK`。
+- 通过：`PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_fills_to_four_by_preferred_members tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_trims_to_four_by_preferred_members tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_keeps_exact_four_user_order tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_fails_closed_for_unknown_model tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_fails_closed_when_available_fillers_cannot_reach_four tests.test_core.CouncilCoreTests.test_native_members_build_config_is_not_normalized tests.test_core.CouncilCoreTests.test_selected_members_cli_path_is_normalized_and_records_provenance tests.test_core.CouncilCoreTests.test_selected_members_cli_path_cannot_be_combined_with_profile tests.test_core.CouncilCoreTests.test_initial_manifest_persists_model_selection_provenance tests.test_core.CouncilCoreTests.test_interactive_model_selection_accepts_custom_numbered_models -v`
+  - 结果：10 个测试通过。
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+- 通过：`git diff --check`
