@@ -422,6 +422,28 @@
 
 ### 待验证
 
-- 待跑：`PYTHONPATH=src python3 -m compileall src`
-- 待跑：`make test`
-- 待跑：`git diff --check`
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+  - 结果：exit 0。
+- 通过：`make test`
+  - 结果：exit 0，222 个 unittest 通过，输出末尾为 `OK` / `degraded_ok`。
+- 通过：`git diff --check`
+  - 结果：exit 0，无输出。
+
+### Commit
+
+- `f9bed03 docs: brief LCT experience upgrade`
+- `3a7e526 docs: add LCT experience upgrade implementation inputs`
+
+## 阶段 1：测试方案
+
+### 阶段目标
+
+- 新增 `docs/lct-experience-upgrade-test-plan-20260606.md`。
+- 将四个产品点拆成可执行测试矩阵：HTML summary card、Skill 输入边界、自选模型归一化与 provenance、主席贡献说明 sidecar / blocks contract。
+- 先固定 Stage 3 实现层 contract：`stage3/contribution_map.json`，`schema_version=1`，以 blocks 作为正文和来源的对齐机制。
+
+### 实现决定
+
+- 自选模型测试严格保护原生 `--members`：不补足、不裁剪。
+- 自选体验走独立参数，例如 `--selected-members` / `--selected-chairman`，并落到 `normalize_user_model_selection(...)`。
+- Stage 3 contribution map 默认关闭；enabled 时 sidecar 缺失或非法才让 validate 失败，legacy run 缺 sidecar 不失败。
