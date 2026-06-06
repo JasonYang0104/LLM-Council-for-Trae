@@ -401,6 +401,102 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
         self.assertIn("lct_search_used", index_line)
         self.assertIn("agent_external_search_used", index_line)
 
+    def test_skill_documents_raw_input_trigger_matrix(self):
+        required_terms = [
+            "raw original input",
+            "不要改写",
+            "按原文",
+            "只用原始输入",
+            "评估 LCT 对原问题的理解",
+            "只追加 `Report topic`",
+            "不得加 `Agent interpretation`",
+        ]
+        for relative in [
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+
+    def test_skill_documents_structured_input_trigger_matrix(self):
+        required_terms = [
+            "structured by Agent",
+            "先想我真正需要什么",
+            "站在架构师角度评估",
+            "fact pack",
+            "最新资料",
+            "来源",
+            "必须保留 `Original input`",
+            "直接内嵌并标来源",
+        ]
+        for relative in [
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+
+    def test_skill_documents_negative_triggers_do_not_imply_rewrite(self):
+        required_terms = [
+            "详细分析",
+            "深入一点",
+            "给完整方案",
+            "不得单凭字面触发结构化改写",
+        ]
+        for relative in [
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+
+    def test_skill_documents_operator_envelope_never_enters_lct_question(self):
+        required_terms = [
+            "operator envelope",
+            "notes.md",
+            "validate",
+            "Git/PR",
+            "测试职责",
+            "开 branch",
+            "提交代码",
+            "绝不进 `_lct_question.md`",
+        ]
+        for relative in [
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+
+    def test_skill_documents_selected_model_agent_assisted_path(self):
+        required_terms = [
+            "用户明确要挑成员",
+            "指定主席",
+            "AskUserQuestionTool",
+            "文本 fallback",
+            "--selected-members",
+            "--selected-chairman",
+            "不要复用原生 `--members`",
+            "selection_surface=agent_assisted",
+        ]
+        for relative in [
+            "README.md",
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+
     def test_docs_use_current_user_skill_path_and_no_stale_skill_path(self):
         doc_paths = [
             "README.md",

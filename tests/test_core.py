@@ -6,7 +6,7 @@ from pathlib import Path
 from subprocess import CompletedProcess
 from unittest.mock import patch
 
-from llm_council_for_trae.cli import failure_recommendations
+from llm_council_for_trae.cli import build_config, build_parser, failure_recommendations, resolve_run_model_choice
 from llm_council_for_trae.council import (
     build_stage1_prompt,
     build_stage2_prompt,
@@ -21,6 +21,7 @@ from llm_council_for_trae.council import (
     record_stage_failures,
 )
 from llm_council_for_trae.html_export import _extract_title, export_html, render_html
+from llm_council_for_trae import model_selection
 from llm_council_for_trae.model_benchmark import (
     BenchmarkTask,
     benchmark_record_from_call,
@@ -158,6 +159,16 @@ def write_minimal_valid_direct_run(store):
     write_json_text(store, "stage3/final.meta.json", stage_meta("GPT-5.4"))
     write_json_text(store, "stage3/final.json", final_json())
     write_json_text(store, "html/export.json", {"run_id": store.root.name, "generated_at": "2026-05-22T00:00:00Z", "format": "html", "path": "html/index.html", "source_manifest": "manifest.json"})
+
+
+def render_manifest_html(manifest):
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "stage3").mkdir()
+        (root / "input.md").write_text("Report topic: 测试议题\n", encoding="utf-8")
+        (root / "stage3" / "final.md").write_text("## 最终答案\n\n正文。\n", encoding="utf-8")
+        (root / "stage3" / "chairman.prompt.md").write_text("prompt\n", encoding="utf-8")
+        return render_html(root, manifest)
 
 
 def write_reviewer_only_backfill_run(store, *, leak_reviewer_into_subjects: bool = False, ranking_includes_reviewer_subject: bool = False):
@@ -392,6 +403,43 @@ FINAL RANKING:
         self.assertIn("不得逐字或近似复用任何 Stage 1 回答", stage3_prompt)
         self.assertIn("必须显式融合 top-ranked responses", stage3_prompt)
 
+    def test_chairman_contribution_map_disabled_by_default(self):
+        config = CouncilConfig(members=["GPT-5.4"], chairman="GPT-5.4")
+
+        self.assertFalse(config.chairman_contribution_enabled)
+
+    def test_stage3_prompt_requests_contribution_blocks_only_when_enabled(self):
+        question = "Explain trust improvements."
+        stage1_results = [
+            {"label": "Response A", "model": "GPT-5.4", "response": "A says transparency matters."},
+            {"label": "Response B", "model": "DeepSeek-V4-Pro", "response": "B says provenance matters."},
+        ]
+        stage2_results = [
+            {
+                "model": "Reviewer",
+                "ranking": "FINAL RANKING:\n1. Response A\n2. Response B",
+                "parsed_ranking": ["Response A", "Response B"],
+                "status": "ok",
+                "parse_status": "ok",
+            }
+        ]
+
+        default_prompt = build_stage3_prompt(question, stage1_results, stage2_results)
+        enabled_prompt = build_stage3_prompt(
+            question,
+            stage1_results,
+            stage2_results,
+            aggregate_rankings=[{"label": "Response A", "model": "GPT-5.4", "average_rank": 1.0, "rankings_count": 1, "positions": [1]}],
+            contribution_map_enabled=True,
+        )
+
+        self.assertNotIn("contribution_map", default_prompt)
+        self.assertIn("contribution_map.json", enabled_prompt)
+        self.assertIn("blocks", enabled_prompt)
+        self.assertIn("single_member", enabled_prompt)
+        self.assertIn("multi_member_consensus", enabled_prompt)
+        self.assertIn("editor_note", enabled_prompt)
+
     def test_default_prompts_are_chinese_reader_facing(self):
         question = "Explain one practical tradeoff."
         stage1_prompt = build_stage1_prompt(question)
@@ -556,6 +604,147 @@ FINAL RANKING:
         self.assertEqual(choice.members, ["GPT-5.4", "DeepSeek-V4-Pro"])
         self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
         self.assertEqual(resolve_model_tokens("2, GPT-5.4", ["GPT-5.4", "GLM-5.1"]), ["GLM-5.1", "GPT-5.4"])
+
+    def test_normalize_user_model_selection_fills_to_four_by_preferred_members(self):
+        normalize = getattr(model_selection, "normalize_user_model_selection", None)
+        self.assertIsNotNone(normalize, "missing normalize_user_model_selection")
+        models = [
+            {"name": "DeepSeek-V4-Pro"},
+            {"name": "openrouter-1o"},
+            {"name": "GPT-5.4"},
+            {"name": "Gemini-3.1-Pro-Preview"},
+            {"name": "Kimi-K2.6"},
+        ]
+
+        choice = normalize(
+            requested_members=["Kimi-K2.6", "GPT-5.4"],
+            requested_chairman="DeepSeek-V4-Pro",
+            models=models,
+            selection_surface="agent_assisted",
+        )
+
+        self.assertEqual(choice.members, ["Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro", "openrouter-1o"])
+        self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
+        self.assertEqual(choice.provenance["selection_surface"], "agent_assisted")
+        self.assertEqual(choice.provenance["requested_members"], ["Kimi-K2.6", "GPT-5.4"])
+        self.assertEqual(choice.provenance["filled_members"], ["DeepSeek-V4-Pro", "openrouter-1o"])
+
+    def test_normalize_user_model_selection_trims_to_four_by_preferred_members(self):
+        normalize = getattr(model_selection, "normalize_user_model_selection", None)
+        self.assertIsNotNone(normalize, "missing normalize_user_model_selection")
+        models = [
+            {"name": "DeepSeek-V4-Pro"},
+            {"name": "openrouter-1o"},
+            {"name": "GPT-5.4"},
+            {"name": "Gemini-3.1-Pro-Preview"},
+            {"name": "Kimi-K2.6"},
+            {"name": "Unranked-Model"},
+        ]
+
+        choice = normalize(
+            requested_members=["Unranked-Model", "Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro", "openrouter-1o"],
+            requested_chairman="Kimi-K2.6",
+            models=models,
+            selection_surface="agent_assisted",
+        )
+
+        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "openrouter-1o", "GPT-5.4", "Kimi-K2.6"])
+        self.assertEqual(choice.provenance["trimmed_members"], ["Unranked-Model"])
+        self.assertEqual(choice.provenance["resolved_members"], choice.members)
+
+    def test_normalize_user_model_selection_keeps_exact_four_user_order(self):
+        normalize = getattr(model_selection, "normalize_user_model_selection", None)
+        self.assertIsNotNone(normalize, "missing normalize_user_model_selection")
+        models = [
+            {"name": "DeepSeek-V4-Pro"},
+            {"name": "openrouter-1o"},
+            {"name": "GPT-5.4"},
+            {"name": "Gemini-3.1-Pro-Preview"},
+        ]
+
+        choice = normalize(
+            requested_members=["GPT-5.4", "DeepSeek-V4-Pro", "Gemini-3.1-Pro-Preview", "openrouter-1o"],
+            requested_chairman=None,
+            models=models,
+            selection_surface="agent_assisted",
+        )
+
+        self.assertEqual(choice.members, ["GPT-5.4", "DeepSeek-V4-Pro", "Gemini-3.1-Pro-Preview", "openrouter-1o"])
+        self.assertEqual(choice.chairman, "GPT-5.4")
+        self.assertEqual(choice.provenance["trimmed_members"], [])
+        self.assertEqual(choice.provenance["filled_members"], [])
+
+    def test_normalize_user_model_selection_fails_closed_for_unknown_model(self):
+        normalize = getattr(model_selection, "normalize_user_model_selection", None)
+        self.assertIsNotNone(normalize, "missing normalize_user_model_selection")
+
+        with self.assertRaisesRegex(ValueError, "Unknown-Model"):
+            normalize(
+                requested_members=["Unknown-Model"],
+                requested_chairman=None,
+                models=[{"name": "DeepSeek-V4-Pro"}],
+                selection_surface="agent_assisted",
+            )
+
+    def test_native_members_build_config_is_not_normalized(self):
+        parser = build_parser()
+        args = parser.parse_args(["run", "--input", "question.md", "--members", "M1,M2,M3", "--chairman", "Chair"])
+        args.selected_model_choice = resolve_run_model_choice(args)
+
+        config = build_config(args)
+
+        self.assertEqual(config.members, ["M1", "M2", "M3"])
+        self.assertEqual(config.chairman, "Chair")
+
+    def test_selected_members_cli_path_is_normalized_and_records_provenance(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "run",
+                "--input",
+                "question.md",
+                "--selected-members",
+                "Kimi-K2.6,GPT-5.4",
+                "--selected-chairman",
+                "DeepSeek-V4-Pro",
+            ]
+        )
+        models = [
+            {"name": "DeepSeek-V4-Pro"},
+            {"name": "openrouter-1o"},
+            {"name": "GPT-5.4"},
+            {"name": "Gemini-3.1-Pro-Preview"},
+            {"name": "Kimi-K2.6"},
+        ]
+        with patch("llm_council_for_trae.cli.get_models", return_value=models):
+            args.selected_model_choice = resolve_run_model_choice(args)
+        config = build_config(args)
+
+        self.assertEqual(config.members, ["Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro", "openrouter-1o"])
+        self.assertEqual(config.chairman, "DeepSeek-V4-Pro")
+        self.assertEqual(config.model_selection_provenance["selection_surface"], "agent_assisted")
+        self.assertEqual(config.model_selection_provenance["requested_members"], ["Kimi-K2.6", "GPT-5.4"])
+
+    def test_initial_manifest_persists_model_selection_provenance(self):
+        config = CouncilConfig(
+            members=["Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro", "openrouter-1o"],
+            chairman="DeepSeek-V4-Pro",
+            model_selection_provenance={
+                "selection_surface": "agent_assisted",
+                "requested_members": ["Kimi-K2.6", "GPT-5.4"],
+                "resolved_members": ["Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro", "openrouter-1o"],
+                "trimmed_members": [],
+                "filled_members": ["DeepSeek-V4-Pro", "openrouter-1o"],
+            },
+        )
+
+        manifest = initial_manifest("run-selected", "question", config)
+
+        self.assertEqual(manifest["metadata"]["model_selection"]["selection_surface"], "agent_assisted")
+        self.assertEqual(
+            manifest["metadata"]["model_selection"]["resolved_members"],
+            ["Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro", "openrouter-1o"],
+        )
 
     def test_parse_stream_json_extracts_actual_model_and_result(self):
         stream = "\n".join(
@@ -1018,6 +1207,101 @@ FINAL RANKING:
                     and any(field in failure["name"] for field in legacy_missing_fields)
                     for failure in validation["failures"]
                 ),
+                validation["failures"],
+            )
+
+    def test_validate_fails_enabled_contribution_map_missing_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-missing-contribution-map")
+            write_minimal_valid_direct_run(store)
+            manifest = store.read_manifest()
+            manifest["metadata"]["chairman_contribution"] = {
+                "enabled": True,
+                "path": "stage3/contribution_map.json",
+            }
+            store.write_manifest(manifest)
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["status"], "failed")
+            self.assertTrue(
+                any(check["name"] == "contribution_map_present" for check in validation["failures"]),
+                validation["failures"],
+            )
+
+    def test_validate_rejects_contribution_map_unknown_member_reference(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-bad-contribution-member")
+            write_minimal_valid_direct_run(store)
+            manifest = store.read_manifest()
+            manifest["metadata"]["chairman_contribution"] = {
+                "enabled": True,
+                "path": "stage3/contribution_map.json",
+            }
+            store.write_manifest(manifest)
+            store.write_json(
+                "stage3/contribution_map.json",
+                {
+                    "schema_version": 1,
+                    "enabled": True,
+                    "source": "chairman_structured_output",
+                    "blocks": [
+                        {
+                            "id": "b1",
+                            "type": "paragraph",
+                            "text": "Unknown member reference.",
+                            "attribution": {
+                                "kind": "single_member",
+                                "members": ["Unknown-Model"],
+                            },
+                        }
+                    ],
+                },
+            )
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["status"], "failed")
+            self.assertTrue(
+                any(check["name"] == "contribution_map_member_refs" for check in validation["failures"]),
+                validation["failures"],
+            )
+
+    def test_validate_rejects_contribution_map_consensus_with_fewer_than_two_members(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ArtifactStore.create(Path(tmp), "run-bad-contribution-consensus")
+            write_minimal_valid_direct_run(store)
+            manifest = store.read_manifest()
+            manifest["metadata"]["chairman_contribution"] = {
+                "enabled": True,
+                "path": "stage3/contribution_map.json",
+            }
+            store.write_manifest(manifest)
+            store.write_json(
+                "stage3/contribution_map.json",
+                {
+                    "schema_version": 1,
+                    "enabled": True,
+                    "source": "chairman_structured_output",
+                    "blocks": [
+                        {
+                            "id": "b1",
+                            "type": "paragraph",
+                            "text": "Consensus claim.",
+                            "attribution": {
+                                "kind": "multi_member_consensus",
+                                "members": ["GPT-5.4"],
+                            },
+                        }
+                    ],
+                },
+            )
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["status"], "failed")
+            self.assertTrue(
+                any(check["name"] == "contribution_map_consensus_members" for check in validation["failures"]),
                 validation["failures"],
             )
 
@@ -2746,29 +3030,156 @@ The user is not merely asking whether local inference hardware will improve they
         import asyncio
         asyncio.run(_run())
 
-    def test_html_summary_shows_quorum_status_card(self):
+    def test_html_summary_card_shows_effective_member_models_without_quorum_jargon(self):
         from llm_council_for_trae.html_export import render_summary_cards
         manifest = {
-            "config": {"members": ["GPT-5.4"], "chairman": "GPT-5.4"},
+            "config": {"members": ["GPT-5.4", "Failed-Model"], "chairman": "GPT-5.4"},
             "metadata": {
                 "quorum": {
-                    "effective_valid_members": 2,
+                    "effective_valid_members": 4,
                     "min_valid_members": 3,
-                    "normal_quorum_met": False,
-                    "low_quorum_used": True,
-                    "effective_stage1_members": ["GPT-5.4", "Qwen3.6-Plus"],
+                    "normal_quorum_met": True,
+                    "low_quorum_used": False,
+                    "effective_stage1_members": ["GPT-5.4", "Qwen3.6-Plus", "Kimi-K2.6", "openrouter-1o"],
                     "backfill_used": True,
                     "backfill_attempted": ["Qwen3.6-Plus"],
                 }
             },
-            "status": "degraded_ok",
+            "status": "ok",
         }
         html = render_summary_cards(manifest, [])
-        self.assertIn("Quorum 状态", html)
-        self.assertIn("2 / 3", html)
-        self.assertIn("low quorum", html)
+        self.assertIn("成员模型", html)
+        self.assertIn("GPT-5.4", html)
         self.assertIn("Qwen3.6-Plus", html)
+        self.assertIn("Kimi-K2.6", html)
+        self.assertNotIn("Failed-Model", html)
+        self.assertNotIn("Quorum 状态", html)
+        self.assertNotIn("4 / 3", html)
+        self.assertNotIn("normal quorum", html)
+        self.assertNotIn("有效成员：", html)
         self.assertIn("最高排序成员", html)
+
+    def test_html_summary_card_legacy_falls_back_to_config_members_when_quorum_missing(self):
+        from llm_council_for_trae.html_export import render_summary_cards
+        manifest = {
+            "config": {"members": ["GPT-5.4", "DeepSeek-V4-Pro"], "chairman": "GPT-5.4"},
+            "metadata": {},
+            "status": "ok",
+        }
+        html = render_summary_cards(manifest, [])
+        self.assertIn("成员模型", html)
+        self.assertIn("GPT-5.4", html)
+        self.assertIn("DeepSeek-V4-Pro", html)
+
+    def test_html_summary_card_does_not_show_config_members_when_quorum_present_but_effective_missing(self):
+        from llm_council_for_trae.html_export import render_summary_cards
+        manifest = {
+            "config": {"members": ["Configured-Failed-Model"], "chairman": "GPT-5.4"},
+            "metadata": {
+                "quorum": {
+                    "effective_valid_members": 0,
+                    "min_valid_members": 3,
+                    "normal_quorum_met": False,
+                    "low_quorum_used": False,
+                }
+            },
+            "status": "failed",
+        }
+        html = render_summary_cards(manifest, [])
+        self.assertIn("成员模型", html)
+        self.assertNotIn("Configured-Failed-Model", html)
+        self.assertRegex(html, r"暂无有效成员|未记录有效成员|0\s*个")
+
+    def test_html_summary_preserves_quorum_backfill_metadata_evidence(self):
+        manifest = {
+            "schema_version": 1,
+            "run_id": "run-html-summary-evidence",
+            "status": "degraded_ok",
+            "config": {"members": ["GPT-5.4"], "chairman": "GPT-5.4", "provider_mode": "direct", "runtime_command": "fake"},
+            "metadata": {
+                "aggregate_rankings": [],
+                "quorum": {
+                    "low_quorum_used": True,
+                    "backfill_candidates": ["Kimi-K2.6"],
+                    "backfill_attempted": ["Kimi-K2.6"],
+                    "effective_stage1_members": ["GPT-5.4", "Kimi-K2.6"],
+                    "effective_valid_members": 2,
+                    "min_valid_members": 3,
+                },
+            },
+            "stages": {"stage1": [], "stage2": [], "stage3": {}},
+            "warnings": [],
+            "failures": [],
+        }
+        html = render_manifest_html(manifest)
+        self.assertIn("backfill_candidates", html)
+        self.assertIn("Kimi-K2.6", html)
+        self.assertIn("low_quorum_used", html)
+
+    def test_html_renders_contribution_blocks_deterministically(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "stage3").mkdir()
+            (root / "input.md").write_text("Report topic: 贡献说明测试\n", encoding="utf-8")
+            (root / "stage3" / "final.md").write_text("legacy markdown should not be the only source\n", encoding="utf-8")
+            (root / "stage3" / "chairman.prompt.md").write_text("prompt\n", encoding="utf-8")
+            (root / "stage3" / "contribution_map.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "enabled": True,
+                        "source": "chairman_structured_output",
+                        "blocks": [
+                            {
+                                "id": "h1",
+                                "type": "heading",
+                                "text": "可信度为什么提升",
+                                "attribution": {"kind": "synthesis", "members": []},
+                            },
+                            {
+                                "id": "p1",
+                                "type": "paragraph",
+                                "text": "用户能看到哪些模型实际参与了结论。",
+                                "attribution": {"kind": "single_member", "members": ["GPT-5.4"]},
+                            },
+                            {
+                                "id": "n1",
+                                "type": "editor_note",
+                                "text": "这是主席基于成员素材延伸的取舍建议。",
+                                "attribution": {"kind": "editor_note", "members": []},
+                            },
+                        ],
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            manifest = {
+                "schema_version": 1,
+                "run_id": "run-html-contribution",
+                "status": "ok",
+                "config": {"members": ["GPT-5.4"], "chairman": "GPT-5.4", "provider_mode": "direct", "runtime_command": "fake"},
+                "metadata": {
+                    "aggregate_rankings": [{"label": "Response A", "model": "GPT-5.4", "average_rank": 1.0}],
+                    "chairman_contribution": {"enabled": True, "path": "stage3/contribution_map.json"},
+                },
+                "stages": {
+                    "stage1": [{"label": "Response A", "file_label": "A", "model": "GPT-5.4", "status": "ok"}],
+                    "stage2": [],
+                    "stage3": {"model": "GPT-5.4", "status": "ok"},
+                },
+                "warnings": [],
+                "failures": [],
+            }
+
+            html = render_html(root, manifest)
+
+        self.assertIn("可信度为什么提升", html)
+        self.assertIn("用户能看到哪些模型实际参与了结论", html)
+        self.assertIn("来源：GPT-5.4", html)
+        self.assertIn("编者注", html)
+        self.assertNotIn("贡献 37%", html)
 
     def test_html_summary_shows_chairman_fallback_card(self):
         from llm_council_for_trae.html_export import render_summary_cards

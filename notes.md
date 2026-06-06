@@ -447,3 +447,28 @@
 - 自选模型测试严格保护原生 `--members`：不补足、不裁剪。
 - 自选体验走独立参数，例如 `--selected-members` / `--selected-chairman`，并落到 `normalize_user_model_selection(...)`。
 - Stage 3 contribution map 默认关闭；enabled 时 sidecar 缺失或非法才让 validate 失败，legacy run 缺 sidecar 不失败。
+
+### Commit
+
+- `7b2e138 docs: add LCT experience upgrade test plan`
+
+## 阶段 2：TDD 红灯测试
+
+### 阶段目标
+
+- 先写覆盖本轮四个产品点的失败测试，不直接改实现。
+- 红灯范围：HTML summary card、Skill 输入矩阵、自选模型归一化 / CLI surface / provenance、Stage 3 contribution map feature flag / sidecar / validate / HTML。
+
+### 红灯证据
+
+- 失败命令：`PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_html_summary_card_shows_effective_member_models_without_quorum_jargon tests.test_core.CouncilCoreTests.test_html_summary_card_does_not_show_config_members_when_quorum_present_but_effective_missing tests.test_core.CouncilCoreTests.test_normalize_user_model_selection_fills_to_four_by_preferred_members tests.test_core.CouncilCoreTests.test_selected_members_cli_path_is_normalized_and_records_provenance tests.test_core.CouncilCoreTests.test_chairman_contribution_map_disabled_by_default tests.test_core.CouncilCoreTests.test_stage3_prompt_requests_contribution_blocks_only_when_enabled tests.test_core.CouncilCoreTests.test_validate_fails_enabled_contribution_map_missing_sidecar tests.test_core.CouncilCoreTests.test_html_renders_contribution_blocks_deterministically tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_raw_input_trigger_matrix tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_skill_documents_selected_model_agent_assisted_path -v`
+- 结果：exit 1；10 个测试运行，失败/错误符合当前缺口。
+- 关键失败点：
+  - HTML 仍输出 `Quorum 状态`、`4 / 3`、`normal quorum`、`有效成员：...`。
+  - `normalize_user_model_selection` 不存在。
+  - CLI 不认识 `--selected-members` / `--selected-chairman`。
+  - `CouncilConfig` 没有 `chairman_contribution_enabled`。
+  - `build_stage3_prompt()` 不支持 `contribution_map_enabled`。
+  - validate 目前忽略 enabled contribution map 缺 sidecar 的非法状态。
+  - HTML 目前仍只渲染 `stage3/final.md`，不渲染 `stage3/contribution_map.json` blocks。
+  - Skill / README 缺完整 raw trigger matrix 和 agent-assisted 自选模型路径。
