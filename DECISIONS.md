@@ -49,7 +49,7 @@
    **红线**：
    - **排名 ≠ 贡献**，系统只并排展示，绝不自动判定"排名高=贡献大"（brief §6）。
    - **呈现的是"观点分歧"，不是"模型评比"**（不得变成"GPT 比 DeepSeek 强"的排行）。
-   - 保守措辞、**禁止百分比**、判断不了输出 `not_attributable`、不得在 HTML export 阶段重算（确定性红线）、**默认关闭**灰度（feature 开关），验证稳定后再开。
+   - 保守措辞、**禁止百分比**、判断不了输出 `not_attributable`、不得在 HTML export 阶段重算（确定性红线）。第一版采用默认关闭灰度；2026-06-06 后续裁决已改为默认开启、显式关闭、显式强校验。
 
    **附带收益**：评注被隔离 → 读者可扫读"主席掺了多少私货"，评注越少越忠于成员，本身即一种可信度透明，无需额外做。
    - 否决 A（主席自由文字，不可机器校验，瞎编风险最高）与 C（文字相似度，中文改写后不准，假精确，最复杂）。
@@ -68,7 +68,7 @@
 5. **推进节奏**
    - 第一批（零协议风险）：报告卡片 + 输入改写文档矩阵 + 自选模型触发边界文档 + 契约测试。
    - 第二批（改 CLI 内核）：自选模型裁剪 + provenance + fail-closed；Skill 接可选交互卡片 + 文本 fallback。
-   - 第三批（最重最后、默认先关）：贡献说明方案 B 全链路 + 兼容测试。
+   - 第三批（最重最后、第一版默认先关）：贡献说明方案 B 全链路 + 兼容测试；2026-06-06 后续裁决已把该能力改为默认 requested，并补 opt-out / strict gate。
    - 不并入同一 PR；若同轮则拆独立 commit，`validate` 逐层绿。
 
 ### 依据
@@ -80,7 +80,7 @@
 
 ### 取舍
 
-- 贡献说明残余风险：`validate` 只能查「模型是否存在」，查不了「归因是否真实」，靠保守措辞 + `not_attributable` + 默认关闭灰度兜底。
+- 贡献说明残余风险：`validate` 只能查「模型是否存在」，查不了「归因是否真实」，靠保守措辞、`not_attributable`、默认 soft validation、HTML fallback 和 strict gate 兜底。
 - 报告卡片取「有效成员」会在降级 run 下与「配置成员」不同；以降级 banner + metadata 兜可见性。
 - 自选体验路径把选择归一化到 4（补足/裁剪）是行为变更；以「原生 `--members` / `--default-models` / `profile` / `subagent` 维持精确语义」隔离，不破 §9。
 
@@ -97,10 +97,10 @@
 - `normalize_user_model_selection(...)` 是唯一归一化函数，CLI TTY custom 和 agent-assisted 自选都走它。
 - `CouncilConfig.model_selection_provenance` 是持久通道；`initial_manifest()` 将其写入 `metadata.model_selection`。
 - provenance 至少记录：`selection_surface`、`requested_members`、`requested_chairman`、`resolved_requested_members`、`resolved_members`、`resolved_chairman`、`filled_members`、`trimmed_members`、`final_members`、`final_chairman`。
-- 主席贡献说明 feature flag 采用 `--chairman-contribution-map` / `CouncilConfig.chairman_contribution_enabled`，默认关闭。
-- 启用后 manifest 使用 `metadata.chairman_contribution = {"enabled": true, "path": "stage3/contribution_map.json", ...}` 标记 sidecar。
+- 主席贡献说明默认 requested。`--chairman-contribution-map` 保留为兼容 alias；`--no-chairman-contribution-map` 显式关闭；`--require-chairman-contribution-map` 打开 strict gate。
+- manifest 使用 `metadata.chairman_contribution = {"enabled": true, "requested": true, "required": false, "present": true|false, "path": "stage3/contribution_map.json", ...}` 标记 sidecar 状态和错误。
 - `stage3/contribution_map.json` 使用 blocks contract：`schema_version=1`、`enabled=true`、`source`、`blocks[]`；block type 只允许 `heading`、`paragraph`、`editor_note`、`disagreement`；attribution kind 只允许 `single_member`、`multi_member_consensus`、`editor_note`、`synthesis`、`not_attributable`。
-- `validate` 只在 enabled 时要求 sidecar 合法；legacy run 缺 sidecar 不失败。校验范围是结构与成员引用合法性，不声称验证真实贡献程度。
+- `validate` 在 `requested=true, required=false` 时执行 sidecar 检查但只产生非阻断 warning；`required=true` 时缺 sidecar、schema 非法、成员引用非法或 consensus 成员少于 2 才 hard fail。legacy run 缺 metadata 不失败。校验范围是结构与成员引用合法性，不声称验证真实贡献程度。
 
 ### 推翻条件
 

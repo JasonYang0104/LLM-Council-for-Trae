@@ -70,7 +70,9 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--member-tool-mode", choices=["answer_only", "search_enabled", "workspace_enabled"], default="search_enabled", help="Tool capability policy for direct member runtime.")
     run_p.add_argument("--member-runtime-cwd-mode", choices=["isolated_temp", "inherit"], default="isolated_temp", help="Working-directory isolation mode for direct member runtime when --runtime-cwd is omitted.")
     run_p.add_argument("--skip-html", action="store_true", help="Skip automatic HTML export after Stage 3.")
-    run_p.add_argument("--chairman-contribution-map", action="store_true", help="Ask Stage 3 to emit a contribution-map sidecar. Default off.")
+    run_p.add_argument("--chairman-contribution-map", dest="chairman_contribution_map", action="store_true", default=None, help="Compatibility alias: Stage 3 requests a contribution-map sidecar by default.")
+    run_p.add_argument("--no-chairman-contribution-map", dest="chairman_contribution_map", action="store_false", help="Do not ask Stage 3 to emit a contribution-map sidecar.")
+    run_p.add_argument("--require-chairman-contribution-map", action="store_true", help="Fail validation when the contribution-map sidecar is missing or invalid.")
     run_p.add_argument("--json", dest="json_output", action="store_true", default=argparse.SUPPRESS)
     run_p.set_defaults(func=cmd_run)
 
@@ -258,6 +260,15 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
     chairman_fallback = None
     if getattr(args, "chairman_fallback", None):
         chairman_fallback = [m.strip() for m in args.chairman_fallback.split(",")]
+    chairman_contribution_requested = getattr(args, "chairman_contribution_map", None)
+    if chairman_contribution_requested is None:
+        chairman_contribution_requested = True
+    chairman_contribution_required = bool(getattr(args, "require_chairman_contribution_map", False))
+    if chairman_contribution_required and chairman_contribution_requested is False:
+        raise ValueError("--require-chairman-contribution-map cannot be combined with --no-chairman-contribution-map")
+    if chairman_contribution_required:
+        chairman_contribution_requested = True
+
     return CouncilConfig(
         members=members,
         chairman=chairman,
@@ -283,7 +294,8 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
         allow_low_quorum=True,
         low_quorum_floor=getattr(args, "low_quorum_floor", 2),
         model_selection_provenance=model_selection_provenance,
-        chairman_contribution_enabled=getattr(args, "chairman_contribution_map", False),
+        chairman_contribution_enabled=bool(chairman_contribution_requested),
+        chairman_contribution_required=chairman_contribution_required,
     )
 
 
@@ -314,6 +326,7 @@ def resolve_run_model_choice(args: argparse.Namespace) -> ModelChoice | None:
     if not sys.stdin.isatty():
         raise ValueError(
             "未指定模型，且当前不是可交互终端。请传 --default-models 使用默认模型套，"
+            "或传 --selected-members/--selected-chairman 使用 agent-assisted 自选归一化路径，"
             "或显式传 --members/--chairman，或使用 --profile。"
         )
     models = get_models(args.runtime_command)

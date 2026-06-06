@@ -131,9 +131,9 @@
 
 ---
 
-### 阶段三 · 主席贡献说明（最重、最后、默认先关）
+### 阶段三 · 主席贡献说明（最重、现在默认开启）
 
-这是整个升级里最难、信任风险最高的一块。**完整决策见 `DECISIONS.md` ADR-0001 决策 2，视觉基准见 `docs/lct-experience-upgrade-mockup-20260606.html`（已沿用现有 `html_export.py` 风格）。** 下面是给你的意图收敛和必须守的不变量。
+这是整个升级里最难、信任风险最高的一块。第一版曾作为默认关闭的灰度能力落地；2026-06-06 后续裁决已经把它升级为默认开启的产品能力：默认请求主席输出 contribution map，HTML 优先用 sidecar blocks 渲染来源；调用方只在明确关闭时传 `--no-chairman-contribution-map`，release / E2E strict gate 才传 `--require-chairman-contribution-map`。**完整决策见 `DECISIONS.md` ADR-0001 决策 2，视觉基准见 `docs/lct-experience-upgrade-mockup-20260606.html`（已沿用现有 `html_export.py` 风格）。** 下面是给你的意图收敛和必须守的不变量。
 
 **意图与定位。** 主席的角色是**资深编辑 / 客观记者**，核心价值是"可信"——让读者永远能分清"成员真说的（素材）"和"主席自己加的（评注）"，防止单一主席模型用自身观点劫持多模型的集体结论。它默认做忠实整理，自己的判断一律隔离成"编者注"。
 
@@ -148,20 +148,20 @@
 **不变量（必须满足，机制不限）。**
 - 每段正文与其来源必须**可靠对应**，HTML 导出阶段不得错位。（用块序列、锚点映射还是别的对齐机制，你定。）
 - 来源/分歧引用的成员必须**真在场、可校验**；标"多成员共识"须 ≥2 在场成员；拆不到就标"综合整理"，**不得为凑署名硬安单一模型**。
-- `validate` 校验引用合法性（成员在场、共识 ≥2、类型合法）；只有"声明启用了贡献说明、但结构非法"才失败；缺附属文件的 legacy run 不失败、回退现有 `render_markdown`（`html_export.py`，约 658 行）。
+- `validate` 校验引用合法性（成员在场、共识 ≥2、类型合法）。`requested=true, required=false` 是默认路径：缺附属文件或结构非法只记录 warning，HTML fallback 到现有 `render_markdown`（`html_export.py`，约 658 行），不能把可读 final answer 判死。`required=true` 才把缺失、schema 非法、成员引用非法或 consensus 成员少于 2 判为 failure。缺 `metadata.chairman_contribution` 的 legacy run 不失败；显式 disabled 不要求 sidecar。
 - HTML 不调模型、不在导出阶段重算归因。
 
 **红线。**
 - **排名 ≠ 贡献**：系统只并排展示同侪排名，绝不自动判定"排名高=贡献大"。
 - **呈现的是观点分歧，不是模型评比**：不得变成"GPT 比 DeepSeek 强"的排行。
 - 保守措辞、**禁止百分比**、判断不了就用"综合整理/无法归因"做退路。
-- **默认关闭、灰度验证**（feature 开关），验证稳定后再默认开。
+- **默认开启、显式关闭、显式强校验**：默认 requested；`--no-chairman-contribution-map` 关闭；`--require-chairman-contribution-map` 打开 strict gate。
 
 **自由度（按你前述要求放权）。** 结构化展示的具体数据形态——附属文件的字段名、枚举写法、正文与来源的对齐机制——**完全交你定夺**。架构只约束上面的不变量和红线，不规定模板。先在内部跑一批看分歧与归因质量，再决定是 prompt-only、sidecar，还是加确定性辅助。
 
 **文件。** `src/llm_council_for_trae/council.py`（`build_stage3_prompt`）、`store.py`（拆附属文件）、`validation.py` + `schema_contract.py`（additive 校验，复用 `validate_schema(..., optional=...)` 模式，约 164 行）、`html_export.py`（渲染来源条/分歧块/编者注 callout，沿用现有风格）。
 
-**验收。** brief §11.2 全部用例 + 本节不变量。
+**验收。** brief §11.2 全部用例 + 本节不变量。新增验收：默认 config / 默认 Stage 3 prompt 必须请求 contribution map；`--chairman-contribution-map` 保持兼容；`--no-chairman-contribution-map` 关闭；`--require-chairman-contribution-map` 将缺失或非法 sidecar 升级为 validate failure；默认 requested 但 not required 的缺失或非法 sidecar 只产生 warning。
 
 ---
 
@@ -210,13 +210,13 @@ live runtime 不可用时**必须明确标记 skipped，不得用 fixture/单测
 - "`--default-models` 与成员数 ≤4 的显式 `--members` 路径必须字节级不变"；
 - "`<3` members → 交互追问 / 非交互 fail-closed"。
 
-推荐解释是：
+最终裁决是：
 
 - `--default-models` 不变；
-- 显式 `--members` 为 3-4 个且模型都可用时不变；
-- 显式 `--members` 超过 4 个时进入新裁剪逻辑；
-- 显式或交互自选少于 3 个时进入新保护逻辑，因为它不满足 LCT 的默认产品底线；
-- 这个行为变更必须有单测和 manifest provenance，避免看起来像 silent fallback。
+- 原生 `--members` / `--chairman` 是 power-user 精确路径，给几个跑几个，不补足、不裁剪；
+- agent-assisted 自选路径使用 `--selected-members` / `--selected-chairman`，才会补足/裁剪到 4 并写 provenance；
+- `--selected-chairman` 当前不能单独出现；如果用户只想指定主席且成员保持默认，必须明确改用原生 `--members/--chairman` 并说明该路径是精确语义；
+- 这个行为边界必须有单测和 manifest provenance，避免看起来像 silent fallback。
 
 不要把 `<3` 逻辑写成一个无差别后置校验，导致 profile、subagent legacy、测试 fixture 或默认路径被误伤。建议新增一个明确的模型选择归一化入口，例如 `normalize_user_model_selection(...)`，只服务 direct provider 的用户选择路径；profile/subagent 路径另走自己的兼容边界。
 
@@ -265,14 +265,16 @@ live runtime 不可用时**必须明确标记 skipped，不得用 fixture/单测
 
 无论选哪种，`validate` 只校验结构合法与引用合法，不声称能验证"真实贡献程度"。无法可靠归因时使用"综合整理/无法归因"，不要硬配单一成员。
 
-### A6. feature flag 与启用标记要先定义，否则 legacy 兼容测试会模糊
+### A6. requested / required / disabled 标记要先定义，否则 legacy 兼容测试会模糊
 
-阶段三要求默认关闭、灰度验证，但规格尚未指定开关入口与 manifest 标记。执行 Agent 可以自定字段名，但必须满足：
+阶段三第一版要求默认关闭、灰度验证；2026-06-06 后续裁决已经改为默认 requested，并新增显式 disabled 与 strict required。执行 Agent 可以调整字段名，但必须满足：
 
-- 未开启：完全走现有 `final.md` Markdown 渲染，不要求 sidecar；
-- 开启且成功：manifest 或 `final.json` 明确声明 contribution map enabled，并写出 sidecar；
-- 开启但 sidecar 缺失/非法：`validate` 失败；
-- legacy run 缺 sidecar：不失败。
+- 默认：manifest 或 `final.json` 明确声明 contribution map `requested=true, required=false`，Stage 3 prompt 请求 sidecar；
+- 显式关闭：`--no-chairman-contribution-map` 后 `requested=false`，完全走现有 `final.md` Markdown 渲染，不要求 sidecar；
+- 默认 requested 且成功：写出 sidecar，HTML 使用 blocks 渲染；
+- 默认 requested 但 sidecar 缺失/非法：`validate` 只记录 warning，HTML fallback Markdown，不把可读 final answer 判死；
+- strict：`--require-chairman-contribution-map` 后 `requested=true, required=true`，sidecar 缺失或非法时 `validate` 失败；
+- legacy run 缺 metadata / sidecar：不失败。
 
 建议把这个实现层决策补进 `DECISIONS.md`，因为它会影响公共 artifact contract。
 
@@ -358,7 +360,7 @@ live runtime 不可用时**必须明确标记 skipped，不得用 fixture/单测
 
 ### B3. A1 原审查段落已被新版裁决部分覆盖，执行时以裁决和阶段二正文为准
 
-A1 原文里曾写"显式 `--members` 超过 4 个时进入新裁剪逻辑、少于 3 个进入新保护逻辑"。新版裁决已经把它改成"原生 `--members` 不补不裁，自选体验路径才归一化"。
+A1 原文里的“原生 `--members` 直接按成员数触发裁剪或保护”的旧说法已经作废。新版裁决已经把它改成"原生 `--members` 不补不裁，自选体验路径才归一化"。
 
 执行 Agent 阅读时应以三处为准：
 
@@ -366,7 +368,7 @@ A1 原文里曾写"显式 `--members` 超过 4 个时进入新裁剪逻辑、少
 2. "架构师裁决"里的 A1；
 3. 本节 B1/B2。
 
-不要按 A1 的旧"显式 `--members` 直接裁剪"句子实现。
+不要按 A1 的旧裁剪说法实现。
 
 ---
 
@@ -388,6 +390,6 @@ A1 原文里曾写"显式 `--members` 超过 4 个时进入新裁剪逻辑、少
 
 **B2 · `DECISIONS.md` 影响范围自相矛盾 —— 采纳，已修。** 旧"`run` 对 `--members >4` 引入裁剪行为"与新版"原生 `--members` 不变"冲突，已改为"新增自选归一化入口；原生 `--members` 行为不变；归一化入口对自选 members 补足/裁剪并写 `selection_surface` provenance"。执行**不要**按"看到 `--members >4` 就裁剪"实现。
 
-**B3 · A1 旧句作废、以新裁决为准 —— 确认。** 实现时的事实源优先级：①阶段二正文「不变路径（不变量）」② 第一轮裁决 A1（已更新）③ 本轮 B1/B2。第一轮**审查段** A1 里"显式 `--members` 超 4 直接裁剪 / 少于 3 进保护"的旧措辞**正式作废**，不据此实现。
+**B3 · A1 旧句作废、以新裁决为准 —— 确认。** 实现时的事实源优先级：①阶段二正文「不变路径（不变量）」② 第一轮裁决 A1（已更新）③ 本轮 B1/B2。第一轮**审查段** A1 里关于原生 `--members` 直接触发裁剪或保护的旧措辞**正式作废**，不据此实现。
 
 裁决到此。B1 我已把方向与不变量定死、命名留给你；B2 已修 `DECISIONS.md`。可以进实现。

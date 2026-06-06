@@ -759,3 +759,376 @@ https://job-boards.greenhouse.io/anthropic/jobs/5247640008
   - 结果：10 个测试通过。
 - 通过：`PYTHONPATH=src python3 -m compileall src`
 - 通过：`git diff --check`
+
+---
+
+# LCT 主席贡献说明默认开启（2026-06-06）
+
+## 阶段 0：新分支与基线
+
+### 当前分支
+
+- 分支：`codex/lct-chairman-contribution-default-on-20260606`
+- 基线 commit：`023326c Merge pull request #19 from JasonYang0104/codex/lct-v19-chairman-note-kimi-default-20260606`
+- 未跟踪文件：
+  - `CLAUDE.md`：保留，不纳入本任务。
+  - `docs/lct-chairman-contribution-default-on-handoff-20260606.md`：本轮 handoff 输入；暂保留未跟踪状态，后续只在确认需要纳入 PR 时再处理。
+
+### 基线验证
+
+- 通过：`PYTHONPATH=src python3 -m compileall src`
+  - exit 0。
+- 通过：`make test`
+  - exit 0；247 个 unittest 通过，`OK`。
+- 通过：`git diff --check`
+  - exit 0，无输出。
+
+### 当前问题确认
+
+- `CouncilConfig.chairman_contribution_enabled` 当前默认仍为 `False`。
+- CLI help 仍写 `--chairman-contribution-map` default off。
+- README / canonical Skill / `.trae` Skill 仍有默认关闭旧口径。
+- `validation.py` 当前是 enabled 即 hard fail，尚未区分 default requested soft 与 strict required hard。
+
+## 阶段 1：先同步文档口径
+
+### 目标
+
+- 将当前事实源从“默认关闭灰度”改为“默认 requested、可 opt-out、可 strict”。
+- 明确 `--chairman-contribution-map` 是兼容 alias。
+- 明确 `--no-chairman-contribution-map` 用于关闭。
+- 明确 `--require-chairman-contribution-map` 用于 release / E2E strict gate。
+- 明确默认 requested 但 not required 时，缺失或非法 sidecar 是 warning + HTML fallback，不把可读 final answer 判死。
+
+### 已更新文件
+
+- `README.md`
+- `skills/llm-council-for-trae/SKILL.md`
+- `.trae/skills/llm-council-for-trae/SKILL.md`
+- `docs/lct-experience-upgrade-implementation-spec-20260606.md`
+- `docs/lct-experience-upgrade-test-plan-20260606.md`
+- `docs/lct-experience-upgrade-implementation-brief-20260606.md`
+- `docs/lct-experience-upgrade-implementation-brief-20260606.html`
+- `DECISIONS.md`
+
+### 尚未完成
+
+- 还没有写本轮红灯测试。
+- 还没有改 CLI / config / validation / manifest / Stage 3 默认行为。
+
+## 阶段 2：TDD 红灯测试
+
+### 红灯命令
+
+```bash
+PYTHONPATH=src python3 -m unittest \
+  tests.test_core.CouncilCoreTests.test_chairman_contribution_map_requested_by_default \
+  tests.test_core.CouncilCoreTests.test_build_config_can_disable_chairman_contribution_map \
+  tests.test_core.CouncilCoreTests.test_build_config_accepts_compat_chairman_contribution_map \
+  tests.test_core.CouncilCoreTests.test_build_config_requires_chairman_contribution_map_strict \
+  tests.test_core.CouncilCoreTests.test_stage3_prompt_requests_contribution_blocks_by_default \
+  tests.test_core.CouncilCoreTests.test_initial_manifest_records_default_chairman_contribution_metadata \
+  tests.test_core.CouncilCoreTests.test_validate_warns_default_requested_contribution_map_missing_sidecar \
+  tests.test_core.CouncilCoreTests.test_validate_fails_required_contribution_map_missing_sidecar \
+  tests.test_core.CouncilCoreTests.test_validate_warns_default_requested_contribution_map_unknown_member_reference \
+  tests.test_core.CouncilCoreTests.test_validate_rejects_contribution_map_unknown_member_reference \
+  tests.test_core.CouncilCoreTests.test_validate_rejects_contribution_map_consensus_with_fewer_than_two_members \
+  tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_readme_and_skills_document_default_on_chairman_contribution_map \
+  -v
+```
+
+### 红灯结果
+
+- 结果：失败，exit 1。
+- 失败 / error 复现了预期旧行为：
+  - `test_chairman_contribution_map_requested_by_default`：当前默认仍为 `False`。
+  - `test_build_config_can_disable_chairman_contribution_map`：`--no-chairman-contribution-map` 仍是 unknown option。
+  - `test_build_config_accepts_compat_chairman_contribution_map`：缺 `chairman_contribution_required` 字段。
+  - `test_build_config_requires_chairman_contribution_map_strict`：`--require-chairman-contribution-map` 仍是 unknown option。
+  - `test_stage3_prompt_requests_contribution_blocks_by_default`：默认 Stage 3 prompt 未包含 `contribution_map.json`。
+  - `test_initial_manifest_records_default_chairman_contribution_metadata`：manifest metadata 缺 `chairman_contribution`。
+  - `test_validate_warns_default_requested_contribution_map_missing_sidecar`：默认 requested missing sidecar 仍进入 failures。
+  - `test_validate_warns_default_requested_contribution_map_unknown_member_reference`：默认 requested invalid member refs 仍进入 failures。
+- `test_validate_fails_required_contribution_map_missing_sidecar`、两个 required invalid sidecar 测试仍通过，说明旧 hard-fail 路径存在，但还没有区分 strict 与 default soft。
+
+### 绿灯结果
+
+- 通过：同一组 12 个测试重跑，全部 `OK`。
+- 实现要点：
+  - `CouncilConfig.chairman_contribution_enabled` 默认改为 `True`，作为 requested 语义。
+  - 新增 `CouncilConfig.chairman_contribution_required`，默认 `False`。
+  - CLI 新增 `--no-chairman-contribution-map` 和 `--require-chairman-contribution-map`，保留 `--chairman-contribution-map` 兼容入口。
+  - `initial_manifest()` 默认写入 `metadata.chairman_contribution`。
+  - `validate` 将 default requested / not required 的 contribution map 错误降级为 warning；strict required 仍 hard fail。
+
+## 阶段 3：第 13 节模型选择口径同步
+
+### 新增要求
+
+- README / canonical Skill / `.trae` mirror 中，Model Selection 已经写明 agent-assisted 自选走 `--selected-members` / `--selected-chairman`，Hard Constraints 不能继续写成“Agent 非 TTY 只能 `--default-models`”。
+- 用户只问“有什么模型”时，只展示 `models --recommend --json` / 当前模型清单和推荐阵容，不擅自启动 run。
+- 用户想指定模型但没给具体模型时，先读取当前模型清单和推荐阵容，再追问或给文本 fallback。
+- `docs/lct-experience-upgrade-test-plan-20260606.md` 里关于“当前没有 `--selected-members` / `normalize_user_model_selection`”的红灯预期已经过时，要改成一致性回归。
+
+### 红灯命令
+
+```bash
+PYTHONPATH=src python3 -m unittest \
+  tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_readme_and_skills_document_model_selection_intent_boundaries \
+  tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_model_selection_docs_remove_stale_selected_members_red_expectation \
+  tests.test_core.CouncilCoreTests.test_selected_chairman_requires_selected_members \
+  tests.test_core.CouncilCoreTests.test_non_tty_model_selection_error_mentions_agent_assisted_path \
+  -v
+```
+
+### 红灯结果
+
+- 结果：失败，exit 1。
+- 失败复现：
+  - README / Skill 缺“有什么模型”只展示清单、不擅自 run 的边界。
+  - Skill Hard Constraints 仍把非 TTY 简化成只能 `--default-models`。
+  - 测试计划仍有过时红灯预期。
+  - CLI 非 TTY 错误提示未列出 `--selected-members/--selected-chairman`。
+
+### 绿灯结果
+
+- 通过：同一 4 个测试重跑，全部 `OK`。
+- 实现要点：
+  - README / canonical Skill / `.trae` mirror 加入模型选择意图边界。
+  - Hard Constraints 改为“非 TTY run 必须显式指定模型路径”，允许 `--default-models`、`--selected-members/--selected-chairman`、原生 `--members/--chairman` 或 `--profile`。
+  - CLI 非 TTY 错误提示补充 agent-assisted 自选路径。
+  - 测试计划去掉“当前没有 selected-members”的过时红灯，改成一致性回归。
+
+## 阶段 4：补充边界测试与本地验证
+
+### 额外测试
+
+- 新增 `test_build_config_rejects_required_contribution_map_when_disabled`：
+  - `--require-chairman-contribution-map` 与 `--no-chairman-contribution-map` 同时出现时，`build_config()` 必须早失败。
+
+### 相关切片验证
+
+```bash
+PYTHONPATH=src python3 -m compileall src
+```
+
+- 结果：通过，exit 0。
+
+```bash
+PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_chairman_contribution_map_requested_by_default tests.test_core.CouncilCoreTests.test_build_config_can_disable_chairman_contribution_map tests.test_core.CouncilCoreTests.test_build_config_accepts_compat_chairman_contribution_map tests.test_core.CouncilCoreTests.test_build_config_requires_chairman_contribution_map_strict tests.test_core.CouncilCoreTests.test_build_config_rejects_required_contribution_map_when_disabled tests.test_core.CouncilCoreTests.test_stage3_prompt_requests_contribution_blocks_by_default tests.test_core.CouncilCoreTests.test_initial_manifest_records_default_chairman_contribution_metadata tests.test_core.CouncilCoreTests.test_validate_warns_default_requested_contribution_map_missing_sidecar tests.test_core.CouncilCoreTests.test_validate_fails_required_contribution_map_missing_sidecar tests.test_core.CouncilCoreTests.test_validate_warns_default_requested_contribution_map_unknown_member_reference tests.test_core.CouncilCoreTests.test_validate_rejects_contribution_map_unknown_member_reference tests.test_core.CouncilCoreTests.test_validate_rejects_contribution_map_consensus_with_fewer_than_two_members tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_readme_and_skills_document_default_on_chairman_contribution_map tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_readme_and_skills_document_model_selection_intent_boundaries tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_model_selection_docs_remove_stale_selected_members_red_expectation -v
+```
+
+- 结果：通过，15 个测试 `OK`。
+
+### 全量验证
+
+```bash
+make test
+```
+
+- 结果：通过，259 个 unittest `OK`。
+
+```bash
+git diff --check
+```
+
+- 结果：通过，exit 0，无输出。
+
+### 文案微调后复验
+
+```bash
+PYTHONPATH=src python3 -m unittest tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_model_selection_docs_remove_stale_selected_members_red_expectation tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_readme_and_skills_document_default_on_chairman_contribution_map -v
+```
+
+- 结果：通过，2 个测试 `OK`。
+
+```bash
+git diff --check
+```
+
+- 结果：通过，exit 0，无输出。
+
+## 阶段 5：隔离 workspace live smoke
+
+### Smoke workspace
+
+- 路径：`/Users/bytedance/Documents/AI Coder/test/LLM-Council-for-Trae-contribution-default-on-20260606/smoke-20260606T2055`
+- 当前分支源码证明：命令使用 `PYTHONPATH=/Users/bytedance/Documents/AI Coder/COCO-llm-council/src`，没有使用全局 wrapper。
+- 输入文件：`_lct_question.md`
+- Input mode：`structured by Agent`
+- 原始输入已原样保留：
+
+```text
+使用LCT回答："""
+https://job-boards.greenhouse.io/anthropic/jobs/5247640008
+分析解读这个JD。先意图理解。
+"""
+```
+
+- Fact pack 来源：Greenhouse JD 页面，访问日期 2026-06-06。
+
+### Runtime preflight
+
+- 通过：`PYTHONPATH=src python3 -m llm_council_for_trae.cli doctor --json`
+  - `ok=true`
+  - `traecli` version `0.120.38`
+  - `doctor_exit_code=1` 但只有 MCP warning，20 个模型可见；按项目规则不硬阻断 direct run。
+- 通过：`PYTHONPATH=src python3 -m llm_council_for_trae.cli models --recommend --json`
+  - 20 个模型可见。
+  - recommendation：members=`DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Kimi-K2.6`；chairman=`DeepSeek-V4-Pro`。
+- 通过：`command -v traecli && traecli --version`
+  - `/Users/bytedance/.local/bin/traecli`
+  - `coco version 0.120.38`
+
+### First live smoke: default soft fallback observed
+
+命令没有追加 `--chairman-contribution-map`：
+
+```bash
+PYTHONPATH="/Users/bytedance/Documents/AI Coder/COCO-llm-council/src" python3 -m llm_council_for_trae.cli --store "/Users/bytedance/Documents/AI Coder/test/LLM-Council-for-Trae-contribution-default-on-20260606/smoke-20260606T2055/runs" --runtime-cwd "/Users/bytedance/Documents/AI Coder/test/LLM-Council-for-Trae-contribution-default-on-20260606/smoke-20260606T2055" run --input "/Users/bytedance/Documents/AI Coder/test/LLM-Council-for-Trae-contribution-default-on-20260606/smoke-20260606T2055/_lct_question.md" --default-models --run-id run-20260606T2055-chairman-default-on-smoke --json
+```
+
+- 结果：`status=degraded_ok`
+- 降级原因：Stage 1 `Response B` / `openrouter-1o` 返回 `traecli result error`；有效 Stage 1 成员为 `DeepSeek-V4-Pro`、`GPT-5.4`、`Kimi-K2.6`。
+- validate：`status=degraded_ok`，`verdict=usable_degraded_final`，`failures=[]`。
+- contribution metadata：`requested=true`、`required=false`、`present=false`、`error=missing_or_invalid_contribution_map_json`。
+- sidecar：缺失。
+- HTML：存在，但未渲染 contribution source blocks / `同侪#n`。
+- 归因：主席把 contribution map-like 对象放在 final markdown 末尾，但 JSON 字符串中英文双引号未正确转义，`extract_contribution_map()` 无法解析。该结果证明 default soft fallback 生效，但不足以证明 HTML contribution-block 路径。
+
+### Prompt hardening
+
+- 修改 `build_stage3_prompt()`：要求最终只输出一个 fenced `json` contribution map 代码块，且必须能被 `json.loads` 直接解析；JSON 字符串内英文双引号必须转义，或使用中文引号 / 单引号。
+- 新增 `test_stage3_prompt_requires_json_parseable_contribution_map`。
+
+复验：
+
+```bash
+PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_stage3_prompt_requires_json_parseable_contribution_map tests.test_core.CouncilCoreTests.test_stage3_prompt_requests_contribution_blocks_by_default tests.test_core.CouncilCoreTests.test_stage3_writes_contribution_map_when_enabled tests.test_core.CouncilCoreTests.test_html_renders_contribution_blocks_deterministically -v
+```
+
+- 结果：通过，4 个测试 `OK`。
+
+```bash
+PYTHONPATH=src python3 -m compileall src
+git diff --check
+```
+
+- 结果：均通过，`git diff --check` 无输出。
+
+### Second live smoke: default contribution sidecar observed
+
+命令仍未追加 `--chairman-contribution-map`：
+
+```bash
+PYTHONPATH="/Users/bytedance/Documents/AI Coder/COCO-llm-council/src" python3 -m llm_council_for_trae.cli --store "/Users/bytedance/Documents/AI Coder/test/LLM-Council-for-Trae-contribution-default-on-20260606/smoke-20260606T2055/runs" --runtime-cwd "/Users/bytedance/Documents/AI Coder/test/LLM-Council-for-Trae-contribution-default-on-20260606/smoke-20260606T2055" run --input "/Users/bytedance/Documents/AI Coder/test/LLM-Council-for-Trae-contribution-default-on-20260606/smoke-20260606T2055/_lct_question.md" --default-models --run-id run-20260606T2110-chairman-default-on-smoke-v2 --json
+```
+
+- 结果：`status=degraded_ok`
+- 降级原因：Stage 1 `Response B` / `openrouter-1o` 返回 `traecli result error`；有效 Stage 1 成员为 `DeepSeek-V4-Pro`、`GPT-5.4`、`Kimi-K2.6`。
+- validate：`status=degraded_ok`，`verdict=usable_degraded_final`，`failures=[]`。
+- warnings：仅有 `search_tool_output_conversion` warning。
+- contribution metadata：
+  - `enabled=true`
+  - `requested=true`
+  - `required=false`
+  - `present=true`
+  - `path=stage3/contribution_map.json`
+  - `source=chairman_structured_output`
+  - `error=null`
+- sidecar：`/Users/bytedance/Documents/AI Coder/test/LLM-Council-for-Trae-contribution-default-on-20260606/smoke-20260606T2055/runs/run-20260606T2110-chairman-default-on-smoke-v2/stage3/contribution_map.json`
+- HTML：`/Users/bytedance/Documents/AI Coder/test/LLM-Council-for-Trae-contribution-default-on-20260606/smoke-20260606T2055/runs/run-20260606T2110-chairman-default-on-smoke-v2/html/index.html`
+- HTML 证据：`rg '同侪#[0-9]' html/index.html` 找到 `GPT-5.4（同侪#1）`、`DeepSeek-V4-Pro（同侪#2）`、`Kimi-K2.6（同侪#3）`。
+- Strict live smoke：跳过第三条完整 live council run；strict required 行为已由 unit tests 覆盖：missing sidecar、unknown member reference、consensus 成员少于 2 均在 `required=true` 下 hard fail。
+
+### Smoke 后最终本地验证
+
+```bash
+PYTHONPATH=src python3 -m compileall src
+```
+
+- 结果：通过，exit 0。
+
+```bash
+make test
+```
+
+- 结果：通过，260 个 unittest `OK`。
+
+```bash
+git diff --check
+```
+
+- 结果：通过，exit 0，无输出。
+
+## 阶段 6：只读 subagent review 与 P2 修复
+
+### 第一轮只读 review
+
+- Reviewer：Nash
+- 结论：fail
+- P1：None
+- P2：
+  - `html_export.py::render_contribution_map()` 只检查 sidecar 可解析且 `blocks` 是 list，没有复用 validation 的成员引用 / attribution 语义校验；默认 requested soft path 下，语义非法 sidecar 会被 HTML 直接渲染，违反“非法 sidecar warning + HTML fallback”口径。
+  - `validation.py::contribution_map_checks()` strict gate 没有校验 block `id/text/attribution` 必填；缺 `id` 或 `text` 的 block 在 `required=true` 下仍可能通过。
+
+### P2 红灯测试
+
+```bash
+PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_validate_fails_required_contribution_map_missing_block_fields tests.test_core.CouncilCoreTests.test_html_falls_back_when_contribution_map_has_invalid_member_reference -v
+```
+
+- 结果：失败，2 个测试复现 Nash P2：
+  - strict 缺 block 字段时 validate status 仍为 `ok`。
+  - unknown member sidecar 被 HTML 渲染，出现 `invalid sidecar should not render` 和 `Unknown-Model`。
+
+### P2 修复
+
+- 新增 `src/llm_council_for_trae/contribution_map.py`，集中实现 contribution map semantic checks：
+  - block 必须是 object。
+  - 每个 block 必须有非空字符串 `id/type/text` 和 object `attribution`。
+  - block type 必须在允许集合内。
+  - attribution kind 必须在允许集合内。
+  - single member 必须且只能引用 1 个有效 Stage 1 成员。
+  - multi member consensus 必须引用至少 2 个成员。
+  - 成员引用必须出现在有效 Stage 1 模型集合内。
+- `validation.py` 复用该 helper，并新增 `contribution_map_block_fields` check；default requested / not required 为 warning，strict required 为 failure。
+- `html_export.py` 在渲染 sidecar 前复用同一 semantic checks；任何语义 check 失败都 fallback 到 `stage3/final.md` Markdown，不渲染非法来源。
+
+### P2 绿灯验证
+
+```bash
+PYTHONPATH=src python3 -m unittest tests.test_core.CouncilCoreTests.test_validate_fails_required_contribution_map_missing_block_fields tests.test_core.CouncilCoreTests.test_html_falls_back_when_contribution_map_has_invalid_member_reference tests.test_core.CouncilCoreTests.test_validate_warns_default_requested_contribution_map_unknown_member_reference tests.test_core.CouncilCoreTests.test_validate_rejects_contribution_map_unknown_member_reference tests.test_core.CouncilCoreTests.test_validate_rejects_contribution_map_consensus_with_fewer_than_two_members tests.test_core.CouncilCoreTests.test_html_renders_contribution_blocks_deterministically -v
+```
+
+- 结果：通过，6 个测试 `OK`。
+
+```bash
+PYTHONPATH=src python3 -m compileall src
+```
+
+- 结果：通过，exit 0。
+
+```bash
+make test
+```
+
+- 结果：通过，262 个 unittest `OK`。
+
+```bash
+git diff --check
+```
+
+- 结果：通过，exit 0，无输出。
+
+### 最终只读 review
+
+- Reviewer：Nash
+- 结论：pass
+- P1：None
+- P2：None
+- P3：None
+- 观察：
+  - `src/llm_council_for_trae/contribution_map.py` 已进入 staged diff。
+  - `git diff --name-only` 无输出，tracked 改动均已 staged。
+  - `CLAUDE.md` 和 `docs/lct-chairman-contribution-default-on-handoff-20260606.md` 仍是 untracked，未 staged。

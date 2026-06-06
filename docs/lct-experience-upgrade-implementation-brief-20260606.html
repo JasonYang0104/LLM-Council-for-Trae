@@ -179,7 +179,7 @@
         </section>
         <section class="cell">
           <h3>贡献说明</h3>
-          <p><code>--chairman-contribution-map</code> 默认关闭。启用后 Stage 3 写 <code>stage3/contribution_map.json</code>，HTML 从 blocks 确定性渲染来源说明。</p>
+          <p>主席贡献说明默认 requested；<code>--no-chairman-contribution-map</code> 显式关闭，<code>--require-chairman-contribution-map</code> 作为 strict gate。HTML 从 blocks 确定性渲染来源说明。</p>
         </section>
       </div>
 
@@ -197,7 +197,7 @@
       <p class="meta">对应提交：<code>57d411a feat: add explicit selected-model normalization</code></p>
 
       <h3>Chairman contribution map</h3>
-      <p>Stage 3 只在 enabled 时写 sidecar；validate 只在 enabled 时检查结构、成员引用和 consensus 成员数；HTML 不调模型、不按自然段猜来源。</p>
+      <p>Stage 3 默认请求 sidecar；显式关闭时回到 Markdown；默认 requested 但 not required 时，sidecar 缺失或非法只记录 warning 并 fallback；strict required 时 validate 检查结构、成员引用和 consensus 成员数并 hard fail。HTML 不调模型、不按自然段猜来源。</p>
       <p class="meta">对应提交：<code>5fa99e2 feat: add gated chairman contribution map</code></p>
 
       <h2>测试证据</h2>
@@ -212,7 +212,7 @@ make test</code></pre>
         <li><code>--default-models</code> 不变。</li>
         <li>原生 <code>--members</code> / <code>--chairman</code> 不变，不补足、不裁剪。</li>
         <li><code>profile</code> 和 subagent 路径不走 selected normalization。</li>
-        <li><code>--chairman-contribution-map</code> 默认关闭；legacy run 缺 sidecar 不失败。</li>
+        <li>主席贡献说明默认 requested；<code>--no-chairman-contribution-map</code> 显式关闭；<code>--require-chairman-contribution-map</code> 启用 strict gate；legacy run 缺 metadata 不失败。</li>
         <li>contribution map validate 只验证结构和引用合法性，不声称验证真实贡献程度。</li>
       </ul>
 

@@ -5,7 +5,7 @@
 
 ## 一句话结论
 
-LCT 本轮体验升级已经把三个容易误解的用户界面问题收进可测试合同：HTML 顶部不再把 quorum 黑话当作主信息，输入改写边界写进 Skill/README，自选模型路径和主席贡献说明都有独立 opt-in surface 与 provenance。默认运行路径保持兼容；新增能力只在明确触发时生效。
+LCT 本轮体验升级已经把三个容易误解的用户界面问题收进可测试合同：HTML 顶部不再把 quorum 黑话当作主信息，输入改写边界写进 Skill/README，自选模型路径有独立 opt-in surface 与 provenance。主席贡献说明第一版是 opt-in；2026-06-06 后续裁决将其升级为默认开启、可显式关闭、可 strict 校验的信任能力。
 
 ## 这轮解决了什么
 
@@ -15,7 +15,7 @@ LCT 本轮体验升级已经把三个容易误解的用户界面问题收进可�
 
 第三，自选模型体验从原生 `--members` 中剥离。原生 `--members` 仍是 power-user 精确路径，给几个跑几个，不补足、不裁剪。agent-assisted 自选使用 `--selected-members` / `--selected-chairman`，会归一化到 4 个成员，并把用户请求、解析结果、补足成员、裁剪成员和最终 config 写入 `manifest.metadata.model_selection`。
 
-第四，主席贡献说明采用默认关闭的 sidecar contract。只有追加 `--chairman-contribution-map` 时，Stage 3 才要求主席输出 `stage3/contribution_map.json`；HTML 从 blocks 确定性渲染段落来源，并根据 `metadata.aggregate_rankings` 给成员来源追加 `同侪#n` 可验证锚点；validate 只在 enabled 时校验 sidecar。系统不输出贡献百分比，也不把 Stage 2 同侪排序解释成模型能力排行。
+第四，主席贡献说明采用默认请求的 sidecar contract。日常 run 不需要追加 `--chairman-contribution-map`；Stage 3 默认请求输出 `stage3/contribution_map.json`，HTML 从 blocks 确定性渲染段落来源，并根据 `metadata.aggregate_rankings` 给成员来源追加 `同侪#n` 可验证锚点。明确关闭时传 `--no-chairman-contribution-map`；release / E2E strict gate 传 `--require-chairman-contribution-map`。默认 requested 但 not required 时，缺失或非法 sidecar 只记录 warning 并 fallback Markdown；strict required 才让 validate failure。系统不输出贡献百分比，也不把 Stage 2 同侪排序解释成模型能力排行。
 
 ## 关键实现
 
@@ -41,7 +41,7 @@ LCT 本轮体验升级已经把三个容易误解的用户界面问题收进可�
 
 ### Chairman contribution map
 
-`src/llm_council_for_trae/cli.py` 新增 `--chairman-contribution-map`。启用后，Stage 3 prompt 要求主席输出 `contribution_map` JSON；`src/llm_council_for_trae/council.py` 解析 fenced JSON 或整段 JSON，写入 `stage3/contribution_map.json`，并在 manifest 记录 `metadata.chairman_contribution`。
+`src/llm_council_for_trae/cli.py` 保留 `--chairman-contribution-map` 作为兼容入口，并新增 `--no-chairman-contribution-map` 与 `--require-chairman-contribution-map`。默认 run 请求 contribution map；显式关闭后 Stage 3 prompt 不要求 blocks；strict required 后 validate 将缺失或非法 sidecar 作为 failure。`src/llm_council_for_trae/council.py` 解析 fenced JSON 或整段 JSON，写入 `stage3/contribution_map.json`，并在 manifest 记录 `metadata.chairman_contribution` 的 requested / required / present / error。
 
 `src/llm_council_for_trae/schema_contract.py` 定义 `CONTRIBUTION_MAP_SCHEMA`；`src/llm_council_for_trae/validation.py` 只在 enabled 时校验 sidecar 存在、block type 合法、attribution kind 合法、成员引用来自有效 Stage 1 成员、`multi_member_consensus` 至少引用 2 个成员、`single_member` 只引用 1 个成员。
 
@@ -57,7 +57,7 @@ LCT 本轮体验升级已经把三个容易误解的用户界面问题收进可�
 - Skill raw / structured / negative trigger matrix。
 - 原生 `--members` 精确语义不变。
 - `--selected-members` / `--selected-chairman` 归一化与 provenance。
-- chairman contribution map 默认关闭、enabled sidecar 校验和 HTML blocks 渲染。
+- chairman contribution map 默认 requested、显式关闭、strict sidecar 校验和 HTML blocks 渲染。
 
 阶段验证已经通过：
 
@@ -76,7 +76,7 @@ make test
 - `--default-models` 不变。
 - 原生 `--members` / `--chairman` 不变，不补足、不裁剪。
 - `profile` 和 subagent 路径不走 selected normalization。
-- `--chairman-contribution-map` 默认关闭；legacy run 缺 `stage3/contribution_map.json` 不失败。
+- 主席贡献说明默认 requested；`--no-chairman-contribution-map` 显式关闭；`--require-chairman-contribution-map` 启用 strict gate；legacy run 缺 `metadata.chairman_contribution` 不失败。
 - contribution map validate 只验证结构和引用合法性，不声称验证真实贡献程度。
 - HTML 不删除 quorum/backfill evidence；只是把用户首屏主信息从内部状态改为有效成员。
 
