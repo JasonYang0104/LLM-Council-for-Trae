@@ -21,7 +21,7 @@
 
 ### 日常使用：全局安装后在干净问题 workspace 提问
 
-日常使用不要把 LCT 仓库 clone 到问题 workspace。默认路径是：从 GitHub `main` 安装到 `~/.LCT`，用 `~/.local/bin/llm-council-for-trae` wrapper 调用 `~/.LCT/src`，把 LCT Skill 安装到 `/Users/bytedance/.agents/skills/llm-council-for-trae`，然后在干净问题 workspace 中提问。
+日常使用不要把 LCT 仓库 clone 到问题 workspace。默认路径是：从 GitHub `main` 安装到 `~/.LCT`，用 `~/.local/bin/llm-council-for-trae` wrapper 调用 `~/.LCT/src`，把 LCT Skill 安装到 `~/.agents/skills/llm-council-for-trae`，然后在干净问题 workspace 中提问。
 
 自然语言安装入口：用户说 `请从 GitHub 仓库 https://github.com/JasonYang0104/LLM-Council-for-Trae 的最新版 LCT` 时，等同于从 GitHub main 安装或更新。必须使用 `~/.LCT + make install-global`：clone/fetch/pull `~/.LCT` 后运行 `make -C ~/.LCT install-global`；不得使用 `uv tool install`。安装成功必须同时证明：`~/.LCT HEAD == GitHub refs/heads/main`、`command -v llm-council-for-trae` 的 wrapper 包含 `.LCT/src`、Skill symlink 指向 `~/.LCT/skills/llm-council-for-trae`。
 
@@ -48,7 +48,7 @@ make -C ~/.LCT install-global
 这个命令会安装两件事：
 
 - `~/.local/bin/llm-council-for-trae`：wrapper 指向 `~/.LCT/src`。
-- `/Users/bytedance/.agents/skills/llm-council-for-trae`：用户级 Skill 链接到 `~/.LCT/skills/llm-council-for-trae`。
+- `~/.agents/skills/llm-council-for-trae`：用户级 Skill 链接到 `~/.LCT/skills/llm-council-for-trae`。
 
 安装最新版不能只看 `llm-council-for-trae --version`，版本号可能没变，旧 uv tool wrapper 或旧 `site-packages` 仍可能被 shell 先找到。每次用户明确要求「从 GitHub main 全局安装最新版 LCT」时，执行 Agent 必须在 `notes.md` 记录 actual command、exit code、key stdout/stderr 和 pass/fail 结论，并跑下面的 freshness checks **（注释：新鲜度检查，证明当前命令实际来自最新源码，而不是旧安装包）**：
 

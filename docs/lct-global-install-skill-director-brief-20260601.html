@@ -173,7 +173,7 @@
   <pre>PYTHONPATH=src python3 -m compileall src  -> pass
 make test                                  -> pass, 120 tests
 git diff --check                           -> pass</pre>
-  <p>全局安装验证：wrapper 指向 <code>/Users/bytedance/.LCT/src</code>，用户级 Skill symlink 指向 <code>/Users/bytedance/.LCT/skills/llm-council-for-trae</code>。<code>doctor</code> ok with warnings only；模型推荐返回非空模型列表。模型列表是当前环境态，live smoke 前观测为 24 个，最终复验观测为 21 个。</p>
+  <p>全局安装验证：wrapper 指向 <code>~/.LCT/src</code>，用户级 Skill symlink 指向 <code>~/.LCT/skills/llm-council-for-trae</code>。<code>doctor</code> ok with warnings only；模型推荐返回非空模型列表。模型列表是当前环境态，live smoke 前观测为 24 个，最终复验观测为 21 个。</p>
 
   <h2>Live Smoke</h2>
   <pre>workspace: /tmp/lct-live-smoke
@@ -196,7 +196,7 @@ error: traecli result error</pre>
   <ul>
     <li>本分支尚未合入 <code>main</code>；<code>~/.LCT</code> 当前 checkout 在本分支，用于验证。</li>
     <li>GLM-5.1 Stage 2 / actual model mismatch 是 runtime/provider 稳定性问题，不是安装文档问题。</li>
-    <li>用户级 Skill 是否自动触发还取决于外层 Agent runtime 是否加载 <code>/Users/bytedance/.agents/skills</code>。</li>
+    <li>用户级 Skill 是否自动触发还取决于外层 Agent runtime 是否加载 <code>~/.agents/skills</code>。</li>
   </ul>
 
   <h2>下一步</h2>

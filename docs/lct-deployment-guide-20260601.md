@@ -39,7 +39,7 @@ Keep three directories separate. 中文口径：开发仓库、`~/.LCT` 全局�
 
 ~/.local/bin/llm-council-for-trae
 
-/Users/bytedance/.agents/skills/
+~/.agents/skills/
   llm-council-for-trae -> ~/.LCT/skills/llm-council-for-trae
 
 <clean problem workspace>/
@@ -128,7 +128,7 @@ Use the Makefile target from the global checkout:
 make -C ~/.LCT install-global
 ```
 
-This writes `~/.local/bin/llm-council-for-trae` with `PYTHONPATH` pointing at `~/.LCT/src`, then installs the Skill link at `/Users/bytedance/.agents/skills/llm-council-for-trae`.
+This writes `~/.local/bin/llm-council-for-trae` with `PYTHONPATH` pointing at `~/.LCT/src`, then installs the Skill link at `~/.agents/skills/llm-council-for-trae`.
 
 Equivalent manual wrapper command:
 
@@ -178,15 +178,15 @@ The canonical Skill template lives in:
 `make install-global` links it into the user-level Agent Skill directory. Manual equivalent:
 
 ```bash
-mkdir -p /Users/bytedance/.agents/skills
-ln -sfn ~/.LCT/skills/llm-council-for-trae /Users/bytedance/.agents/skills/llm-council-for-trae
+mkdir -p "$HOME/.agents/skills"
+ln -sfn "$HOME/.LCT/skills/llm-council-for-trae" "$HOME/.agents/skills/llm-council-for-trae"
 ```
 
 Verification:
 
 ```bash
-test -f /Users/bytedance/.agents/skills/llm-council-for-trae/SKILL.md
-test "$(readlink /Users/bytedance/.agents/skills/llm-council-for-trae)" = "$HOME/.LCT/skills/llm-council-for-trae"
+test -f "$HOME/.agents/skills/llm-council-for-trae/SKILL.md"
+test "$(readlink "$HOME/.agents/skills/llm-council-for-trae")" = "$HOME/.LCT/skills/llm-council-for-trae"
 ```
 
 The Skill tells the outer Agent to reject LCT source repositories as problem workspaces, require `--default-models`, require `--json`, run `validate`, and report live `traecli` status separately from fake or non-live checks.
@@ -281,7 +281,7 @@ Uninstall:
 ```bash
 rm -rf ~/.LCT
 rm -f ~/.local/bin/llm-council-for-trae
-rm -rf /Users/bytedance/.agents/skills/llm-council-for-trae
+rm -rf "$HOME/.agents/skills/llm-council-for-trae"
 ```
 
 Uninstalling LCT does not remove existing `.llm-council-for-trae/` run artifacts in problem workspaces.

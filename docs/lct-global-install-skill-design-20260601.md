@@ -18,7 +18,7 @@ The target layout is:
 
 ~/.local/bin/llm-council-for-trae
 
-/Users/bytedance/.agents/skills/
+~/.agents/skills/
   llm-council-for-trae -> ~/.LCT/skills/llm-council-for-trae
 
 <clean problem workspace>/
@@ -62,7 +62,7 @@ This iteration does own one operator-level runtime override rule for the Skill a
 |---|---|---|
 | Development repo | Code, docs, tests, PR review | No |
 | `~/.LCT` | GitHub clone used as global install root | No |
-| `/Users/bytedance/.agents/skills` | User-level Agent Skill registry | No |
+| `~/.agents/skills` | User-level Agent Skill registry | No |
 | Clean problem workspace | User question, run artifacts, final answer, run index | Yes |
 
 ## README Strategy
@@ -71,7 +71,7 @@ The README should put the user path first:
 
 1. Install or update `~/.LCT` from GitHub `main`.
 2. Install the CLI wrapper into `~/.local/bin/llm-council-for-trae`.
-3. Install the Skill into `/Users/bytedance/.agents/skills/llm-council-for-trae`.
+3. Install the Skill into `~/.agents/skills/llm-council-for-trae`.
 4. Run LCT from a clean problem workspace with `--default-models` and `--json`.
 5. Run `validate`.
 6. Read `stage3/final.md` and the HTML artifact path.
@@ -89,7 +89,7 @@ skills/llm-council-for-trae/SKILL.md
 Installation should symlink or copy that directory into:
 
 ```text
-/Users/bytedance/.agents/skills/llm-council-for-trae
+~/.agents/skills/llm-council-for-trae
 ```
 
 The Skill must make these constraints explicit:
@@ -130,8 +130,8 @@ This keeps the dev wrapper and daily-use wrapper separate and testable.
 Use repository contract tests for static behavior:
 
 - README no longer describes cloning this repository into the problem workspace as the default path.
-- README, deployment guide, and Skill agree on `/Users/bytedance/.agents/skills`.
-- No user-facing install doc uses the stale `~/.trae/skills` path.
+- README, deployment guide, and Skill agree on `~/.agents/skills`.
+- No user-facing install doc uses the legacy Trae user skill registry path.
 - `make install-local` is documented as development-only.
 - The Skill template exists and contains the hard workflow constraints.
 - `make install-global` creates a wrapper pointing to `~/.LCT/src` or the provided `LCT_DIR`, not the current checkout.

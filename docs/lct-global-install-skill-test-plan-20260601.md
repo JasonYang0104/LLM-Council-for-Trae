@@ -13,7 +13,7 @@ The tests should verify user-observable contracts through public repository file
 Behavior:
 
 - README no longer tells users to clone this repository into another workspace as the default Agent workflow.
-- README puts the global install path first: `~/.LCT`, `~/.local/bin/llm-council-for-trae`, `/Users/bytedance/.agents/skills`, and a clean problem workspace.
+- README puts the global install path first: `~/.LCT`, `~/.local/bin/llm-council-for-trae`, `~/.agents/skills`, and a clean problem workspace.
 - README keeps development usage, but labels `make install-local` as development-only.
 
 RED:
@@ -57,8 +57,8 @@ GREEN:
 
 Behavior:
 
-- README, deployment guide, and Skill all use `/Users/bytedance/.agents/skills`.
-- User-facing install docs do not use the stale `~/.trae/skills` path.
+- README, deployment guide, and Skill all use `~/.agents/skills`.
+- User-facing install docs do not use the legacy Trae user skill registry path.
 - The deployment guide exists and states that the development repo, `~/.LCT`, and problem workspace are separate directories.
 - Local verification, live smoke, validate, and fake-runtime verification are not collapsed into one success claim.
 - Runtime override is documented as an explicit operator path: 默认 runtime 仍是 traecli，coco 只在显式 override 中使用.
@@ -68,7 +68,7 @@ Behavior:
 RED:
 
 ```bash
-PYTHONPATH=src python3 -m unittest tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_docs_use_current_user_skill_path_and_no_stale_skill_path -v
+PYTHONPATH=src python3 -m unittest tests.test_global_install_skill_docs.GlobalInstallSkillDocsTests.test_docs_use_portable_user_skill_path_and_no_stale_skill_path -v
 ```
 
 Expected initial failure: the deployment guide is absent on `origin/main`.

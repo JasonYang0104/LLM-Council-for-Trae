@@ -11,7 +11,7 @@
 
 核心改动已经落地：
 
-- README 默认入口改为 `~/.LCT` 全局安装、`~/.local/bin/llm-council-for-trae` wrapper、`/Users/bytedance/.agents/skills/llm-council-for-trae` Skill、干净问题 workspace。
+- README 默认入口改为 `~/.LCT` 全局安装、`~/.local/bin/llm-council-for-trae` wrapper、`~/.agents/skills/llm-council-for-trae` Skill、干净问题 workspace。
 - 新增 canonical Skill：`skills/llm-council-for-trae/SKILL.md`。
 - 新增部署指南：`docs/lct-deployment-guide-20260601.md`。
 - 新增设计与测试方案：`docs/lct-global-install-skill-design-20260601.md`、`docs/lct-global-install-skill-test-plan-20260601.md`。
@@ -37,7 +37,7 @@
 `install-global` 做两件事：
 
 1. 写入 `~/.local/bin/llm-council-for-trae`，wrapper 的 `PYTHONPATH` 指向 `~/.LCT/src`。
-2. 把 `~/.LCT/skills/llm-council-for-trae` 链接到 `/Users/bytedance/.agents/skills/llm-council-for-trae`。
+2. 把 `~/.LCT/skills/llm-council-for-trae` 链接到 `~/.agents/skills/llm-council-for-trae`。
 
 `install-local` 明确保留为开发者路径。它继续指向当前 checkout 的 `src/`，适合本地调试，不是默认用户安装方式。
 
@@ -80,8 +80,8 @@ git diff --check
 全局安装验证：
 
 - `~/.LCT` 已存在，当前为本分支 `codex/lct-global-install-skill-docs-20260601`。这是 branch install，不伪装成已经合入 main。
-- `~/.local/bin/llm-council-for-trae` 指向 `/Users/bytedance/.LCT/src`。
-- `/Users/bytedance/.agents/skills/llm-council-for-trae` 指向 `/Users/bytedance/.LCT/skills/llm-council-for-trae`。
+- `~/.local/bin/llm-council-for-trae` 指向 `~/.LCT/src`。
+- `~/.agents/skills/llm-council-for-trae` 指向 `~/.LCT/skills/llm-council-for-trae`。
 - `llm-council-for-trae --help`：pass。
 - `llm-council-for-trae doctor --json`：ok，只有 warnings，无 errors。
 - `llm-council-for-trae models --recommend --json`：pass，返回非空模型列表。模型列表是当前环境态；live smoke 前观测为 24 个，最终复验观测为 21 个。
@@ -125,7 +125,7 @@ error: traecli result error
 
 1. 本分支尚未合入 `main`。`~/.LCT` 当前为了验证而 checkout 到本分支；合并后应切回 `main` 并 `git pull --ff-only origin main`。
 2. live smoke 暴露了 GLM-5.1 Stage 2 / actual model mismatch 问题。它不是安装失败，但值得后续 runtime 线继续跟。
-3. 当前 Skill 是用户级模板；外层 Agent 是否稳定触发还取决于 Agent runtime 是否加载 `/Users/bytedance/.agents/skills`。
+3. 当前 Skill 是用户级模板；外层 Agent 是否稳定触发还取决于 Agent runtime 是否加载 `~/.agents/skills`。
 
 ## 下一步
 
