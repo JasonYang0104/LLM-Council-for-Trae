@@ -6,12 +6,12 @@
       "model": "DeepSeek-V4-Pro"
     },
     {
-      "agent": "council-openrouter-1o",
-      "model": "openrouter-1o"
-    },
-    {
       "agent": "council-gpt54",
       "model": "GPT-5.4"
+    },
+    {
+      "agent": "council-openrouter-3o",
+      "model": "openrouter-3o"
     },
     {
       "agent": "council-kimi26",

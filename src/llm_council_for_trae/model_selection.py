@@ -9,19 +9,20 @@ from .council import DEFAULT_CHAIRMAN, DEFAULT_MEMBERS
 
 PREFERRED_MEMBERS = [
     "DeepSeek-V4-Pro",
-    "openrouter-1o",
     "GPT-5.4",
+    "openrouter-3o",
     "Kimi-K2.6",
-    "GPT-5.2",
-    "openrouter-1",
-    "Gemini-3.1-Pro-Preview",
-    "DeepSeek-V4-Flash",
     "MiniMax-M2.7",
     "Qwen3.6-Plus",
+    "GPT-5.2",
+    "DeepSeek-V4-Flash",
+    "openrouter-1o",
+    "Gemini-3.1-Pro-Preview",
+    "GPT-5.5",
 ]
 PREFERRED_CHAIRMEN = ["DeepSeek-V4-Pro", "Kimi-K2.6", "DeepSeek-V4-Flash", "GPT-5.2", "openrouter-1"]
-HARD_BAN_EXACT = {"gpt-5.5"}
-HARD_BAN_MARKERS = ("seed", "doubao", "gpt-5.5", "glm")
+HARD_BAN_EXACT: set[str] = set()
+HARD_BAN_MARKERS = ("seed", "doubao", "glm")
 QUEUE_HEAT_THRESHOLD = 95
 QUEUE_HEAT_RE = re.compile(r"(?:queue\s*heat|排队热度|队列热度)[^\d%]*(\d{1,3})\s*%", re.IGNORECASE)
 
@@ -184,11 +185,6 @@ def model_exclusion_reasons(model: dict[str, Any], *, queue_heat_threshold: int 
         reasons.append("hard-banned model")
     if any(marker in lowered for marker in ("seed", "doubao")):
         reasons.append("Seed/Doubao model")
-    if _is_beta_model(model):
-        reasons.append("Beta model")
-    queue_heat = parse_queue_heat_percent(model)
-    if queue_heat is not None and queue_heat >= queue_heat_threshold:
-        reasons.append(f"Queue heat {queue_heat}%")
     return reasons
 
 
@@ -318,7 +314,7 @@ def write_model_menu(stderr: TextIO, models: list[dict[str, Any]], recommendatio
     stderr.write("\n推荐 council 模型套：\n")
     stderr.write(f"  members: {', '.join(recommendation.members)}\n")
     stderr.write(f"  chairman: {recommendation.chairman}\n")
-    stderr.write("推荐逻辑：只从成员整体优先级中推荐可用模型；硬排除 Seed/Doubao/GLM/GPT-5.5、Beta 和 Queue heat 过高模型。主席优先级：DeepSeek、Kimi、DeepSeek Flash、GPT、OpenRouter。\n")
+    stderr.write("推荐逻辑：只从成员整体优先级中推荐可用模型；硬排除 Seed/Doubao/GLM 模型。主席优先级：DeepSeek、Kimi、DeepSeek Flash、GPT、OpenRouter。\n")
     if names:
         stderr.write("\n")
     stderr.flush()

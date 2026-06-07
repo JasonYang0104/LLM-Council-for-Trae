@@ -16,6 +16,7 @@ class AutoBackfillQuorumTests(unittest.TestCase):
                 {"name": "DeepSeek-V4-Pro"},
                 {"name": "openrouter-1o"},
                 {"name": "GPT-5.4"},
+                {"name": "openrouter-3o"},
                 {"name": "Gemini-3.1-Pro-Preview"},
                 {"name": "GPT-5.2"},
                 {"name": "openrouter-1"},
@@ -23,20 +24,21 @@ class AutoBackfillQuorumTests(unittest.TestCase):
                 {"name": "DeepSeek-V4-Flash"},
                 {"name": "MiniMax-M2.7"},
                 {"name": "Qwen3.6-Plus"},
-                {"name": "openrouter-3o"},
+                {"name": "GPT-5.5"},
                 {"name": "openrouter-2o"},
                 {"name": "Kimi-K2.5"},
                 {"name": "MiniMax-M2.5"},
             ],
-            primary_members=["DeepSeek-V4-Pro", "openrouter-1o", "GPT-5.4", "Kimi-K2.6"],
+            primary_members=["DeepSeek-V4-Pro", "GPT-5.4", "openrouter-3o", "Kimi-K2.6"],
             chairman="DeepSeek-V4-Pro",
         )
 
         self.assertEqual(
             candidates,
-            ["GPT-5.2", "openrouter-1", "Gemini-3.1-Pro-Preview", "DeepSeek-V4-Flash", "MiniMax-M2.7", "Qwen3.6-Plus"],
+            ["MiniMax-M2.7", "Qwen3.6-Plus", "GPT-5.2", "DeepSeek-V4-Flash", "openrouter-1o", "Gemini-3.1-Pro-Preview", "GPT-5.5"],
         )
         self.assertNotIn("openrouter-3o", candidates)
+        self.assertNotIn("openrouter-1", candidates)
         self.assertNotIn("openrouter-2o", candidates)
         self.assertNotIn("Kimi-K2.5", candidates)
         self.assertNotIn("MiniMax-M2.5", candidates)
@@ -63,7 +65,7 @@ class AutoBackfillQuorumTests(unittest.TestCase):
             chairman="Kimi-K2.6",
         )
 
-        self.assertEqual(candidates, ["Gemini-3.1-Pro-Preview", "Qwen3.6-Plus"])
+        self.assertEqual(candidates, ["GPT-5.4", "Qwen3.6-Plus", "Gemini-3.1-Pro-Preview", "GPT-5.5"])
         self.assertNotIn("MiniMax-M2.5", candidates)
 
     def test_explicit_backfill_candidates_keep_priority_but_still_filter_unsafe_and_attempted(self):

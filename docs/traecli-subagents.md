@@ -71,7 +71,7 @@ profiles/subagents.json
 `profiles/subagents.json` 是 legacy / experimental profile，不作为 direct 默认阵容的源头；当前内容镜像 direct 默认 4 成员，避免历史 profile 误用已剔除模型：
 
 ```text
-members: DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Kimi-K2.6
+members: DeepSeek-V4-Pro, GPT-5.4, openrouter-3o, Kimi-K2.6
 chairman: DeepSeek-V4-Pro
 ```
 
