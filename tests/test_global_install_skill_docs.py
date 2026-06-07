@@ -40,6 +40,54 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
         self.assertIn("Agent/Skill 额外落盘产物", readme)
         self.assertRegex(readme, re.compile(r"make install-local[\s\S]{0,160}开发"))
 
+    def test_docs_require_fresh_github_main_global_install_verification(self):
+        main_required_terms = [
+            "从 GitHub main 全局安装最新版 LCT",
+            "https://github.com/JasonYang0104/LLM-Council-for-Trae.git",
+            "make -C",
+            "install-global",
+            "llm-council-for-trae --version",
+            "freshness checks",
+            "git -C \"$HOME/.LCT\" remote get-url origin",
+            "git ls-remote https://github.com/JasonYang0104/LLM-Council-for-Trae.git refs/heads/main",
+            "~/.LCT HEAD == GitHub refs/heads/main",
+            ".LCT/src",
+            "uv tool",
+            "site-packages",
+            "extract_contribution_map",
+            "strip_contribution_map_fence",
+            "notes.md",
+            "actual command",
+            "exit code",
+            "key stdout/stderr",
+            "pass/fail",
+        ]
+        for relative in self.runtime_override_main_docs():
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in main_required_terms:
+                    self.assertIn(term, text)
+
+        deployment = self.read_text("docs/lct-deployment-guide-20260601.md")
+        for term in [
+            "git -C ~/.LCT rev-parse HEAD",
+            "git -C ~/.LCT rev-parse origin/main",
+            "git -C ~/.LCT remote get-url origin",
+            "git ls-remote https://github.com/JasonYang0104/LLM-Council-for-Trae.git refs/heads/main",
+            "~/.LCT HEAD == GitHub refs/heads/main",
+            "grep -F '.LCT/src'",
+            "llm-council-for-trae --version",
+            "uv tool wrapper",
+            "site-packages",
+            "extract_contribution_map",
+            "strip_contribution_map_fence",
+            "actual command",
+            "exit code",
+            "key stdout/stderr",
+            "pass/fail",
+        ]:
+            self.assertIn(term, deployment)
+
     def test_docs_document_runtime_override_without_silent_fallback(self):
         required_terms = [
             "runtime override",

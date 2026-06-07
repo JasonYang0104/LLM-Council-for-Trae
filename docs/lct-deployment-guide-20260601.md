@@ -103,9 +103,18 @@ Verification:
 ```bash
 test -d ~/.LCT/.git
 test -d ~/.LCT/src/llm_council_for_trae
+git -C ~/.LCT remote get-url origin
+git -C ~/.LCT rev-parse HEAD
+git -C ~/.LCT rev-parse origin/main
+git ls-remote https://github.com/JasonYang0104/LLM-Council-for-Trae.git refs/heads/main
+LOCAL_HEAD="$(git -C ~/.LCT rev-parse HEAD)"
+GITHUB_MAIN="$(git ls-remote https://github.com/JasonYang0104/LLM-Council-for-Trae.git refs/heads/main | awk '{print $1}')"
+test "$LOCAL_HEAD" = "$GITHUB_MAIN"
 git -C ~/.LCT status --short
 git -C ~/.LCT log --oneline -3
 ```
+
+For a user request to install the latest LCT from GitHub main, `~/.LCT HEAD == GitHub refs/heads/main` is required. The operator notes must record each actual command, exit code, key stdout/stderr, and pass/fail result, including the GitHub SHA comparison.
 
 Keep `~/.LCT` clean. Do development work in a separate development repo or worktree.
 
@@ -136,9 +145,23 @@ Verification:
 
 ```bash
 command -v llm-council-for-trae
-grep -F 'PYTHONPATH="$HOME/.LCT/src' ~/.local/bin/llm-council-for-trae
+head -5 "$(command -v llm-council-for-trae)"
+grep -F '.LCT/src' "$(command -v llm-council-for-trae)"
 llm-council-for-trae --help
+PYTHONPATH="$HOME/.LCT/src${PYTHONPATH:+:$PYTHONPATH}" python3 - <<'PY'
+from pathlib import Path
+import llm_council_for_trae.contribution_map as cm
+
+source = Path(cm.__file__).resolve()
+expected = (Path.home() / ".LCT" / "src").resolve()
+print(source)
+assert str(source).startswith(str(expected)), source
+assert hasattr(cm, "extract_contribution_map")
+assert hasattr(cm, "strip_contribution_map_fence")
+PY
 ```
+
+Do not accept an old uv tool wrapper, `site-packages` import, or stale development checkout as a fresh GitHub main install. `llm-council-for-trae --version` alone is not sufficient freshness evidence because the version can stay unchanged across source-only fixes. If the wrapper path, `.LCT/src` grep, Python import source, or `extract_contribution_map` / `strip_contribution_map_fence` assertions fail, rerun `make -C ~/.LCT install-global` and repeat the checks before any E2E run.
 
 `make install-local` is development-only. It writes a wrapper that points at the current checkout's `src/`, which is exactly what a developer wants and exactly what daily users should avoid.
 

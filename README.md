@@ -48,6 +48,34 @@ make -C ~/.LCT install-global
 - `~/.local/bin/llm-council-for-trae`：wrapper 指向 `~/.LCT/src`。
 - `/Users/bytedance/.agents/skills/llm-council-for-trae`：用户级 Skill 链接到 `~/.LCT/skills/llm-council-for-trae`。
 
+安装最新版不能只看 `llm-council-for-trae --version`，版本号可能没变，旧 uv tool wrapper 或旧 `site-packages` 仍可能被 shell 先找到。每次用户明确要求「从 GitHub main 全局安装最新版 LCT」时，执行 Agent 必须在 `notes.md` 记录 actual command、exit code、key stdout/stderr 和 pass/fail 结论，并跑下面的 freshness checks **（注释：新鲜度检查，证明当前命令实际来自最新源码，而不是旧安装包）**：
+
+```bash
+git -C "$HOME/.LCT" remote get-url origin
+git -C "$HOME/.LCT" rev-parse HEAD
+git -C "$HOME/.LCT" rev-parse origin/main
+git ls-remote https://github.com/JasonYang0104/LLM-Council-for-Trae.git refs/heads/main
+LOCAL_HEAD="$(git -C "$HOME/.LCT" rev-parse HEAD)"
+GITHUB_MAIN="$(git ls-remote https://github.com/JasonYang0104/LLM-Council-for-Trae.git refs/heads/main | awk '{print $1}')"
+test "$LOCAL_HEAD" = "$GITHUB_MAIN"
+command -v llm-council-for-trae
+head -5 "$(command -v llm-council-for-trae)"
+grep -F '.LCT/src' "$(command -v llm-council-for-trae)"
+PYTHONPATH="$HOME/.LCT/src${PYTHONPATH:+:$PYTHONPATH}" python3 - <<'PY'
+from pathlib import Path
+import llm_council_for_trae.contribution_map as cm
+
+source = Path(cm.__file__).resolve()
+expected = (Path.home() / ".LCT" / "src").resolve()
+print(source)
+assert str(source).startswith(str(expected)), source
+assert hasattr(cm, "extract_contribution_map")
+assert hasattr(cm, "strip_contribution_map_fence")
+PY
+```
+
+`~/.LCT HEAD == GitHub refs/heads/main` 是硬门槛。如果 `origin` 不是 `https://github.com/JasonYang0104/LLM-Council-for-Trae.git`、本地 `HEAD` 与 GitHub main SHA 不一致、`command -v` 指向 uv tool、`site-packages`、旧开发 checkout，或者 wrapper 中没有 `.LCT/src`，必须重新执行 `make -C ~/.LCT install-global` 并重做验证，不能继续跑 E2E。
+
 在干净问题 workspace 里对 Agent 说：
 
 ```text
