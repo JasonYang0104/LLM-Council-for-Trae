@@ -118,6 +118,22 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
                 text = self.read_text(relative)
                 self.assert_window_contains(text, anchor, required_terms)
 
+    def test_readme_includes_copyable_agent_install_prompt(self):
+        readme = self.read_text("README.md")
+        prompt = "请从 GitHub 仓库 https://github.com/JasonYang0104/LLM-Council-for-Trae 安装最新版 LCT。"
+
+        self.assertIn(prompt, readme)
+        self.assert_window_contains(
+            readme,
+            prompt,
+            [
+                "可以直接对 Agent 说",
+                "等同于从 GitHub main 安装或更新",
+                "~/.LCT + make install-global",
+                "不得使用 `uv tool install`",
+            ],
+        )
+
     def test_docs_document_runtime_override_without_silent_fallback(self):
         required_terms = [
             "runtime override",
