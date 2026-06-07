@@ -23,6 +23,8 @@
 
 日常使用不要把 LCT 仓库 clone 到问题 workspace。默认路径是：从 GitHub `main` 安装到 `~/.LCT`，用 `~/.local/bin/llm-council-for-trae` wrapper 调用 `~/.LCT/src`，把 LCT Skill 安装到 `~/.agents/skills/llm-council-for-trae`，然后在干净问题 workspace 中提问。
 
+安装或更新时，可以直接对 Agent 说：`请从 GitHub 仓库 https://github.com/JasonYang0104/LLM-Council-for-Trae 安装最新版 LCT。` 这句话等同于从 GitHub main 安装或更新，正确路径是 `~/.LCT + make install-global`，不得使用 `uv tool install`。
+
 自然语言安装入口：用户说 `请从 GitHub 仓库 https://github.com/JasonYang0104/LLM-Council-for-Trae 的最新版 LCT` 时，等同于从 GitHub main 安装或更新。必须使用 `~/.LCT + make install-global`：clone/fetch/pull `~/.LCT` 后运行 `make -C ~/.LCT install-global`；不得使用 `uv tool install`。安装成功必须同时证明：`~/.LCT HEAD == GitHub refs/heads/main`、`command -v llm-council-for-trae` 的 wrapper 包含 `.LCT/src`、Skill symlink 指向 `~/.LCT/skills/llm-council-for-trae`。
 
 首次安装：
