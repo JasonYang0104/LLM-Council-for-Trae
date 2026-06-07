@@ -13,6 +13,8 @@ description: 当用户要求安装/更新 LCT、从 GitHub main 全局安装最�
 
 当用户只要求安装或更新 LCT，而不是立即运行 council，先完成安装并写 `notes.md`，不要把安装成功包装成 E2E 成功。执行顺序：
 
+自然语言安装入口：用户说 `请从 GitHub 仓库 https://github.com/JasonYang0104/LLM-Council-for-Trae 的最新版 LCT` 时，等同于从 GitHub main 安装或更新。必须使用 `~/.LCT + make install-global`：clone/fetch/pull `~/.LCT` 后运行 `make -C "$HOME/.LCT" install-global`；不得使用 `uv tool install`。安装成功必须同时证明：`~/.LCT HEAD == GitHub refs/heads/main`、`command -v llm-council-for-trae` 的 wrapper 包含 `.LCT/src`、Skill symlink 指向 `~/.LCT/skills/llm-council-for-trae`。
+
 ```bash
 if [ ! -d "$HOME/.LCT/.git" ]; then
   git clone https://github.com/JasonYang0104/LLM-Council-for-Trae.git "$HOME/.LCT"
@@ -82,6 +84,12 @@ LCT CLI 只消费 `_lct_question.md`；是否做轻量意图理解和 prompt sha
 
 - `council input`：用户真正要委员会回答的问题、必要事实背景、输出要求，以及 `Report topic: <中文议题>`。`Report topic` 是报告元数据，不是成员任务指令。
 - `operator envelope`：使用 LCT、运行 validate、写 final/index、生成 HTML、维护 notes.md、Git/PR/测试职责、开 branch、提交代码等外层执行职责。外层执行指令不得写入 _lct_question.md。
+
+短例：
+
+- 反例：不要写入 `_lct_question.md`：`使用LCT回答："""`
+- 正确：`_lct_question.md` 只写真实问题：`分析解读这个 JD。先意图理解我为何有这个需求，而不是直接动手。`
+- 外层 Agent 自己执行安装、validate、notes.md、HTML、Git/PR；这些不交给 council 成员。
 
 默认保留用户原始实质问题。输入模式按以下矩阵判断：
 
