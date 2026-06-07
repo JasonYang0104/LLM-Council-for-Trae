@@ -23,6 +23,8 @@
 
 日常使用不要把 LCT 仓库 clone 到问题 workspace。默认路径是：从 GitHub `main` 安装到 `~/.LCT`，用 `~/.local/bin/llm-council-for-trae` wrapper 调用 `~/.LCT/src`，把 LCT Skill 安装到 `/Users/bytedance/.agents/skills/llm-council-for-trae`，然后在干净问题 workspace 中提问。
 
+自然语言安装入口：用户说 `请从 GitHub 仓库 https://github.com/JasonYang0104/LLM-Council-for-Trae 的最新版 LCT` 时，等同于从 GitHub main 安装或更新。必须使用 `~/.LCT + make install-global`：clone/fetch/pull `~/.LCT` 后运行 `make -C ~/.LCT install-global`；不得使用 `uv tool install`。安装成功必须同时证明：`~/.LCT HEAD == GitHub refs/heads/main`、`command -v llm-council-for-trae` 的 wrapper 包含 `.LCT/src`、Skill symlink 指向 `~/.LCT/skills/llm-council-for-trae`。
+
 首次安装：
 
 ```bash
@@ -81,6 +83,12 @@ PY
 ```text
 使用 LCT，回答："""<你的问题>"""
 ```
+
+输入边界短例：
+
+- 反例：不要写入 `_lct_question.md`：`使用LCT回答："""`
+- 正确：`_lct_question.md` 只写真实问题：`分析解读这个 JD。先意图理解我为何有这个需求，而不是直接动手。`
+- 外层 Agent 自己执行安装、validate、notes.md、HTML、Git/PR；这些不交给 council 成员。
 
 Agent 应先确认 `_lct_question.md` 的输入边界：它只写 council-facing 问题、必要事实背景、输出要求和 `Report topic: <中文议题>`。`Report topic` 是报告元数据，供 HTML 标题稳定生成 `<中文议题>：多模型智囊团评估`，不是成员任务指令。外层执行指令不得写入 _lct_question.md：包括维护 notes.md、运行 validate、写 final/index、生成 HTML、Git/PR/测试职责、开 branch 或提交代码。
 

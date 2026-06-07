@@ -84,6 +84,8 @@ llm-council-for-trae --runtime-command coco validate <run_id> --json
 
 ## 5. Install Or Update LCT In `~/.LCT`
 
+Natural-language install intent: when the user says `请从 GitHub 仓库 https://github.com/JasonYang0104/LLM-Council-for-Trae 的最新版 LCT`, treat it as 等同于从 GitHub main 安装或更新. 必须使用 `~/.LCT + make install-global`: clone/fetch/pull `~/.LCT`, then run `make -C ~/.LCT install-global`; 不得使用 `uv tool install`. 安装成功必须同时证明: `~/.LCT HEAD == GitHub refs/heads/main`, the `command -v llm-council-for-trae` wrapper 包含 `.LCT/src`, and the Skill symlink 指向 `~/.LCT/skills/llm-council-for-trae`.
+
 Fresh install:
 
 ```bash
@@ -211,6 +213,12 @@ Ask the Agent:
 ```text
 使用 LCT，回答："""<你的问题>"""
 ```
+
+Input boundary short example:
+
+- 反例：不要写入 `_lct_question.md`：`使用LCT回答："""`
+- 正确：`_lct_question.md` 只写真实问题：`分析解读这个 JD。先意图理解我为何有这个需求，而不是直接动手。`
+- 外层 Agent 自己执行安装、validate、notes.md、HTML、Git/PR；这些不交给 council 成员。
 
 The Agent should:
 

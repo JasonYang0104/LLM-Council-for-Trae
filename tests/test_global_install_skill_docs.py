@@ -14,6 +14,13 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
     def read_text(self, relative: str) -> str:
         return (REPO_ROOT / relative).read_text(encoding="utf-8")
 
+    def assert_window_contains(self, text: str, anchor: str, terms: list[str], window: int = 1400) -> None:
+        anchor_index = text.find(anchor)
+        self.assertNotEqual(anchor_index, -1, f"missing anchor: {anchor}")
+        excerpt = text[max(0, anchor_index - 200) : anchor_index + window]
+        for term in terms:
+            self.assertIn(term, excerpt)
+
     def runtime_override_main_docs(self) -> list[str]:
         return [
             "README.md",
@@ -87,6 +94,28 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
             "pass/fail",
         ]:
             self.assertIn(term, deployment)
+
+    def test_latest_install_intent_routes_to_lct_checkout_not_uv_tool(self):
+        anchor = "请从 GitHub 仓库 https://github.com/JasonYang0104/LLM-Council-for-Trae 的最新版 LCT"
+        required_terms = [
+            "等同于从 GitHub main 安装或更新",
+            "~/.LCT",
+            "install-global",
+            "不得使用 `uv tool install`",
+            "安装成功必须同时证明",
+            "`~/.LCT HEAD == GitHub refs/heads/main`",
+            "wrapper 包含 `.LCT/src`",
+            "Skill symlink 指向 `~/.LCT/skills/llm-council-for-trae`",
+        ]
+        for relative in [
+            "README.md",
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+            "docs/lct-deployment-guide-20260601.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                self.assert_window_contains(text, anchor, required_terms)
 
     def test_docs_document_runtime_override_without_silent_fallback(self):
         required_terms = [
@@ -186,6 +215,11 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
         self.assertIn(".trae/agents/", skill)
         self.assertIn("profiles/subagents.json", skill)
         self.assertIn("不要把 fake runtime 结果说成 live traecli 结果", skill)
+
+    def test_canonical_and_trae_skill_templates_stay_in_sync(self):
+        canonical = self.read_text("skills/llm-council-for-trae/SKILL.md")
+        trae = self.read_text(".trae/skills/llm-council-for-trae/SKILL.md")
+        self.assertEqual(canonical, trae)
 
     def test_validate_status_contract_is_documented_in_readme_and_skills(self):
         required_terms = [
@@ -326,6 +360,32 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
                     self.assertIn(term, text)
                 for term in forbidden_member_tasks:
                     self.assertNotIn(term, text)
+
+    def test_docs_include_short_operator_envelope_stripping_example(self):
+        anchor = "使用LCT回答：\"\"\""
+        required_terms = [
+            "反例",
+            "不要写入",
+            "_lct_question.md",
+            "正确",
+            "真实问题",
+            "分析解读这个 JD。先意图理解我为何有这个需求，而不是直接动手。",
+            "外层 Agent",
+            "安装",
+            "validate",
+            "notes.md",
+            "HTML",
+            "Git/PR",
+        ]
+        for relative in [
+            "README.md",
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+            "docs/lct-deployment-guide-20260601.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                self.assert_window_contains(text, anchor, required_terms)
 
     def test_skills_preserve_raw_input_by_default_unless_agent_shaping_is_requested(self):
         required_terms = [
