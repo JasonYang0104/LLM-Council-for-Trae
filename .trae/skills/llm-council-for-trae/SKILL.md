@@ -1,13 +1,55 @@
 ---
 name: llm-council-for-trae
-description: 当用户要求使用 LCT、跑 LCT、council run、用委员会回答、让多个模型讨论，或需要 LLM-Council-for-Trae 生成可复盘答案时使用。默认在干净问题 workspace 中调用全局安装的 llm-council-for-trae CLI，运行后必须 validate，并汇报最终答案与 HTML artifact。
+description: 当用户要求安装/更新 LCT、从 GitHub main 全局安装最新版 LCT、使用 LCT、跑 LCT、council run、用委员会回答、让多个模型讨论，或需要 LLM-Council-for-Trae 生成可复盘答案时使用。默认在干净问题 workspace 中调用全局安装的 llm-council-for-trae CLI，运行后必须 validate，并汇报最终答案与 HTML artifact。
 ---
 
 # LLM-Council-for-Trae Workflow
 
 ## Trigger
 
-当用户说“使用 LCT”“跑 LCT”“council run”“用委员会回答”“让多个模型讨论”或明确要求 `LLM-Council-for-Trae` 时触发。
+当用户说“安装 LCT”“更新 LCT”“从 GitHub main 全局安装最新版 LCT”“使用 LCT”“跑 LCT”“council run”“用委员会回答”“让多个模型讨论”或明确要求 `LLM-Council-for-Trae` 时触发。
+
+## Global Install / Update From GitHub Main
+
+当用户只要求安装或更新 LCT，而不是立即运行 council，先完成安装并写 `notes.md`，不要把安装成功包装成 E2E 成功。执行顺序：
+
+```bash
+if [ ! -d "$HOME/.LCT/.git" ]; then
+  git clone https://github.com/JasonYang0104/LLM-Council-for-Trae.git "$HOME/.LCT"
+fi
+git -C "$HOME/.LCT" fetch origin --prune
+git -C "$HOME/.LCT" checkout main
+git -C "$HOME/.LCT" pull --ff-only origin main
+make -C "$HOME/.LCT" install-global
+```
+
+安装最新版不能只看 `llm-council-for-trae --version`。必须在 `notes.md` 记录每条 actual command、exit code、key stdout/stderr 和 pass/fail 结论：
+
+```bash
+git -C "$HOME/.LCT" remote get-url origin
+git -C "$HOME/.LCT" rev-parse HEAD
+git -C "$HOME/.LCT" rev-parse origin/main
+git ls-remote https://github.com/JasonYang0104/LLM-Council-for-Trae.git refs/heads/main
+LOCAL_HEAD="$(git -C "$HOME/.LCT" rev-parse HEAD)"
+GITHUB_MAIN="$(git ls-remote https://github.com/JasonYang0104/LLM-Council-for-Trae.git refs/heads/main | awk '{print $1}')"
+test "$LOCAL_HEAD" = "$GITHUB_MAIN"
+command -v llm-council-for-trae
+head -5 "$(command -v llm-council-for-trae)"
+grep -F '.LCT/src' "$(command -v llm-council-for-trae)"
+PYTHONPATH="$HOME/.LCT/src${PYTHONPATH:+:$PYTHONPATH}" python3 - <<'PY'
+from pathlib import Path
+import llm_council_for_trae.contribution_map as cm
+
+source = Path(cm.__file__).resolve()
+expected = (Path.home() / ".LCT" / "src").resolve()
+print(source)
+assert str(source).startswith(str(expected)), source
+assert hasattr(cm, "extract_contribution_map")
+assert hasattr(cm, "strip_contribution_map_fence")
+PY
+```
+
+`~/.LCT HEAD == GitHub refs/heads/main` 是硬门槛。如果 `origin` 不是 `https://github.com/JasonYang0104/LLM-Council-for-Trae.git`、本地 `HEAD` 与 GitHub main SHA 不一致、`command -v` 指向 uv tool、`site-packages`、旧开发 checkout，或 wrapper 不包含 `.LCT/src`，重新执行 `make -C "$HOME/.LCT" install-global` 后再验证。只有以上 freshness checks 通过，才可以说“已从 GitHub main 全局安装最新版 LCT”。
 
 ## Preflight
 
