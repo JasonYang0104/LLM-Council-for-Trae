@@ -333,7 +333,7 @@ llm-council-for-trae replay --help
 
 ## Legacy / Experimental Subagent Profile
 
-direct provider **（注释：直接调用模型的执行方式）** 是默认路径，适合高频使用。subagent provider **（注释：通过 traecli 自定义子智能体调用固定成员的执行方式）** 现在是 legacy / experimental 路径：它保留用于历史 artifact validation **（注释：产物校验，检查已保存运行记录是否完整可信）** 和未来固定成员实验，不是日常全局安装后的主路径。
+direct provider **（注释：直接调用模型的执行方式）** 是默认路径，适合高频使用。subagent provider **（注释：通过 traecli 自定义子智能体调用固定成员的执行方式）** 现在是 legacy / experimental 路径：它保留用于历史 artifact validation **（注释：产物校验，检查已保存运行记录是否完整可信）**、降级方案和未来固定成员实验，不是日常全局安装后的主路径。`.trae/agents/` 下的额外成员模板属于历史尝试和 subagent fallback **（注释：备用执行路径，默认路径不可用时才考虑的替代方案）**，不代表当前 direct 默认阵容。
 
 `profiles/subagents.json` 可能因为当前 `traecli models --json` 模型漂移而失败，例如 profile 中的模型已经不在 live roster 里。不要把 subagent profile run 当成默认 smoke；除非你正在验证 subagent provider 本身，否则优先使用 direct provider。
 
@@ -469,22 +469,13 @@ PYTHONPATH=src python3 -m llm_council_for_trae.cli run --input examples/question
 
 | 文档 | 读者 | 内容 |
 |---|---|---|
-| `docs/lct-deployment-guide-20260601.md` | Agent / 用户安装者 | `~/.LCT` 全局安装、用户级 Skill、干净问题 workspace 和 live smoke 边界 |
-| `docs/lct-global-install-skill-design-20260601.md` | 接手开发者 / reviewer | 全局安装、Skill 模板、安装器和验证边界设计 |
-| `docs/lct-global-install-skill-test-plan-20260601.md` | 接手开发者 / reviewer | 全局安装与 Skill 的 TDD 切片和验收计划 |
-| `docs/lct-auto-backfill-quorum-design-20260603.md` | 接手开发者 / reviewer | 同 run auto-backfill、quorum、low quorum、Stage 2 reviewer eligibility 和可见性设计 |
-| `docs/lct-auto-backfill-implementation-handoff-20260603.md` | 新会话 Agent / 接手开发者 | auto-backfill 实施顺序、TDD 切片、subagent review 和验收约束 |
-| `docs/lct-stage2-reviewer-only-backfill-handoff-20260603.md` | 新会话 Agent / 接手开发者 | Stage 2 reviewer-only backfill 修正、TDD 切片、验证口径和最终 brief 约束 |
-| `docs/lct-auto-backfill-implementation-brief-20260603.md` | PM / director | 本轮 auto-backfill 实施背景、关键决策、测试证据和剩余风险 |
-| `docs/lct-validate-title-hardening-handoff-20260603.md` | 新会话 Agent / 接手开发者 | 下一轮 validate 判定硬化、中文报告标题契约、TDD 节奏和 handoff 约束 |
-| `docs/lct-validate-title-contract-design-20260603.md` | 接手开发者 / reviewer | validate 终局判定和中文报告标题契约设计 |
-| `docs/lct-validate-title-contract-test-plan-20260603.md` | 接手开发者 / reviewer | validate 状态字段、标题抽取和 Skill 硬规则的测试计划 |
-| `docs/runtime-hardening-handoff-20260601.md` | 新会话 Agent / 接手开发者 | 这轮 runtime hardening 的背景、问题归因、索引文档、推进方式和交接口径 |
-| `docs/runtime-hardening-director-brief-20260601.md` | PM / director | 为什么要做 runtime hardening、优先级、策略和阶段目标的简报版 |
 | `docs/design.md` | 接手开发者 / Agent | 初始设计、协议边界、provider 设计、artifact store 设计 |
+| `docs/lct-deployment-guide-20260601.md` | Agent / 用户安装者 | `~/.LCT` 全局安装、用户级 Skill、干净问题 workspace 和 live smoke 边界 |
 | `docs/traecli-installation-and-paths.md` | 本机排障者 | traecli 安装、登录、路径、插件、模型事实 |
 | `docs/traecli-subagents.md` | subagent 维护者 | 固定 council 成员、profile 和验证方式 |
 | `docs/llm-council-parity.md` | 复刻审查者 | 与上游 `llm-council` protocol 的对齐关系 |
+
+历史 handoff、brief、test plan、mockup、benchmark 和运行 notes 已移入 `docs/archive/`，边界见 `docs/archive/README.md`。它们只保留决策溯源，不作为当前安装或日常运行入口。
 
 ## Non-goals
 
@@ -499,6 +490,6 @@ PYTHONPATH=src python3 -m llm_council_for_trae.cli run --input examples/question
 
 ## Current Status
 
-`LLM-Council-for-Trae` v1.1.2：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、subagent evidence validation、主动模型选择和中文默认输出全部落地。默认 direct 阵容已收敛为 4 成员：DeepSeek-V4-Pro、GPT-5.4、openrouter-3o、Kimi-K2.6，主席为 DeepSeek-V4-Pro。models --recommend 只会从成员整体优先级中推荐可用模型，并排除 Seed/Doubao/GLM 模型；默认 auto-backfill 只从同一份成员整体优先级里选择剩余候补。测试数量以 `make test` 的当前输出为准。HTML 报告 h1 动态标题、问题摘要和 LCT 搜索证据摘要已上线；标题抽取会跳过“核心内容”等通用章节名，缺少 `Report topic` 时优先使用可识别的文章题名或具体议题。subagent profile 是 legacy / experimental 路径，不再代表 direct 默认阵容。当前下一阶段是 runtime hardening：重点解决并发互斥、Stage 2 超时、timeout 真值源、优雅退出和降级收场。
+`LLM-Council-for-Trae` v1.1.2：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、subagent evidence validation、主动模型选择和中文默认输出全部落地。默认 direct 阵容已收敛为 4 成员：DeepSeek-V4-Pro、GPT-5.4、openrouter-3o、Kimi-K2.6，主席为 DeepSeek-V4-Pro。models --recommend 只会从成员整体优先级中推荐可用模型，并排除 Seed/Doubao/GLM 模型；默认 auto-backfill 只从同一份成员整体优先级里选择剩余候补。测试数量以 `make test` 的当前输出为准。HTML 报告 h1 动态标题、问题摘要和 LCT 搜索证据摘要已上线；标题抽取会跳过“核心内容”等通用章节名，缺少 `Report topic` 时优先使用可识别的文章题名或具体议题。subagent profile 是 legacy / experimental 路径，不再代表 direct 默认阵容；`.trae/agents/` 额外模板只作为降级方案和历史尝试保留。当前下一阶段是 runtime hardening：重点解决并发互斥、Stage 2 超时、timeout 真值源、优雅退出和降级收场。
 
 模型阵容：direct 默认 4 成员取成员整体优先级前 4 个（DeepSeek-V4-Pro、GPT-5.4、openrouter-3o、Kimi-K2.6）+ DeepSeek-V4-Pro 主席。成员整体优先级按 `model_selection.py`：DeepSeek-V4-Pro、GPT-5.4、openrouter-3o、Kimi-K2.6、MiniMax-M2.7、Qwen3.6-Plus、GPT-5.2、DeepSeek-V4-Flash、openrouter-1o、Gemini-3.1-Pro-Preview、GPT-5.5。默认 backfill 只使用这份成员优先级中尚未作为 primary/attempted/chairman 的可用模型。主席备选链为 Kimi-K2.6 → DeepSeek-V4-Flash → GPT-5.2 → openrouter-1。subagent profile 是 legacy / experimental 路径，不作为 direct 默认阵容的源头；当前 profile 仅镜像 direct 默认 4 成员，避免旧 GLM profile 被误跑。HTML 报告结构已稳定化。

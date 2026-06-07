@@ -1,12 +1,12 @@
 # Trae CLI Subagents 研究入口
 
-本文记录 LLM-Council-for-Trae 对 subagent 的使用边界、已实现文件和验证口径。direct provider 是日常主路径；subagent profile 是 legacy / experimental 路径，保留用于历史 artifact validation 和未来固定成员实验。live subagent run 仍取决于当前 traecli 是否可用；Trae CLI 不可用时，只能复验静态 profile、单元测试和已保存 artifacts。
+本文记录 LLM-Council-for-Trae 对 subagent 的使用边界、已实现文件和验证口径。direct provider 是日常主路径；subagent profile 是 legacy / experimental 路径，保留用于历史 artifact validation、降级方案和未来固定成员实验。`.trae/agents/` 下的额外模板属于历史尝试和 subagent fallback，不代表当前 direct 默认阵容。live subagent run 仍取决于当前 traecli 是否可用；Trae CLI 不可用时，只能复验静态 profile、单元测试和已保存 artifacts。
 
 ## 当前设计判断
 
 - direct `traecli` provider 是 P1 默认路径，也是全局安装后的日常主路径。
-- Trae CLI subagent provider 已作为 P2 legacy / experimental 路径实现，用于固定 council 成员实验和历史产物校验。
-- 每个固定成员放在 `.trae/agents/`。
+- Trae CLI subagent provider 已作为 P2 legacy / experimental 路径实现，用于固定 council 成员实验、历史产物校验和必要时的降级方案。
+- 每个固定成员放在 `.trae/agents/`；额外模板是历史尝试，不是 direct provider 的当前默认 roster。
 - subagent 文件必须显式声明 `model`。
 - run 结束后会校验 expected model 和 actual model。
 - 如果 Trae CLI 对无效模型 fallback 到默认模型，run 必须失败。

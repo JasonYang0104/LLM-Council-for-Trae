@@ -6,7 +6,7 @@
 
 新方向不再是“继续迭代旧 TR”，而是新建独立 workspace：`LLM-Council-for-Trae`。
 
-目标是做一个独立 council CLI，名字暂定 `llm-council-for-trae`。它内部调用 `traecli`，一比一复刻 `llm-council` 的核心议事流程，同时排除原项目的 Web UI 和 OpenRouter API。Trae CLI 是默认 runtime，Trae CLI 自定义智能体是固定 council 成员的长期形态。
+目标是做一个独立 council CLI，命令名为 `llm-council-for-trae`。它内部调用 `traecli`，一比一复刻 `llm-council` 的核心议事流程，同时排除原项目的 Web UI 和 OpenRouter API。Trae CLI direct provider 是默认 runtime 路径；Trae CLI 自定义智能体保留为 legacy / experimental 的降级方案和历史尝试，不是日常默认路径。
 
 旧 TR 保留不动，不迁移、不改写、不作为未来入口。旧 TR 只能作为历史经验参考，不能污染新项目的命名、命令、provider 边界和文档口径。
 
@@ -22,9 +22,7 @@
 │   ├── TRAECLI_INSTALLATION_AND_PATHS.md
 │   ├── traecli-subagents.md
 │   ├── llm-council-parity.md
-│   └── goal-prompt.md
-├── references/
-│   └── llm-council/
+│   └── archive/
 └── .trae/
     └── agents/
 ```
@@ -35,9 +33,9 @@
 - `docs/TRAECLI_INSTALLATION_AND_PATHS.md`：Trae CLI 安装、路径、鉴权、插件和模型说明。
 - `docs/traecli-subagents.md`：后续补 Trae CLI subagent 配置、模型指定、fallback 风险和验证方式。
 - `docs/llm-council-parity.md`：逐项对照 `llm-council` 的复刻清单。
-- `docs/goal-prompt.md`：发给新会话的 `/goal` 启动提示词。
+- `docs/archive/`：历史 handoff、brief、test plan、mockup、benchmark 和运行 notes；只用于决策溯源，不作为当前入口。
 - 上游 `karpathy/llm-council`：历史协议参考；当前仓库不再依赖本地 `references/` 目录。
-- `.trae/agents/`：后续放 Trae CLI 自定义智能体，例如 council member 和 chairman。
+- `.trae/agents/`：Trae CLI 自定义智能体模板；保留为 subagent 降级方案和历史尝试，不代表当前 direct 默认阵容。
 
 文档中的本地路径一律使用相对路径。绝对路径只出现在最终交付说明里，不写进 workspace 内部文档。
 
@@ -315,7 +313,7 @@ Codex、Trae-CN、Trae CLI 都只是输入来源，不是 runtime 边界。
 
 ## 开发节奏
 
-### Phase 0：Workspace 启动包
+### Phase 0：Workspace 启动包（已完成）
 
 要做：
 
@@ -323,7 +321,7 @@ Codex、Trae-CN、Trae CLI 都只是输入来源，不是 runtime 边界。
 - 放入本设计文档。
 - 放入 traecli 安装路径说明。
 - 记录上游 `llm-council` 作为历史协议参考。
-- 写 `docs/goal-prompt.md`。
+- 当前入口收敛到 `README.md`；历史启动提示和过程文档只放 `docs/archive/`。
 
 验收：
 
@@ -432,11 +430,9 @@ llm-council-for-trae validate <run_id> --json
 - 把旧 TR 迁进来。
 - 强行把所有模型成员都做成 subagent。
 
-## 新会话 `/goal` 提示词
+## 新会话入口
 
-```text
-/goal 在当前 workspace 中推进 LLM-Council-for-Trae。目标是创建一个独立 council CLI，命令名为 llm-council-for-trae，内部调用 traecli，一比一复刻上游 llm-council 的核心 council protocol，但排除原 Web UI 和 OpenRouter API。必须优先复用 llm-council 中不冲突的协议边界；必须使用 Codex 的 cli-creator 方法论创建 CLI；Trae CLI 是默认 runtime；后续支持 Trae CLI 自定义 subagent 作为固定 council 成员。先阅读 README.md、docs/design.md 和 docs/traecli-installation-and-paths.md，再给出实现计划。交付必须完整包含：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、验证命令和结果。开发可以分阶段推进，但每阶段必须有明确测试。不要依赖旧 TR，不要引入 Web app，不要把 HTML 生成和主席综合混成一步。
-```
+当前新会话入口是 `README.md`。早期 `/goal` 启动提示词已经属于历史过程材料，应只在 `docs/archive/` 中作为决策溯源保留，不再作为当前执行入口。
 
 ## 追加记录：Reader-first HTML 与 CLI 模型选择
 
@@ -717,8 +713,6 @@ AskUserQuestion 可以放在 Trae-CN wrapper flow 中使用，但不是 CLC 的�
 
 HTML reader-first 和基础模型选择已经完成；后续优先级应转向 input frontmatter、task-mode 推荐策略、profile 管理和结构化 Stage 2 ranking。
 
-### 给执行会话的提示词
+### 执行会话口径
 
-```text
-/goal 在当前 workspace 推进 LLM-Council-for-Trae 的下一轮迭代。先阅读 README.md、docs/design.md 和 docs/director-brief-20260522.md。当前 HTML reader-first / Archival Paper 与基础 CLI 模型选择已经完成；本轮不要重复实现。建议优先做 input frontmatter、task-mode 推荐策略、profile 管理或结构化 Stage 2 ranking 中的一项。必须保持：不引入 React/Vite/Web app；不接 OpenRouter；不依赖旧 TR；不重新调用模型生成 HTML；不改变 Stage 3 final answer；完成后必须运行单元测试和对应 CLI 验证，并明确说明 live Trae CLI 是否可用。
-```
+执行会话先读 `README.md`，再按需要读本文件和 `docs/traecli-installation-and-paths.md`。历史 director brief、handoff、test plan、mockup、benchmark 和运行 notes 不再作为当前任务入口；需要追溯决策时，从 `docs/archive/` 查。
