@@ -9,6 +9,7 @@ __pycache__/
 venv/
 build/
 dist/
+.codex/
 .llm-council-for-trae/
 .coco-llm-council/
 references/llm-council/
@@ -22,6 +23,7 @@ notes.md
 question.md
 .gitmodules
 AGENTS.md
+CLAUDE.md
 docs/execution-plan-*
 docs/goal-prompt.md
 docs/html-export-archival-brief-*.md
@@ -32,6 +34,15 @@ docs/model-benchmark-*/
 docs/notes-*.md
 docs/director-brief-*.md
 docs/html-ux-review.md
+docs/lct-chairman-contribution-default-on-handoff-20260606.md
+docs/*-brief-*.md
+docs/*-brief-*.html
+docs/*-director-*.md
+docs/*-director-*.html
+docs/*-handoff-*.md
+docs/*-test-plan-*.md
+docs/*-mockup-*.html
+docs/*-execution-plan-*.md
 examples/e2e-*
 examples/q[0-9]-*
 examples/hackathon-*.md

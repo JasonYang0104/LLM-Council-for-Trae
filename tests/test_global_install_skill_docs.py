@@ -31,8 +31,6 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
     def runtime_override_support_docs(self) -> list[str]:
         return [
             "docs/lct-deployment-guide-20260601.md",
-            "docs/lct-global-install-skill-design-20260601.md",
-            "docs/lct-global-install-skill-test-plan-20260601.md",
         ]
 
     def test_readme_defaults_to_global_install_and_clean_workspace(self):
@@ -326,7 +324,6 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
             "README.md",
             "skills/llm-council-for-trae/SKILL.md",
             ".trae/skills/llm-council-for-trae/SKILL.md",
-            "docs/lct-auto-backfill-implementation-brief-20260603.md",
         ]:
             with self.subTest(relative=relative):
                 text = self.read_text(relative)
@@ -720,23 +717,49 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
         self.assertNotIn("只能 `--default-models`", text)
         self.assertNotIn("只用 `--default-models`", text)
 
-    def test_model_selection_docs_remove_stale_selected_members_red_expectation(self):
-        test_plan = self.read_text("docs/lct-experience-upgrade-test-plan-20260606.md")
-        spec = self.read_text("docs/lct-experience-upgrade-implementation-spec-20260606.md")
+    def test_historical_process_docs_are_archived_not_current_readme_entries(self):
+        readme = self.read_text("README.md")
 
-        self.assertNotIn("当前没有 `--selected-members` / `--selected-chairman`", test_plan)
-        self.assertIn("模型选择与 Skill 口径一致性", test_plan)
-        self.assertNotIn("显式 `--members` 超过 4 个时进入新裁剪逻辑", spec)
-        self.assertIn("原生 `--members` 永不归一化", spec)
+        self.assertIn("docs/archive/", readme)
+        self.assertIn("benchmark", readme)
+        self.assertIn("docs/archive/README.md", readme)
+        for old_entry in [
+            "docs/lct-experience-upgrade-test-plan-20260606.md",
+            "docs/lct-experience-upgrade-implementation-spec-20260606.md",
+            "docs/lct-auto-backfill-implementation-brief-20260603.md",
+            "docs/runtime-hardening-handoff-20260601.md",
+            "notes.md |",
+        ]:
+            self.assertNotIn(old_entry, readme)
+            archived = "docs/archive/" + old_entry.removeprefix("docs/")
+            if old_entry != "notes.md |":
+                self.assertTrue((REPO_ROOT / archived).exists(), archived)
+
+        self.assertTrue((REPO_ROOT / "docs/archive/notes-20260606.md").exists())
+        archive_readme = self.read_text("docs/archive/README.md")
+        self.assertIn("只用于追溯", archive_readme)
+        self.assertIn("不是当前安装、日常运行或接手开发入口", archive_readme)
+
+    def test_current_docs_do_not_point_to_historical_goal_prompt_as_entry(self):
+        current_docs = [
+            "README.md",
+            "docs/design.md",
+            "docs/lct-deployment-guide-20260601.md",
+            "docs/llm-council-parity.md",
+            "docs/traecli-installation-and-paths.md",
+            "docs/traecli-subagents.md",
+        ]
+
+        for relative in current_docs:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                self.assertNotIn("docs/goal-prompt.md", text)
+                self.assertNotIn("docs/director-brief-20260522.md", text)
 
     def test_docs_use_portable_user_skill_path_and_no_stale_skill_path(self):
         doc_paths = [
             "README.md",
             "docs/lct-deployment-guide-20260601.md",
-            "docs/lct-global-install-skill-design-20260601.md",
-            "docs/lct-global-install-skill-director-brief-20260601.html",
-            "docs/lct-global-install-skill-director-brief-20260601.md",
-            "docs/lct-global-install-skill-test-plan-20260601.md",
             "skills/llm-council-for-trae/SKILL.md",
             ".trae/skills/llm-council-for-trae/SKILL.md",
         ]
@@ -759,8 +782,6 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
     def test_clean_workspace_examples_do_not_use_repo_example_input(self):
         readme_quickstart = self.read_text("README.md").split("## Council Protocol", 1)[0]
         guide = self.read_text("docs/lct-deployment-guide-20260601.md")
-        design = self.read_text("docs/lct-global-install-skill-design-20260601.md")
-        test_plan = self.read_text("docs/lct-global-install-skill-test-plan-20260601.md")
 
         self.assertIn("_lct_question.md", readme_quickstart)
         self.assertNotIn("examples/question.md", readme_quickstart)
@@ -772,13 +793,6 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
 
         self.assertNotIn("llm-council-for-trae run --input examples/question.md", guide)
         self.assertIn("llm-council-for-trae run --input _lct_question.md --default-models --json", guide)
-        for relative, text in {
-            "docs/lct-global-install-skill-design-20260601.md": design,
-            "docs/lct-global-install-skill-test-plan-20260601.md": test_plan,
-        }.items():
-            self.assertNotIn("llm-council-for-trae run --input examples/question.md", text, relative)
-            self.assertIn("/tmp/lct-live-smoke", text, relative)
-            self.assertIn("_lct_question.md", text, relative)
 
     def test_subagent_profile_is_documented_as_legacy_experimental(self):
         readme = self.read_text("README.md")
@@ -788,6 +802,10 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
         self.assertNotIn("固定 subagent 成员", highlights)
         self.assertIn("legacy / experimental", readme)
         self.assertIn("legacy / experimental", subagents_doc)
+        self.assertIn("降级方案", readme)
+        self.assertIn("历史尝试", readme)
+        self.assertIn("降级方案", subagents_doc)
+        self.assertIn("历史尝试", subagents_doc)
         self.assertIn("direct provider 是日常主路径", subagents_doc)
         self.assertIn("模型漂移", subagents_doc)
 
