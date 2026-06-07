@@ -76,7 +76,7 @@ llm-council-for-trae --runtime-command coco models --recommend --json
 只有 `coco models --json` 返回非空、`llm-council-for-trae --runtime-command coco doctor --json` 没有非 MCP 阻断错误，并且 `llm-council-for-trae --runtime-command coco models --recommend --json` 的 `recommendation.members` 和 `recommendation.chairman` 都可用时，才允许本次显式 override。
 6. 确认 `command -v llm-council-for-trae` 可找到全局 CLI。
 7. 尽量确认 wrapper 内容指向 `~/.LCT/src`，而不是旧开发 checkout。
-8. 如果 CLI 不可用，提示用户先完成 `~/.LCT` 全局安装，并把本 Skill 安装到 `/Users/bytedance/.agents/skills/llm-council-for-trae`。
+8. 如果 CLI 不可用，提示用户先完成 `~/.LCT` 全局安装，并把本 Skill 安装到 `~/.agents/skills/llm-council-for-trae`。
 
 ## Input Preparation
 

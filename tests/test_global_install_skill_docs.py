@@ -41,7 +41,8 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
         self.assertNotIn("在另一个 workspace clone 本仓库后", readme)
         self.assertNotIn("unittest: 78 tests passed", readme)
         self.assertIn("~/.LCT", readme)
-        self.assertIn("/Users/bytedance/.agents/skills", readme)
+        self.assertIn("~/.agents/skills", readme)
+        self.assertNotIn("/Users/bytedance/.agents/skills", readme)
         self.assertIn("干净问题 workspace", readme)
         self.assertIn("CLI 直接产物", readme)
         self.assertIn("Agent/Skill 额外落盘产物", readme)
@@ -678,18 +679,24 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
         self.assertNotIn("显式 `--members` 超过 4 个时进入新裁剪逻辑", spec)
         self.assertIn("原生 `--members` 永不归一化", spec)
 
-    def test_docs_use_current_user_skill_path_and_no_stale_skill_path(self):
+    def test_docs_use_portable_user_skill_path_and_no_stale_skill_path(self):
         doc_paths = [
             "README.md",
             "docs/lct-deployment-guide-20260601.md",
+            "docs/lct-global-install-skill-design-20260601.md",
+            "docs/lct-global-install-skill-director-brief-20260601.html",
+            "docs/lct-global-install-skill-director-brief-20260601.md",
+            "docs/lct-global-install-skill-test-plan-20260601.md",
             "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
         ]
 
         for relative in doc_paths:
             path = REPO_ROOT / relative
             self.assertTrue(path.exists(), f"missing {relative}")
             text = path.read_text(encoding="utf-8")
-            self.assertIn("/Users/bytedance/.agents/skills", text, relative)
+            self.assertNotIn("/Users/bytedance", text, relative)
+            self.assertRegex(text, r"(?:~|\$HOME)/\.agents/skills", relative)
             self.assertNotIn("~/.trae/skills", text, relative)
 
         guide = self.read_text("docs/lct-deployment-guide-20260601.md")
