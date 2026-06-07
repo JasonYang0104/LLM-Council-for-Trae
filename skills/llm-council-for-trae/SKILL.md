@@ -207,7 +207,7 @@ llm-council-for-trae models --recommend --json
 当前静态默认模型套是：
 
 ```text
-members: DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Kimi-K2.6
+members: DeepSeek-V4-Pro, GPT-5.4, openrouter-3o, Kimi-K2.6
 chairman: DeepSeek-V4-Pro
 ```
 
@@ -340,7 +340,7 @@ cat ".llm-council-for-trae/runs/$FINAL_RUN_ID/stage3/final.md"
 - runtime override 不是 CLI silent fallback；不要把 override 结果汇报成普通 live `traecli`。
 - 默认恢复路径是 CLI 在同一个 run 内 auto-backfill；不要把推荐阵容另起整轮 run 当成主恢复路径。
 - 只有 Stage 1 quorum 不足时才使用 member backfill 新增候选答案；Stage 2 reviewer-only backfill 不新增候选答案。
-- 显式候补只能通过 `--backfill-members` 提供优先级；不要把 unsafe、banned、beta 或 hot queue 模型伪装成可用候补。
+- 显式候补只能通过 `--backfill-members` 提供优先级；默认和显式候补都会硬排除 Seed/Doubao/GLM，但不会仅因 `GPT-5.5`、Beta 标记或 queue heat >=95% 自动排除。不要把未批准或被硬排除的模型伪装成可用候补。
 - 不要在问题 workspace 中 clone LCT 仓库。
 - 不要在 LCT 源码 repo 中跑用户问题；切换到干净问题 workspace。
 - 不要修改 `.llm-council-for-trae/` 中的 artifacts；只读，必要时复制最终答案到 workspace 根目录。

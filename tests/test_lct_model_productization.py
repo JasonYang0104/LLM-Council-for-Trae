@@ -24,10 +24,25 @@ class LctModelProductizationTests(unittest.TestCase):
     def test_default_roster_uses_current_priority_suite(self):
         self.assertEqual(
             DEFAULT_MEMBERS,
-            ["DeepSeek-V4-Pro", "openrouter-1o", "GPT-5.4", "Kimi-K2.6"],
+            ["DeepSeek-V4-Pro", "GPT-5.4", "openrouter-3o", "Kimi-K2.6"],
         )
         self.assertEqual(DEFAULT_CHAIRMAN, "DeepSeek-V4-Pro")
-        self.assertLess(PREFERRED_MEMBERS.index("Kimi-K2.6"), PREFERRED_MEMBERS.index("Gemini-3.1-Pro-Preview"))
+        self.assertEqual(
+            PREFERRED_MEMBERS,
+            [
+                "DeepSeek-V4-Pro",
+                "GPT-5.4",
+                "openrouter-3o",
+                "Kimi-K2.6",
+                "MiniMax-M2.7",
+                "Qwen3.6-Plus",
+                "GPT-5.2",
+                "DeepSeek-V4-Flash",
+                "openrouter-1o",
+                "Gemini-3.1-Pro-Preview",
+                "GPT-5.5",
+            ],
+        )
 
     def test_recommendation_uses_safe_openrouter_to_fill_four_members(self):
         choice = recommend_model_choice(
@@ -39,7 +54,7 @@ class LctModelProductizationTests(unittest.TestCase):
             ]
         )
 
-        self.assertEqual(choice.members, ["openrouter-1o", "Kimi-K2.6", "GPT-5.2", "openrouter-1"])
+        self.assertEqual(choice.members, ["Kimi-K2.6", "GPT-5.2", "openrouter-1o"])
         self.assertEqual(choice.chairman, "Kimi-K2.6")
 
     def test_recommendation_caps_primary_members_at_four(self):
@@ -48,21 +63,24 @@ class LctModelProductizationTests(unittest.TestCase):
                 {"name": "DeepSeek-V4-Pro"},
                 {"name": "openrouter-1o"},
                 {"name": "GPT-5.4"},
+                {"name": "openrouter-3o"},
                 {"name": "Kimi-K2.6"},
                 {"name": "Gemini-3.1-Pro-Preview"},
                 {"name": "openrouter-2o"},
             ]
         )
 
-        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "openrouter-1o", "GPT-5.4", "Kimi-K2.6"])
+        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "GPT-5.4", "openrouter-3o", "Kimi-K2.6"])
         self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
 
-    def test_recommendation_excludes_hard_ban_beta_and_hot_queue(self):
+    def test_recommendation_excludes_seed_doubao_glm_but_allows_gpt55_beta_and_hot_queue(self):
         choice = recommend_model_choice(
             [
                 {"name": "Kimi-K2.6"},
                 {"name": "Seed-Dogfooding-2.0"},
                 {"name": "Doubao-Seed-1.8"},
+                {"name": "GLM-5.1"},
+                {"name": "openrouter-3o"},
                 {"name": "GPT-5.5"},
                 {"name": "GPT-5.4", "description": "Queue heat 104%"},
                 {"name": "Beta-Reasoner"},
@@ -70,10 +88,24 @@ class LctModelProductizationTests(unittest.TestCase):
             ]
         )
 
-        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "Kimi-K2.6"])
+        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "GPT-5.4", "openrouter-3o", "Kimi-K2.6"])
         joined = ",".join(choice.members + [choice.chairman]).lower()
-        for banned in ("seed", "doubao", "gpt-5.5", "beta", "gpt-5.4"):
+        for banned in ("seed", "doubao", "glm"):
             self.assertNotIn(banned, joined)
+        self.assertEqual(model_exclusion_reasons({"name": "GPT-5.5"}), [])
+        self.assertEqual(model_exclusion_reasons({"name": "GPT-5.4", "description": "Queue heat 104%"}), [])
+        self.assertEqual(model_exclusion_reasons({"name": "Beta-Reasoner", "beta": True}), [])
+
+    def test_gpt55_can_be_recommended_when_higher_priority_models_are_absent(self):
+        choice = recommend_model_choice(
+            [
+                {"name": "Seed-Dogfooding-2.0"},
+                {"name": "GPT-5.5"},
+            ]
+        )
+
+        self.assertEqual(choice.members, ["GPT-5.5"])
+        self.assertEqual(choice.chairman, "GPT-5.5")
 
     def test_recommendation_excludes_glm_models(self):
         choice = recommend_model_choice(
@@ -89,7 +121,7 @@ class LctModelProductizationTests(unittest.TestCase):
         self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
         self.assertNotIn("GLM", ",".join(choice.members + [choice.chairman]))
 
-    def test_beta_detection_supports_structured_fields(self):
+    def test_beta_metadata_is_not_an_auto_exclusion_reason(self):
         beta_models = [
             {"name": "GPT-5.2", "beta": True},
             {"name": "GPT-5.2", "is_beta": True},
@@ -99,7 +131,7 @@ class LctModelProductizationTests(unittest.TestCase):
 
         for model in beta_models:
             with self.subTest(model=model):
-                self.assertIn("Beta model", model_exclusion_reasons(model))
+                self.assertEqual(model_exclusion_reasons(model), [])
 
     def test_openrouter_quota_and_l4_copy_is_not_an_exclusion_reason(self):
         reasons = model_exclusion_reasons({"name": "openrouter-1o", "description": "Quota available; L4"})
@@ -240,7 +272,7 @@ class LctModelProductizationTests(unittest.TestCase):
         ):
             text = self.read_text(relative)
             self.assertNotIn("6 个成员模型", text, relative)
-            self.assertIn("DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Kimi-K2.6", text, relative)
+            self.assertIn("DeepSeek-V4-Pro, GPT-5.4, openrouter-3o, Kimi-K2.6", text, relative)
 
     def test_canonical_skill_and_readme_split_lct_and_agent_search_evidence(self):
         for relative in ("README.md", "skills/llm-council-for-trae/SKILL.md"):
@@ -287,15 +319,16 @@ class LctModelProductizationTests(unittest.TestCase):
             DEFAULT_CANDIDATES,
             [
                 "DeepSeek-V4-Pro",
-                "openrouter-1o",
                 "GPT-5.4",
+                "openrouter-3o",
                 "Kimi-K2.6",
-                "GPT-5.2",
-                "openrouter-1",
-                "Gemini-3.1-Pro-Preview",
-                "DeepSeek-V4-Flash",
                 "MiniMax-M2.7",
                 "Qwen3.6-Plus",
+                "GPT-5.2",
+                "DeepSeek-V4-Flash",
+                "openrouter-1o",
+                "Gemini-3.1-Pro-Preview",
+                "GPT-5.5",
             ],
         )
         self.assertNotIn("GLM", ",".join(DEFAULT_CANDIDATES))

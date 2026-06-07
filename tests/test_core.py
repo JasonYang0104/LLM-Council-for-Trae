@@ -561,7 +561,7 @@ FINAL RANKING:
     def test_default_direct_roster_uses_current_priority_suite(self):
         self.assertEqual(
             DEFAULT_MEMBERS,
-            ["DeepSeek-V4-Pro", "openrouter-1o", "GPT-5.4", "Kimi-K2.6"],
+            ["DeepSeek-V4-Pro", "GPT-5.4", "openrouter-3o", "Kimi-K2.6"],
         )
         self.assertEqual(DEFAULT_CHAIRMAN, "DeepSeek-V4-Pro")
 
@@ -696,7 +696,7 @@ FINAL RANKING:
             {"name": "Gemini-3.1-Pro-Preview"},
         ]
         choice = select_model_choice_interactively(models, stdin=StringIO("c\n1,3\n3\n"), stderr=StringIO())
-        self.assertEqual(choice.members, ["GPT-5.4", "DeepSeek-V4-Pro", "openrouter-1o", "Kimi-K2.6"])
+        self.assertEqual(choice.members, ["GPT-5.4", "DeepSeek-V4-Pro", "Kimi-K2.6", "openrouter-1o"])
         self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
         self.assertEqual(resolve_model_tokens("2, GPT-5.4", ["GPT-5.4", "GLM-5.1"]), ["GLM-5.1", "GPT-5.4"])
 
@@ -705,6 +705,7 @@ FINAL RANKING:
         self.assertIsNotNone(normalize, "missing normalize_user_model_selection")
         models = [
             {"name": "DeepSeek-V4-Pro"},
+            {"name": "openrouter-3o"},
             {"name": "openrouter-1o"},
             {"name": "GPT-5.4"},
             {"name": "Kimi-K2.6"},
@@ -718,17 +719,18 @@ FINAL RANKING:
             selection_surface="agent_assisted",
         )
 
-        self.assertEqual(choice.members, ["Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro", "openrouter-1o"])
+        self.assertEqual(choice.members, ["Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro", "openrouter-3o"])
         self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
         self.assertEqual(choice.provenance["selection_surface"], "agent_assisted")
         self.assertEqual(choice.provenance["requested_members"], ["Kimi-K2.6", "GPT-5.4"])
-        self.assertEqual(choice.provenance["filled_members"], ["DeepSeek-V4-Pro", "openrouter-1o"])
+        self.assertEqual(choice.provenance["filled_members"], ["DeepSeek-V4-Pro", "openrouter-3o"])
 
     def test_normalize_user_model_selection_trims_to_four_by_preferred_members(self):
         normalize = getattr(model_selection, "normalize_user_model_selection", None)
         self.assertIsNotNone(normalize, "missing normalize_user_model_selection")
         models = [
             {"name": "DeepSeek-V4-Pro"},
+            {"name": "openrouter-3o"},
             {"name": "openrouter-1o"},
             {"name": "GPT-5.4"},
             {"name": "Kimi-K2.6"},
@@ -737,14 +739,14 @@ FINAL RANKING:
         ]
 
         choice = normalize(
-            requested_members=["Unranked-Model", "Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro", "openrouter-1o"],
+            requested_members=["Unranked-Model", "Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro", "openrouter-1o", "openrouter-3o"],
             requested_chairman="Kimi-K2.6",
             models=models,
             selection_surface="agent_assisted",
         )
 
-        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "openrouter-1o", "GPT-5.4", "Kimi-K2.6"])
-        self.assertEqual(choice.provenance["trimmed_members"], ["Unranked-Model"])
+        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "GPT-5.4", "openrouter-3o", "Kimi-K2.6"])
+        self.assertEqual(choice.provenance["trimmed_members"], ["Unranked-Model", "openrouter-1o"])
         self.assertEqual(choice.provenance["resolved_members"], choice.members)
 
     def test_normalize_user_model_selection_keeps_exact_four_user_order(self):
@@ -752,6 +754,7 @@ FINAL RANKING:
         self.assertIsNotNone(normalize, "missing normalize_user_model_selection")
         models = [
             {"name": "DeepSeek-V4-Pro"},
+            {"name": "openrouter-3o"},
             {"name": "openrouter-1o"},
             {"name": "GPT-5.4"},
             {"name": "Kimi-K2.6"},
@@ -819,6 +822,7 @@ FINAL RANKING:
         )
         models = [
             {"name": "DeepSeek-V4-Pro"},
+            {"name": "openrouter-3o"},
             {"name": "openrouter-1o"},
             {"name": "GPT-5.4"},
             {"name": "Kimi-K2.6"},
@@ -828,7 +832,7 @@ FINAL RANKING:
             args.selected_model_choice = resolve_run_model_choice(args)
         config = build_config(args)
 
-        self.assertEqual(config.members, ["Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro", "openrouter-1o"])
+        self.assertEqual(config.members, ["Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro", "openrouter-3o"])
         self.assertEqual(config.chairman, "DeepSeek-V4-Pro")
         self.assertEqual(config.model_selection_provenance["selection_surface"], "agent_assisted")
         self.assertEqual(config.model_selection_provenance["requested_members"], ["Kimi-K2.6", "GPT-5.4"])
@@ -3049,7 +3053,7 @@ The user is not merely asking whether local inference hardware will improve they
         self.assertEqual(choice.members, ["Qwen3.6-Plus"])
         self.assertEqual(choice.source, "recommended")
 
-    def test_recommend_model_choice_excludes_hard_banned_models_when_safe_alternatives_exist(self):
+    def test_recommend_model_choice_excludes_seed_doubao_but_allows_gpt55(self):
         from llm_council_for_trae.model_selection import recommend_model_choice
         models = [
             {"name": "GPT-5.4"},
@@ -3061,11 +3065,10 @@ The user is not merely asking whether local inference hardware will improve they
         ]
         choice = recommend_model_choice(models)
 
-        self.assertEqual(choice.members, ["GPT-5.4", "Kimi-K2.6"])
+        self.assertEqual(choice.members, ["GPT-5.4", "Kimi-K2.6", "GPT-5.5"])
         joined = ",".join(choice.members + [choice.chairman]).lower()
         self.assertNotIn("seed", joined)
         self.assertNotIn("doubao", joined)
-        self.assertNotIn("gpt-5.5", joined)
         self.assertNotIn("mystery", joined)
 
     def test_recommend_model_choice_rejects_unapproved_safe_model(self):

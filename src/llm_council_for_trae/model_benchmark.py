@@ -19,15 +19,16 @@ from .utils import DEFAULT_TRAECLI, append_jsonl, utc_now, write_json, write_tex
 
 DEFAULT_CANDIDATES = [
     "DeepSeek-V4-Pro",
-    "openrouter-1o",
     "GPT-5.4",
+    "openrouter-3o",
     "Kimi-K2.6",
-    "GPT-5.2",
-    "openrouter-1",
-    "Gemini-3.1-Pro-Preview",
-    "DeepSeek-V4-Flash",
     "MiniMax-M2.7",
     "Qwen3.6-Plus",
+    "GPT-5.2",
+    "DeepSeek-V4-Flash",
+    "openrouter-1o",
+    "Gemini-3.1-Pro-Preview",
+    "GPT-5.5",
 ]
 
 

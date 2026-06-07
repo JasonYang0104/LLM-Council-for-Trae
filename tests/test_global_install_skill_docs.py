@@ -686,6 +686,40 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
                 for term in forbidden_terms:
                     self.assertNotIn(term, text)
 
+    def test_skills_do_not_treat_beta_or_hot_queue_as_auto_exclusions(self):
+        required_terms = [
+            "硬排除 Seed/Doubao/GLM",
+        ]
+        forbidden_terms = [
+            "beta 或 hot queue",
+            "Beta 或 Queue heat",
+            "Beta 和 Queue heat",
+            "hot queue 模型伪装成可用候补",
+            "beta 或 hot queue 模型伪装成可用候补",
+            "Queue heat 过高模型",
+        ]
+        for relative in [
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+                for term in forbidden_terms:
+                    self.assertNotIn(term, text)
+
+    def test_design_documents_agent_assisted_selected_model_path(self):
+        text = self.read_text("docs/design.md")
+
+        self.assertIn("--selected-members", text)
+        self.assertIn("--selected-chairman", text)
+        self.assertIn("agent-assisted", text)
+        self.assertIn("原生 `--members` / `--chairman`", text)
+        self.assertIn("--selected-members/--selected-chairman", text)
+        self.assertNotIn("只能 `--default-models`", text)
+        self.assertNotIn("只用 `--default-models`", text)
+
     def test_model_selection_docs_remove_stale_selected_members_red_expectation(self):
         test_plan = self.read_text("docs/lct-experience-upgrade-test-plan-20260606.md")
         spec = self.read_text("docs/lct-experience-upgrade-implementation-spec-20260606.md")

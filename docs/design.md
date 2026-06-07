@@ -139,7 +139,7 @@ llm-council-for-trae validate <run_id> --json
 
 - `doctor` 先确认 `traecli` 是否存在、Trae CLI 是否登录、模型是否可用、插件是否加载。
 - `models --recommend` 读取 Trae CLI 当前可用模型，只从成员整体优先级中推荐可用 council 成员和主席，不维护第二套过期模型清单。
-- `run` 在未传 `--members`、`--chairman`、`--profile` 或 `--default-models` 时，先在 CLI 终端中主动询问模型选择，再执行完整 Stage 1 -> Stage 2 -> Stage 3 -> HTML。
+- `run` 在未传 `--selected-members/--selected-chairman`、`--members`、`--chairman`、`--profile` 或 `--default-models` 时，先在 CLI 终端中主动询问模型选择，再执行完整 Stage 1 -> Stage 2 -> Stage 3 -> HTML。
 - `run --default-models` 跳过询问，使用静态默认模型套。
 - `show` 只读 manifest，不调用模型。
 - `export` 只读 artifacts，默认输出 HTML。
@@ -584,10 +584,11 @@ provider_mode: direct
 
 CLI 行为：
 
-- `--members` / `--chairman` 仍保留，适合命令行直接调用。
+- `--selected-members/--selected-chairman` 是 agent-assisted 自选路径：按用户挑选的 seed models 归一化到 4 个成员，并记录 provenance。
+- 原生 `--members` / `--chairman` 仍保留，适合命令行直接调用；它是 power-user 精确路径，给几个跑几个，不补足、不裁剪。
 - `--profile` 仍保留，适合 subagent provider。
 - 输入 frontmatter 可作为未来便捷入口，解析后仍进入 `CouncilConfig`。
-- 当前已实现优先级：`--profile` > `--default-models` > 显式 `--members/--chairman` > 交互推荐选择 > 静态默认值兜底。
+- 当前已实现优先级：`--selected-members/--selected-chairman` 独立互斥；否则 `--profile` > `--default-models` > 原生 `--members` / `--chairman` > 交互推荐选择 > 静态默认值兜底。
 - 未来若加入 input frontmatter，应插入到显式 CLI 参数之后、交互推荐之前。
 - run 前仍调用 `traecli models --json`，并用 `require_models_available` 阻断无效模型。
 
@@ -649,7 +650,7 @@ Qwen3.6-Plus
 Qwen3.5-Plus
 ```
 
-注意：这个列表是 2026-05-22 当前机器当前时间的历史事实，不能写死进推荐逻辑。`openrouter-*` 的 quota / L4 repo 文案本身不是排除理由；真正的默认和推荐仍要受成员整体优先级约束，并经过当前 `traecli models --json`、hard-ban、Beta 和 queue heat 过滤。
+注意：这个列表是 2026-05-22 当前机器当前时间的历史事实，不能写死进推荐逻辑。`openrouter-*` 的 quota / L4 repo 文案本身不是排除理由；真正的默认和推荐仍要受成员整体优先级约束，并经过当前 `traecli models --json` 和 Seed/Doubao/GLM hard-ban 过滤。
 
 推荐逻辑已经放在 CLC CLI 内，而不是写在 Trae-CN prompt 里。当前命令是 `models --recommend --json`；`run --input <file>` 在 TTY 中也会复用同一套推荐逻辑。
 
@@ -664,8 +665,8 @@ Qwen3.5-Plus
 
 ```text
 general:
-  members: DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Kimi-K2.6
-  member_priority: DeepSeek-V4-Pro, openrouter-1o, GPT-5.4, Kimi-K2.6, GPT-5.2, openrouter-1, Gemini-3.1-Pro-Preview, DeepSeek-V4-Flash, MiniMax-M2.7, Qwen3.6-Plus
+  members: DeepSeek-V4-Pro, GPT-5.4, openrouter-3o, Kimi-K2.6
+  member_priority: DeepSeek-V4-Pro, GPT-5.4, openrouter-3o, Kimi-K2.6, MiniMax-M2.7, Qwen3.6-Plus, GPT-5.2, DeepSeek-V4-Flash, openrouter-1o, Gemini-3.1-Pro-Preview, GPT-5.5
   default_backfill: remaining available member_priority models only
   chairman: DeepSeek-V4-Pro
   chairman_fallback: Kimi-K2.6, DeepSeek-V4-Flash, GPT-5.2, openrouter-1
@@ -686,7 +687,7 @@ AskUserQuestion 可以放在 Trae-CN wrapper flow 中使用，但不是 CLC 的�
      llm-council-for-trae run --input input.md --json
   3. 如果不支持交互式终端，传：
      llm-council-for-trae run --input input.md --default-models --json
-     或显式传 --members / --chairman / --profile
+     或按用户意图显式传 --selected-members/--selected-chairman、原生 --members / --chairman、或 --profile
   4. 返回 html/index.html 路径
 ```
 
