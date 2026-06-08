@@ -232,7 +232,7 @@ LCT 检测到当前 traecli 可用模型：
   2. ...
 
 推荐 council 模型套：
-  members: DeepSeek-V4-Pro, GPT-5.4, openrouter-3o, Kimi-K2.6
+  members: DeepSeek-V4-Pro, GPT-5.5, openrouter-3o
   chairman: DeepSeek-V4-Pro
 
 选择 [回车=使用推荐 / d=默认模型套 / c=自定义 / q=取消]:
@@ -251,17 +251,17 @@ llm-council-for-trae run \
 默认模型套是：
 
 ```text
-members: DeepSeek-V4-Pro, GPT-5.4, openrouter-3o, Kimi-K2.6
+members: DeepSeek-V4-Pro, GPT-5.5, openrouter-3o
 chairman: DeepSeek-V4-Pro
 ```
 
-`--default-models` 始终使用这套静态默认阵容。run 内 auto-backfill 默认启用：默认 auto-backfill 只从成员整体优先级中选择候补，排除 primary members、已尝试成员、主席和当前不可用/不安全模型；不会追加未批准的 runtime safe models。显式传 `--backfill-members` 时，CLI 按显式列表过滤后使用。在同一个 run 内追加候补只为补足有效成员；它不整轮重跑，也不会把已成功 Stage 1 输出替换掉。交付索引里只能记录 terminal manifest 的 `metadata.quorum.backfill_candidates`；如果没有记录则写 `not recorded`，不得从默认成员阵容或 `models --recommend --json` 的 primary roster 替代。
+`--default-models` 始终使用这套静态默认阵容。run 内 auto-backfill 默认启用：默认 auto-backfill 只从成员整体优先级中选择候补，排除 primary members、已尝试成员、主席和当前不可用/不安全模型；不会追加未批准的 runtime safe models。显式传 `--backfill-members` 时，CLI 按显式列表过滤后使用。在同一个 run 内追加候补只为补到 3 个有效成员；它不整轮重跑，也不会把已成功 Stage 1 输出替换掉。交付索引里只能记录 terminal manifest 的 `metadata.quorum.backfill_candidates`；如果没有记录则写 `not recorded`，不得从默认成员阵容或 `models --recommend --json` 的 primary roster 替代。
 
-如果用户明确要挑成员或指定主席，外层 Agent 可以进入 agent-assisted 自选模型路径：先读取当前模型清单，必要时用 `AskUserQuestionTool` 展示选择卡片；工具不可用时使用文本 fallback。该路径必须调用独立参数 `--selected-members` / `--selected-chairman`，不要复用原生 `--members`。原生 `--members` 是 power-user 精确路径，给几个跑几个，不补足、不裁剪；agent-assisted 自选路径才会归一化到 4 并记录 `selection_surface=agent_assisted`、用户请求、解析结果、补足成员、裁剪成员和最终 config。
+如果用户明确要挑成员或指定主席，外层 Agent 可以进入 agent-assisted 自选模型路径：先读取当前模型清单，必要时用 `AskUserQuestionTool` 展示选择卡片；工具不可用时使用文本 fallback。该路径必须调用独立参数 `--selected-members` / `--selected-chairman`，不要复用原生 `--members`。原生 `--members` 是 power-user 精确路径，给几个跑几个，不补足、不裁剪；agent-assisted 自选路径才会归一化到 3 并记录 `selection_surface=agent_assisted`、用户请求、解析结果、补足成员、裁剪成员和最终 config。
 
 模型选择意图边界必须分清。用户只问“有什么模型”时，只展示 `models --recommend --json` / 当前模型清单和推荐套装，不擅自启动 run。用户说“我想指定模型”“我想自己选模型”“想挑成员/指定主席/比较模型阵容”，但想指定模型但没有给具体模型时，外层 Agent 应先读取当前模型清单和推荐阵容，再追问用户或给文本 fallback；拿到选择后再传 `--selected-members/--selected-chairman`。`--selected-chairman` 当前不能单独出现；如果只想指定主席且成员保持默认，需明确改用原生 `--members/--chairman` 并说明这是 power-user 精确路径。
 
-主席贡献说明默认开启。默认 run 会请求 Stage 3 输出 `stage3/contribution_map.json`，让 HTML 正文按 blocks 展示「这一段来自单一成员、多成员共识、主席编者注、综合整理或无法可靠归因」；调用方不需要追加 `--chairman-contribution-map`。如果明确不想请求 contribution map，可追加 `--no-chairman-contribution-map`；`--chairman-contribution-map` 仍保留为兼容 alias。release / E2E strict gate 场景可追加 `--require-chairman-contribution-map`，即 `required=true`，要求 sidecar 缺失或结构非法时 validate hard fail。默认 requested 但不 required 时，manifest 记录 `metadata.chairman_contribution` 的 `requested / required / present / error`，HTML fallback 到 `stage3/final.md`，validate 记录非阻断 warning，不把可读 final answer 判死。Stage 3 会对 contribution map JSON 字符串里的常见未转义英文双引号做有限修复；无论 sidecar 是否可用，`stage3/final.md`、HTML 正文和复制 Markdown 都不会展示尾部 contribution JSON 块。单一成员和多成员共识来源会根据 `metadata.aggregate_rankings` 追加 `同侪#n`，作为主席无法改写的可验证锚点。legacy run 缺少 `metadata.chairman_contribution` 或显式 disabled 时不要求 sidecar。该功能不输出贡献百分比，也不把 Stage 2 同侪排序解释成模型能力排行。
+主席贡献说明默认开启。默认 run 会请求 Stage 3 输出 `stage3/contribution_map.json`，让 HTML 正文按 blocks 展示「这一段来自单一成员、多成员共识、主席编者注、综合整理或无法可靠归因」；调用方不需要追加 `--chairman-contribution-map`。如果明确不想请求 contribution map，可追加 `--no-chairman-contribution-map`；`--chairman-contribution-map` 仍保留为兼容 alias。release / E2E strict gate 场景可追加 `--require-chairman-contribution-map`，即 `required=true`，要求 sidecar 缺失或结构非法时 validate hard fail。默认 requested 但不 required 时，manifest 记录 `metadata.chairman_contribution` 的 `requested / required / present / error`，HTML fallback 到 `stage3/final.md`，validate 记录非阻断 warning，不把可读 final answer 判死。Stage 3 会对 contribution map JSON 字符串里的常见未转义英文双引号做有限修复；无论 sidecar 是否可用，`stage3/final.md`、HTML 正文和复制 Markdown 都不会展示尾部 contribution JSON 块。单一成员和多成员共识来源会根据 `metadata.aggregate_rankings` 追加 `同侪#n`，作为主席无法改写的可验证锚点；`synthesis.members` 表示主席综合整理时主要参考的成员素材，不是共识，也不表示这些成员同意最终表述。legacy run 缺少 `metadata.chairman_contribution` 或显式 disabled 时不要求 sidecar。该功能不输出贡献百分比，也不把 Stage 2 同侪排序解释成模型能力排行。
 
 补位语义分两类。Stage 1 member backfill **（注释：成员补位，指候补模型生成新的 Stage 1 候选答案）** 只在有效回答不足 quorum 时发生；只有 Stage 1 quorum 不足，CLI 才会新增候选答案。Stage 2 reviewer-only backfill 发生在 Stage 1 quorum 已经满足、但 Stage 2 reviewer 失败或不足时；候补模型只评审既有有效 Stage 1 answers，不新增候选答案，也不会进入 `stage2/label_to_model.json` 的 subject mapping。
 
@@ -490,6 +490,6 @@ PYTHONPATH=src python3 -m llm_council_for_trae.cli run --input examples/question
 
 ## Current Status
 
-`LLM-Council-for-Trae` v1.1.2：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、subagent evidence validation、主动模型选择和中文默认输出全部落地。默认 direct 阵容已收敛为 4 成员：DeepSeek-V4-Pro、GPT-5.4、openrouter-3o、Kimi-K2.6，主席为 DeepSeek-V4-Pro。models --recommend 只会从成员整体优先级中推荐可用模型，并排除 Seed/Doubao/GLM 模型；默认 auto-backfill 只从同一份成员整体优先级里选择剩余候补。测试数量以 `make test` 的当前输出为准。HTML 报告 h1 动态标题、问题摘要和 LCT 搜索证据摘要已上线；标题抽取会跳过“核心内容”等通用章节名，缺少 `Report topic` 时优先使用可识别的文章题名或具体议题。subagent profile 是 legacy / experimental 路径，不再代表 direct 默认阵容；`.trae/agents/` 额外模板只作为降级方案和历史尝试保留。当前下一阶段是 runtime hardening：重点解决并发互斥、Stage 2 超时、timeout 真值源、优雅退出和降级收场。
+`LLM-Council-for-Trae` v1.1.2：CLI skeleton、doctor/models、Stage 1/2/3 council run、artifact store、expected vs actual model 校验、HTML export、subagent evidence validation、主动模型选择和中文默认输出全部落地。direct 默认 3 成员：DeepSeek-V4-Pro、GPT-5.5、openrouter-3o，主席为 DeepSeek-V4-Pro。models --recommend 只会从成员整体优先级中推荐可用模型，并排除 Seed/Doubao/GLM 模型；默认 auto-backfill 只从同一份成员整体优先级里选择剩余候补，并在同一个 run 内补到 3 个有效 Stage 1 成员。测试数量以 `make test` 的当前输出为准。HTML 报告 h1 动态标题、问题摘要和 LCT 搜索证据摘要已上线；标题抽取会跳过“核心内容”等通用章节名，缺少 `Report topic` 时优先使用可识别的文章题名或具体议题。subagent profile 是 legacy / experimental 路径，不再代表 direct 默认阵容；`.trae/agents/` 额外模板只作为降级方案和历史尝试保留。当前下一阶段是 runtime hardening：重点解决并发互斥、Stage 2 超时、timeout 真值源、优雅退出和降级收场。
 
-模型阵容：direct 默认 4 成员取成员整体优先级前 4 个（DeepSeek-V4-Pro、GPT-5.4、openrouter-3o、Kimi-K2.6）+ DeepSeek-V4-Pro 主席。成员整体优先级按 `model_selection.py`：DeepSeek-V4-Pro、GPT-5.4、openrouter-3o、Kimi-K2.6、MiniMax-M2.7、Qwen3.6-Plus、GPT-5.2、DeepSeek-V4-Flash、openrouter-1o、Gemini-3.1-Pro-Preview、GPT-5.5。默认 backfill 只使用这份成员优先级中尚未作为 primary/attempted/chairman 的可用模型。主席备选链为 Kimi-K2.6 → DeepSeek-V4-Flash → GPT-5.2 → openrouter-1。subagent profile 是 legacy / experimental 路径，不作为 direct 默认阵容的源头；当前 profile 仅镜像 direct 默认 4 成员，避免旧 GLM profile 被误跑。HTML 报告结构已稳定化。
+模型阵容：direct 默认 3 成员取成员整体优先级前 3 个（DeepSeek-V4-Pro、GPT-5.5、openrouter-3o）+ DeepSeek-V4-Pro 主席。成员整体优先级按 `model_selection.py`：DeepSeek-V4-Pro、GPT-5.5、openrouter-3o、GPT-5.4、openrouter-2o、Kimi-K2.6、MiniMax-M2.7、GPT-5.2、openrouter-1o、DeepSeek-V4-Flash、Gemini-3.1-Pro-Preview、Qwen3.6-Plus。agent-assisted 自选路径会归一化到 3；默认 backfill 只使用这份成员优先级中尚未作为 primary/attempted/chairman 的可用模型，并补到 3 个有效成员。主席备选链为 Kimi-K2.6 → DeepSeek-V4-Flash → GPT-5.2 → openrouter-1。subagent profile 是 legacy / experimental 路径，不作为 direct 默认阵容的源头；当前 profile 仅镜像 direct 默认 3 成员，避免旧 GLM profile 被误跑。HTML 报告结构已稳定化；`synthesis.members` 表示主席主要参考的成员素材，不是共识。

@@ -118,6 +118,7 @@ LCT CLI 只消费 `_lct_question.md`；是否做轻量意图理解和 prompt sha
 - 可用时可以用 `AskUserQuestionTool` 展示当前模型清单；不可用时必须提供文本 fallback。
 - Agent-assisted 自选路径必须调用独立 CLI surface：`--selected-members` / `--selected-chairman`。
 - 不要复用原生 `--members` 表达 agent-assisted 自选；原生 `--members` 是 power-user 精确路径，给几个跑几个，不补足、不裁剪。
+- Agent-assisted 自选路径会归一化到 3；默认模型套是 DeepSeek-V4-Pro, GPT-5.5, openrouter-3o。
 - 自选路径的运行索引和 manifest provenance 必须记录 `selection_surface=agent_assisted`、用户请求的 members、解析后的 members、补足成员、裁剪成员和最终 config。
 - `--selected-chairman` 当前不能单独出现；如果用户只想指定主席、成员保持默认，必须明确改用原生 `--members/--chairman` 并说明该路径是 power-user 精确语义。
 
@@ -135,7 +136,7 @@ LCT CLI 只消费 `_lct_question.md`；是否做轻量意图理解和 prompt sha
 - `contribution_map_path: stage3/contribution_map.json|none`
 - `contribution_map_validate_status: ok|warning|failed|missing|disabled`
 
-该功能只使用 Stage 3 写出的 `stage3/contribution_map.json` blocks 渲染 HTML 来源说明；不要在外层 Agent 或 HTML 阶段按 Markdown 自然段猜来源。HTML 会根据 `metadata.aggregate_rankings` 给单一成员和多成员共识来源追加 `同侪#n`，作为主席无法改写的可验证锚点。默认 requested 但不 required 时，缺 sidecar 或结构非法只记录 warning，并 fallback 到 `stage3/final.md`；Stage 3 会对 contribution map JSON 字符串里的常见未转义英文双引号做有限修复；无论 sidecar 是否可用，`stage3/final.md`、HTML 正文和复制 Markdown 都不会展示尾部 contribution JSON 块。只有 `required=true` 才把缺失或非法 sidecar 判为 validate failure。legacy run 缺少 `metadata.chairman_contribution` 或显式 disabled 不要求 contribution map。不要输出贡献百分比，不要把 Stage 2 同侪排序解释成模型能力排行。
+该功能只使用 Stage 3 写出的 `stage3/contribution_map.json` blocks 渲染 HTML 来源说明；不要在外层 Agent 或 HTML 阶段按 Markdown 自然段猜来源。HTML 会根据 `metadata.aggregate_rankings` 给单一成员和多成员共识来源追加 `同侪#n`，作为主席无法改写的可验证锚点；`synthesis.members` 表示主席综合整理时主要参考的成员素材，不是共识，也不表示这些成员同意最终表述。默认 requested 但不 required 时，缺 sidecar 或结构非法只记录 warning，并 fallback 到 `stage3/final.md`；Stage 3 会对 contribution map JSON 字符串里的常见未转义英文双引号做有限修复；无论 sidecar 是否可用，`stage3/final.md`、HTML 正文和复制 Markdown 都不会展示尾部 contribution JSON 块。只有 `required=true` 才把缺失或非法 sidecar 判为 validate failure。legacy run 缺少 `metadata.chairman_contribution` 或显式 disabled 不要求 contribution map。不要输出贡献百分比，不要把 Stage 2 同侪排序解释成模型能力排行。
 
 无论哪种模式，最终根目录 `$RUN_ID-index.md` 和对用户汇报都必须写明 `Input mode` 和证据字段；输入模式取值为：
 
@@ -207,11 +208,11 @@ llm-council-for-trae models --recommend --json
 当前静态默认模型套是：
 
 ```text
-members: DeepSeek-V4-Pro, GPT-5.4, openrouter-3o, Kimi-K2.6
+members: DeepSeek-V4-Pro, GPT-5.5, openrouter-3o
 chairman: DeepSeek-V4-Pro
 ```
 
-推荐阵容不改变 primary default members；它只是当前模型可用性和推荐安全过滤参考，不是根目录 index 的 backfill candidates 来源。CLI 默认会在同一个 run 内 auto-backfill，不整轮重跑。最终 `$RUN_ID-index.md` 的 `backfill_candidates` 必须来自 terminal manifest 的 `metadata.quorum.backfill_candidates`；如果 terminal manifest 没有记录该字段，写 `backfill_candidates: not recorded`。不得从默认成员阵容、不得从 models --recommend --json 的 primary roster、不得从实际有效 Stage 1 成员猜测候补池。
+推荐阵容不改变 primary default members；它只是当前模型可用性和推荐安全过滤参考，不是根目录 index 的 backfill candidates 来源。CLI 默认会在同一个 run 内 auto-backfill，补到 3 个有效 Stage 1 成员，不整轮重跑。最终 `$RUN_ID-index.md` 的 `backfill_candidates` 必须来自 terminal manifest 的 `metadata.quorum.backfill_candidates`；如果 terminal manifest 没有记录该字段，写 `backfill_candidates: not recorded`。不得从默认成员阵容、不得从 models --recommend --json 的 primary roster、不得从实际有效 Stage 1 成员猜测候补池。
 
 补位语义必须拆开：Stage 1 是 member backfill，只有 Stage 1 quorum 不足时才新增候选答案；Stage 2 是 reviewer-only backfill，当 Stage 1 quorum 已经满足但 reviewer 失败或不足时，候补模型只评审既有有效 Stage 1 answers，不新增候选答案。
 

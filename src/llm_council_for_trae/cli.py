@@ -11,7 +11,7 @@ from typing import Any
 from . import __version__
 from .council import DEFAULT_CHAIRMAN, DEFAULT_MEMBERS, CouncilConfig, load_profile, run_full_council
 from .html_export import export_html
-from .model_selection import ModelChoice, normalize_user_model_selection, recommend_model_choice, select_model_choice_interactively
+from .model_selection import DEFAULT_MEMBER_COUNT, ModelChoice, normalize_user_model_selection, recommend_model_choice, select_model_choice_interactively
 from .models import doctor as runtime_doctor
 from .models import get_models
 from .runtime import RunLease
@@ -50,7 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--input", required=True, help="Input markdown/text file.")
     run_p.add_argument("--members", help="Comma-separated model roster. If omitted, LCT asks you to choose from current traecli models.")
     run_p.add_argument("--chairman", help="Chairman model. If omitted with --members, default chairman is used.")
-    run_p.add_argument("--selected-members", help="Agent-assisted selected member seed models. This opt-in path normalizes to 4 and records provenance.")
+    run_p.add_argument("--selected-members", help="Agent-assisted selected member seed models. This opt-in path normalizes to 3 and records provenance.")
     run_p.add_argument("--selected-chairman", help="Agent-assisted selected chairman model for --selected-members.")
     run_p.add_argument("--profile", help="Optional JSON profile overriding members/chairman/provider.")
     run_p.add_argument("--default-models", action="store_true", help="Skip model selection and use LCT's default model suite.")
@@ -61,7 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--yolo", action="store_true", help="Pass --yolo to traecli. Default member runs do not bypass permissions.")
     run_p.add_argument("--no-yolo", action="store_true", help="Compatibility no-op: default member runs already omit --yolo.")
     run_p.add_argument("--min-valid-members", type=int, default=3, help="Minimum valid members for quorum.")
-    run_p.add_argument("--target-valid-members", type=int, default=4, help="Target valid members for quorum.")
+    run_p.add_argument("--target-valid-members", type=int, default=DEFAULT_MEMBER_COUNT, help="Target valid members for quorum.")
     run_p.add_argument("--backfill-members", help="Comma-separated explicit backfill candidate models. If omitted, LCT uses the approved member priority roster only.")
     run_p.add_argument("--no-auto-backfill", action="store_true", help="Disable automatic Stage 1 and Stage 2 backfill.")
     run_p.add_argument("--low-quorum-floor", type=int, default=2, help="Minimum valid members required for low-quorum degraded delivery.")
@@ -281,7 +281,7 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
         chairman_agent=chairman_agent,
         use_yolo=bool(getattr(args, "yolo", False)) and not bool(getattr(args, "no_yolo", False)),
         min_valid_members=getattr(args, "min_valid_members", 3),
-        target_valid_members=getattr(args, "target_valid_members", 4),
+        target_valid_members=getattr(args, "target_valid_members", DEFAULT_MEMBER_COUNT),
         chairman_fallback=chairman_fallback,
         stage2_timeout=getattr(args, "stage2_timeout", None),
         chairman_timeout=getattr(args, "chairman_timeout", 720),

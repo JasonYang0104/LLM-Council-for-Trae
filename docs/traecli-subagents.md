@@ -11,7 +11,8 @@
 - run 结束后会校验 expected model 和 actual model。
 - 如果 Trae CLI 对无效模型 fallback 到默认模型，run 必须失败。
 - `profiles/subagents.json` 会受 live roster 模型漂移影响；如果 profile 中的模型已不在 `traecli models --json`，不要把失败解读成 direct provider 失败。
-- 当前 direct 默认阵容以 `src/llm_council_for_trae/council.py` 为准；`profiles/subagents.json` 不作为 direct 默认阵容的源头。当前 profile 仅镜像 direct 默认 4 成员，避免 legacy subagent 路径误跑已剔除的 GLM 模型。
+- 当前 direct 默认阵容以 `src/llm_council_for_trae/council.py` 为准；`profiles/subagents.json` 不作为 direct 默认阵容的源头。当前 profile 仅镜像 direct 默认 3 成员：DeepSeek-V4-Pro, GPT-5.5, openrouter-3o，避免 legacy subagent 路径误跑已剔除的 GLM 模型。
+- direct path 的 agent-assisted 自选模型会归一化到 3；auto-backfill 只从成员整体优先级剩余候补里补到 3 个有效 Stage 1 成员。贡献说明里 `synthesis.members` 表示主席综合整理时主要参考的成员素材，不是共识。
 
 ## 需要复验的命令
 
@@ -33,9 +34,11 @@ llm-council-for-trae validate <run_id> --json
   council-chairman-kimi26.md
   council-deepseek-v4.md
   council-gemini31.md
+  council-gpt55.md
   council-gpt54.md
   council-kimi26.md
   council-openrouter-1o.md
+  council-openrouter-3o.md
   council-qwen36.md
 ```
 
@@ -61,17 +64,19 @@ Answer only the current council stage prompt. Do not browse the workspace, do no
 .trae/agents/council-chairman-deepseek-v4.md
 .trae/agents/council-deepseek-v4.md
 .trae/agents/council-gemini31.md
+.trae/agents/council-gpt55.md
 .trae/agents/council-gpt54.md
 .trae/agents/council-kimi26.md
 .trae/agents/council-openrouter-1o.md
+.trae/agents/council-openrouter-3o.md
 .trae/agents/council-qwen36.md
 profiles/subagents.json
 ```
 
-`profiles/subagents.json` 是 legacy / experimental profile，不作为 direct 默认阵容的源头；当前内容镜像 direct 默认 4 成员，避免历史 profile 误用已剔除模型：
+`profiles/subagents.json` 是 legacy / experimental profile，不作为 direct 默认阵容的源头；当前内容镜像 direct 默认 3 成员，避免历史 profile 误用已剔除模型：
 
 ```text
-members: DeepSeek-V4-Pro, GPT-5.4, openrouter-3o, Kimi-K2.6
+members: DeepSeek-V4-Pro, GPT-5.5, openrouter-3o
 chairman: DeepSeek-V4-Pro
 ```
 

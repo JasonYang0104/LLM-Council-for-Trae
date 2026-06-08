@@ -683,6 +683,35 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
                 for term in forbidden_terms:
                     self.assertNotIn(term, text)
 
+    def test_current_docs_describe_default_three_and_synthesis_reference_semantics(self):
+        required_terms = [
+            "DeepSeek-V4-Pro, GPT-5.5, openrouter-3o",
+            "归一化到 3",
+            "补到 3",
+            "synthesis.members",
+            "主要参考",
+            "不是共识",
+        ]
+        forbidden_terms = [
+            "归一化到 4",
+            "direct 默认 4 成员",
+            "镜像 direct 默认 4 成员",
+            "DeepSeek-V4-Pro, GPT-5.4, openrouter-3o, Kimi-K2.6",
+        ]
+        for relative in [
+            "README.md",
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+            "docs/design.md",
+            "docs/traecli-subagents.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+                for term in forbidden_terms:
+                    self.assertNotIn(term, text)
+
     def test_skills_do_not_treat_beta_or_hot_queue_as_auto_exclusions(self):
         required_terms = [
             "硬排除 Seed/Doubao/GLM",

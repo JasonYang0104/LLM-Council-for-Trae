@@ -928,7 +928,9 @@ def contribution_source_html(attribution: dict[str, Any], peer_ranks: dict[str, 
     if kind == "not_attributable":
         return "<p class='meta'>来源：无法可靠归因</p>"
     if kind == "synthesis":
-        return "<p class='meta'>来源：综合整理</p>"
+        if members:
+            return f"<p class='meta'>主席综合整理，主要参考：{', '.join(member_labels)}</p>"
+        return "<p class='meta'>来源：主席综合整理</p>"
     return ""
 
 

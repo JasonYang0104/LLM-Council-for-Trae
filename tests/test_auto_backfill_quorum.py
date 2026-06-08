@@ -29,17 +29,16 @@ class AutoBackfillQuorumTests(unittest.TestCase):
                 {"name": "Kimi-K2.5"},
                 {"name": "MiniMax-M2.5"},
             ],
-            primary_members=["DeepSeek-V4-Pro", "GPT-5.4", "openrouter-3o", "Kimi-K2.6"],
+            primary_members=["DeepSeek-V4-Pro", "GPT-5.5", "openrouter-3o"],
             chairman="DeepSeek-V4-Pro",
         )
 
         self.assertEqual(
             candidates,
-            ["MiniMax-M2.7", "Qwen3.6-Plus", "GPT-5.2", "DeepSeek-V4-Flash", "openrouter-1o", "Gemini-3.1-Pro-Preview", "GPT-5.5"],
+            ["GPT-5.4", "openrouter-2o", "Kimi-K2.6", "MiniMax-M2.7", "GPT-5.2", "openrouter-1o", "DeepSeek-V4-Flash", "Gemini-3.1-Pro-Preview", "Qwen3.6-Plus"],
         )
         self.assertNotIn("openrouter-3o", candidates)
         self.assertNotIn("openrouter-1", candidates)
-        self.assertNotIn("openrouter-2o", candidates)
         self.assertNotIn("Kimi-K2.5", candidates)
         self.assertNotIn("MiniMax-M2.5", candidates)
 
@@ -65,7 +64,7 @@ class AutoBackfillQuorumTests(unittest.TestCase):
             chairman="Kimi-K2.6",
         )
 
-        self.assertEqual(candidates, ["GPT-5.4", "Qwen3.6-Plus", "Gemini-3.1-Pro-Preview", "GPT-5.5"])
+        self.assertEqual(candidates, ["GPT-5.5", "GPT-5.4", "Gemini-3.1-Pro-Preview", "Qwen3.6-Plus"])
         self.assertNotIn("MiniMax-M2.5", candidates)
 
     def test_explicit_backfill_candidates_keep_priority_but_still_filter_unsafe_and_attempted(self):
