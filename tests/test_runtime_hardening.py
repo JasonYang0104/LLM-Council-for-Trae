@@ -1105,11 +1105,12 @@ class RuntimeHardeningTests(unittest.TestCase):
                 "stage1/member.prompt.md", "stage1/A.response.md", "stage1/A.traecli.stream.jsonl",
                 "stage2/review.prompt.md", "stage2/label_to_model.json", "stage2/aggregate.json",
                 "stage2/A.review.md", "stage2/A.traecli.stream.jsonl",
-                "stage2/B.review.md", "stage2/B.traecli.stream.jsonl",
+                "stage2/B.review.md",
                 "stage3/chairman.prompt.md", "stage3/final.md", "stage3/final.traecli.stream.jsonl",
                 "html/index.html",
             ]:
                 store.write_text(relative, "{}\n")
+            store.write_text("stage2/B.traecli.stream.jsonl", "")
 
             def write_json(relative, data):
                 store.write_text(relative, json.dumps(data) + "\n")
@@ -1130,6 +1131,27 @@ class RuntimeHardeningTests(unittest.TestCase):
 
             validation = validate_run(store)
             self.assertEqual(validation["status"], "degraded_ok", validation["failures"])
+
+    def test_stage_stream_file_check_only_accepts_empty_cancelled_records(self):
+        from llm_council_for_trae.validation import stage_stream_file_check
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            empty = "stage2/B.traecli.stream.jsonl"
+            nonempty = "stage2/A.traecli.stream.jsonl"
+            (root / "stage2").mkdir()
+            (root / empty).write_text("", encoding="utf-8")
+            (root / nonempty).write_text("{}\n", encoding="utf-8")
+
+            cancelled_failed = {"status": "failed", "error": "cancelled_by_stage_timeout"}
+            non_cancelled_failed = {"status": "failed", "error": "tool_contaminated"}
+            cancelled_ok = {"status": "ok", "error": "cancelled_by_stage_timeout"}
+
+            self.assertFalse(stage_stream_file_check(root, "stage2/missing.traecli.stream.jsonl", cancelled_failed)["ok"])
+            self.assertFalse(stage_stream_file_check(root, empty, non_cancelled_failed)["ok"])
+            self.assertFalse(stage_stream_file_check(root, empty, cancelled_ok)["ok"])
+            self.assertTrue(stage_stream_file_check(root, empty, cancelled_failed)["ok"])
+            self.assertTrue(stage_stream_file_check(root, nonempty, non_cancelled_failed)["ok"])
 
     def test_cli_validate_exits_zero_for_degraded_ok(self):
         from argparse import Namespace
