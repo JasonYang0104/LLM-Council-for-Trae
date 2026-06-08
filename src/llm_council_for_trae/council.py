@@ -1201,7 +1201,7 @@ async def run_full_council(
         manifest["failures"].extend(chairman_meta.get("failed_attempts") or [])
     elif stage3_result.get("status") != "ok":
         manifest["status"] = "failed"
-    elif stage1_status == "degraded_ok" or stage2_degraded:
+    elif stage1_status == "degraded_ok" or stage2_degraded or manifest.get("failures"):
         manifest["status"] = "degraded_ok"
     else:
         manifest["status"] = "ok"

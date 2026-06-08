@@ -214,6 +214,118 @@ class AutoBackfillQuorumTests(unittest.TestCase):
         import asyncio
         asyncio.run(_run())
 
+    def test_run_full_council_chairman_member_failure_backfilled_to_quorum_is_degraded(self):
+        async def _run():
+            from llm_council_for_trae.council import CouncilConfig, run_full_council
+            from llm_council_for_trae.provider import ModelCallResult
+            from llm_council_for_trae.store import ArtifactStore
+            import llm_council_for_trae.council as council_mod
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-chairman-backfill-degraded")
+            config = CouncilConfig(
+                members=["Chair", "M2", "M3"],
+                chairman="Chair",
+                min_valid_members=3,
+                stage1_max_retries=0,
+                backfill_members=["M4"],
+                stage2_timeout=1,
+            )
+
+            class MockProvider:
+                def __init__(self, *args, **kwargs):
+                    pass
+
+                async def query_model(self, **kwargs):
+                    stage = kwargs["stage"]
+                    model = kwargs["model"]
+                    if stage == "stage1":
+                        status = "failed" if model == "Chair" else "ok"
+                        return ModelCallResult(
+                            expected_model=model,
+                            actual_model=model if status == "ok" else None,
+                            response=f"answer {model}" if status == "ok" else "",
+                            status=status,
+                            session_id=f"s-{model}",
+                            command=["traecli"],
+                            exit_code=0 if status == "ok" else 1,
+                            stdout_path="out.jsonl",
+                            stderr_path="err.log",
+                            error=None if status == "ok" else "forbidden tool call(s): Bash",
+                        )
+                    return ModelCallResult(
+                        expected_model=model,
+                        actual_model=model,
+                        response="unused",
+                        status="ok",
+                        session_id="s",
+                        command=["traecli"],
+                        exit_code=0,
+                        stdout_path="out.jsonl",
+                        stderr_path="err.log",
+                    )
+
+            async def fake_stage2(user_query, stage1_results, config, provider, store):
+                label_to_model = {r["label"]: r["model"] for r in stage1_results}
+                reviews = [
+                    {
+                        "reviewer_label": r["file_label"],
+                        "model": r["model"],
+                        "expected_model": r["model"],
+                        "actual_model": r["model"],
+                        "ranking": "FINAL RANKING:\n1. Response B\n2. Response C\n3. Response D",
+                        "parsed_ranking": ["Response B", "Response C", "Response D"],
+                        "parse_status": "ok",
+                        "status": "ok",
+                        "error": None,
+                    }
+                    for r in stage1_results
+                ]
+                return reviews, label_to_model
+
+            async def fake_stage3(user_query, stage1_results, stage2_results, config, provider, store, fallback_chain=None):
+                return {
+                    "model": "Chair",
+                    "expected_model": "Chair",
+                    "actual_model": "Chair",
+                    "response": "final",
+                    "status": "ok",
+                    "error": None,
+                    "prompt_path": "stage3/chairman.prompt.md",
+                    "response_path": "stage3/final.md",
+                    "json_path": "stage3/final.json",
+                }, {"attempted": ["Chair"], "used": "Chair", "fallback_from": None, "failed_attempts": []}
+
+            with patch.object(council_mod, "runtime_doctor") as mock_doctor:
+                mock_doctor.return_value = type("Health", (), {
+                    "ok": True,
+                    "command": "fake",
+                    "version": "1.0",
+                    "doctor_exit_code": 0,
+                    "doctor": {},
+                    "errors": [],
+                    "warnings": [],
+                    "ignored_errors": [],
+                    "models": [{"name": name} for name in ["Chair", "M2", "M3", "M4"]],
+                })()
+                with patch.object(council_mod, "require_models_available"):
+                    with patch.object(council_mod, "TraeCliProvider", MockProvider):
+                        with patch.object(council_mod, "stage2_collect_rankings", fake_stage2):
+                            with patch.object(council_mod, "stage3_synthesize_final", fake_stage3):
+                                manifest = await run_full_council("question", config, store)
+
+            self.assertEqual(manifest["status"], "degraded_ok")
+            self.assertEqual(
+                manifest["metadata"]["quorum"]["effective_stage1_members"],
+                ["M2", "M3", "M4"],
+            )
+            self.assertTrue(manifest["metadata"]["quorum"]["backfill_used"])
+            self.assertEqual(len(manifest["failures"]), 1)
+            self.assertEqual(manifest["failures"][0]["stage_record"], "Response A")
+            self.assertIn("forbidden tool", manifest["failures"][0]["error"])
+
+        import asyncio
+        asyncio.run(_run())
+
     def test_run_full_council_stage1_low_quorum_degraded_when_backfill_exhausted(self):
         async def _run():
             from llm_council_for_trae.council import CouncilConfig, run_full_council
