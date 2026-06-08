@@ -580,7 +580,7 @@ provider_mode: direct
 
 CLI 行为：
 
-- `--selected-members/--selected-chairman` 是 agent-assisted 自选路径：按用户挑选的 seed models 归一化到 4 个成员，并记录 provenance。
+- `--selected-members/--selected-chairman` 是 agent-assisted 自选路径：按用户挑选的 seed models 归一化到 3 个成员，并记录 provenance。
 - 原生 `--members` / `--chairman` 仍保留，适合命令行直接调用；它是 power-user 精确路径，给几个跑几个，不补足、不裁剪。
 - `--profile` 仍保留，适合 subagent provider。
 - 输入 frontmatter 可作为未来便捷入口，解析后仍进入 `CouncilConfig`。
@@ -653,7 +653,7 @@ Qwen3.5-Plus
 最小规则：
 
 - 只从 `models --json` 的当前返回中选。
-- 默认推荐最多 4 个 member models + 1 个 chairman。
+- 默认推荐最多 3 个 member models + 1 个 chairman。
 - 当前推荐结果带 members、chairman 和 source；后续如加入 task-mode，可再补 `generated_at`、完整模型快照 hash 或 path、推荐理由。
 - 如果某个首选模型不可用，继续按成员整体优先级选择下一个可用模型，不引入未批准的 runtime 模型。
 
@@ -661,14 +661,16 @@ Qwen3.5-Plus
 
 ```text
 general:
-  members: DeepSeek-V4-Pro, GPT-5.4, openrouter-3o, Kimi-K2.6
-  member_priority: DeepSeek-V4-Pro, GPT-5.4, openrouter-3o, Kimi-K2.6, MiniMax-M2.7, Qwen3.6-Plus, GPT-5.2, DeepSeek-V4-Flash, openrouter-1o, Gemini-3.1-Pro-Preview, GPT-5.5
+  members: DeepSeek-V4-Pro, GPT-5.5, openrouter-3o
+  member_priority: DeepSeek-V4-Pro, GPT-5.5, openrouter-3o, GPT-5.4, openrouter-2o, Kimi-K2.6, MiniMax-M2.7, GPT-5.2, openrouter-1o, DeepSeek-V4-Flash, Gemini-3.1-Pro-Preview, Qwen3.6-Plus
   default_backfill: remaining available member_priority models only
   chairman: DeepSeek-V4-Pro
   chairman_fallback: Kimi-K2.6, DeepSeek-V4-Flash, GPT-5.2, openrouter-1
 ```
 
-这里的推荐不是“模型真理”，只是启动默认值。真正可信边界仍是 run 里的 expected/actual model 校验和 artifact evidence。
+这里的推荐不是“模型真理”，只是启动默认值。默认 direct 成员是 DeepSeek-V4-Pro, GPT-5.5, openrouter-3o；默认 auto-backfill 只在同一个 run 内补到 3 个有效 Stage 1 成员。真正可信边界仍是 run 里的 expected/actual model 校验和 artifact evidence。
+
+Contribution map 的归因语义也必须固定：`multi_member_consensus.members` 表示这些成员都表达过同一核心观点；`synthesis.members` 表示主席综合整理时主要参考了这些成员素材，不是共识，也不表示这些成员同意最终表述。HTML 只展示该语义，不在导出阶段二次推断来源。
 
 ### 外层 Agent 调用 CLC 时怎么处理用户确认
 

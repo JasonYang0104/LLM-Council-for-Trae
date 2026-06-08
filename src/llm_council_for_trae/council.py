@@ -12,13 +12,12 @@ from typing import Any
 from .models import doctor as runtime_doctor
 from .models import get_models, require_models_available
 from .contribution_map import extract_contribution_map, strip_contribution_map_fence
+from .model_selection import DEFAULT_CHAIRMAN, DEFAULT_MEMBERS
 from .provider import ModelCallResult, TraeCliProvider, tool_policy_for_mode
 from .store import ArtifactStore
 from .utils import utc_now, write_json
 
 
-DEFAULT_MEMBERS = ["DeepSeek-V4-Pro", "GPT-5.4", "openrouter-3o", "Kimi-K2.6"]
-DEFAULT_CHAIRMAN = "DeepSeek-V4-Pro"
 DEFAULT_READER_LANGUAGE_INSTRUCTION = "默认面向中文读者，使用简体中文回答。若用户原始问题明确指定另一种输出语言，则遵循用户指定语言。"
 
 
@@ -35,7 +34,7 @@ class CouncilConfig:
     chairman_agent: str | None = None
     use_yolo: bool = False
     min_valid_members: int = 3
-    target_valid_members: int = 4
+    target_valid_members: int = 3
     chairman_fallback: list[str] | None = None
     member_soft_checkpoint: int = 300
     member_quorum_checkpoint: int = 480
@@ -860,7 +859,10 @@ def build_stage3_prompt(
 - block.type 只能使用 heading、paragraph、editor_note、disagreement。
 - attribution.kind 只能使用 single_member、multi_member_consensus、editor_note、synthesis、not_attributable。
 - single_member 的 members 必须只引用真实在场 Stage 1 成员。
-- multi_member_consensus 的 members 至少 2 个。
+- multi_member_consensus 的 members 至少 2 个；multi_member_consensus.members 表示这些成员都表达过同一核心观点。
+- synthesis 是主席对成员素材进行编辑、合并、桥接或结构化整理；synthesis 不等于成员共识。
+- synthesis.members 表示主席主要参考了这些成员素材，不表示这些成员对最终表述达成共识。
+- 无法可靠归因时优先使用 not_attributable，不要用 synthesis 当兜底大筐。
 - members 只写模型名，不要自行写同侪排名；系统会根据 Stage 2 综合排序渲染"同侪#n"。
 - editor_note 必须明确表示主席基于成员素材延伸的编者注。
 - 不要输出贡献百分比，不要把同侪排序写成模型能力排行。

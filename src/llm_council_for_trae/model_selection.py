@@ -4,23 +4,27 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, TextIO
 
-from .council import DEFAULT_CHAIRMAN, DEFAULT_MEMBERS
 
 
+DEFAULT_MEMBER_COUNT = 3
 PREFERRED_MEMBERS = [
     "DeepSeek-V4-Pro",
-    "GPT-5.4",
+    "GPT-5.5",
     "openrouter-3o",
+    "GPT-5.4",
+    "openrouter-2o",
     "Kimi-K2.6",
     "MiniMax-M2.7",
-    "Qwen3.6-Plus",
     "GPT-5.2",
-    "DeepSeek-V4-Flash",
     "openrouter-1o",
+    "DeepSeek-V4-Flash",
     "Gemini-3.1-Pro-Preview",
-    "GPT-5.5",
+    "Qwen3.6-Plus",
 ]
-PREFERRED_CHAIRMEN = ["DeepSeek-V4-Pro", "Kimi-K2.6", "DeepSeek-V4-Flash", "GPT-5.2", "openrouter-1"]
+DEFAULT_MEMBERS = PREFERRED_MEMBERS[:DEFAULT_MEMBER_COUNT]
+CHAIRMAN_PRIORITY = ["DeepSeek-V4-Pro", "Kimi-K2.6", "DeepSeek-V4-Flash", "GPT-5.2", "openrouter-1"]
+PREFERRED_CHAIRMEN = CHAIRMAN_PRIORITY
+DEFAULT_CHAIRMAN = CHAIRMAN_PRIORITY[0]
 HARD_BAN_EXACT: set[str] = set()
 HARD_BAN_MARKERS = ("seed", "doubao", "glm")
 QUEUE_HEAT_THRESHOLD = 95
@@ -64,7 +68,7 @@ def recommend_model_choice(models: list[dict[str, Any]]) -> ModelChoice:
     for preferred in PREFERRED_MEMBERS:
         if preferred in safe_names and preferred not in members:
             members.append(preferred)
-        if len(members) >= 4:
+        if len(members) >= DEFAULT_MEMBER_COUNT:
             break
 
     if not members:
@@ -83,7 +87,7 @@ def normalize_user_model_selection(
     requested_chairman: str | None,
     models: list[dict[str, Any]],
     selection_surface: str,
-    target_members: int = 4,
+    target_members: int = DEFAULT_MEMBER_COUNT,
 ) -> ModelChoice:
     names = available_model_names(models)
     if not names:

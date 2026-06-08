@@ -12,24 +12,13 @@ from pathlib import Path
 from typing import Any
 
 from .council import parse_ranking_from_text, ranking_is_complete
+from .model_selection import PREFERRED_MEMBERS
 from .models import get_models
 from .provider import ModelCallResult, TraeCliProvider
 from .utils import DEFAULT_TRAECLI, append_jsonl, utc_now, write_json, write_text
 
 
-DEFAULT_CANDIDATES = [
-    "DeepSeek-V4-Pro",
-    "GPT-5.4",
-    "openrouter-3o",
-    "Kimi-K2.6",
-    "MiniMax-M2.7",
-    "Qwen3.6-Plus",
-    "GPT-5.2",
-    "DeepSeek-V4-Flash",
-    "openrouter-1o",
-    "Gemini-3.1-Pro-Preview",
-    "GPT-5.5",
-]
+DEFAULT_CANDIDATES = list(PREFERRED_MEMBERS)
 
 
 @dataclass(frozen=True)

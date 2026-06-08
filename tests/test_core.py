@@ -266,7 +266,7 @@ def write_reviewer_only_backfill_run(store, *, leak_reviewer_into_subjects: bool
             "aggregate_rankings": [{"model": "M1", "average_rank": 1.0, "rankings_count": 3, "positions": [1, 2, 1]}],
             "quorum": {
                 "min_valid_members": 3,
-                "target_valid_members": 4,
+                "target_valid_members": 3,
                 "low_quorum_floor": 2,
                 "effective_valid_members": 3,
                 "normal_quorum_met": True,
@@ -516,6 +516,29 @@ FINAL RANKING:
         self.assertIn("禁止写未转义的 `\"`", prompt)
         self.assertIn("JSON 代码块之后不要再输出任何解释", prompt)
 
+    def test_stage3_prompt_defines_synthesis_members_as_reference_not_consensus(self):
+        prompt = build_stage3_prompt(
+            "Explain attribution semantics.",
+            [
+                {"label": "Response A", "model": "GPT-5.5", "response": "A says one thing."},
+                {"label": "Response B", "model": "DeepSeek-V4-Pro", "response": "B says another thing."},
+            ],
+            [
+                {
+                    "model": "GPT-5.5",
+                    "ranking": "FINAL RANKING:\n1. Response A\n2. Response B",
+                    "parsed_ranking": ["Response A", "Response B"],
+                    "status": "ok",
+                }
+            ],
+        )
+
+        self.assertIn("multi_member_consensus.members 表示这些成员都表达过同一核心观点", prompt)
+        self.assertIn("synthesis.members 表示主席主要参考了这些成员素材", prompt)
+        self.assertIn("synthesis 不等于成员共识", prompt)
+        self.assertIn("无法可靠归因", prompt)
+        self.assertIn("not_attributable", prompt)
+
     def test_initial_manifest_records_default_chairman_contribution_metadata(self):
         config = CouncilConfig(members=["GPT-5.4"], chairman="GPT-5.4")
 
@@ -555,13 +578,13 @@ FINAL RANKING:
             {"name": "DeepSeek-V4-Pro", "context_window": 184000},
         ]
         choice = recommend_model_choice(models)
-        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "GPT-5.4"])
+        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "GPT-5.4", "openrouter-2o"])
         self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
 
     def test_default_direct_roster_uses_current_priority_suite(self):
         self.assertEqual(
             DEFAULT_MEMBERS,
-            ["DeepSeek-V4-Pro", "GPT-5.4", "openrouter-3o", "Kimi-K2.6"],
+            ["DeepSeek-V4-Pro", "GPT-5.5", "openrouter-3o"],
         )
         self.assertEqual(DEFAULT_CHAIRMAN, "DeepSeek-V4-Pro")
 
@@ -696,11 +719,11 @@ FINAL RANKING:
             {"name": "Gemini-3.1-Pro-Preview"},
         ]
         choice = select_model_choice_interactively(models, stdin=StringIO("c\n1,3\n3\n"), stderr=StringIO())
-        self.assertEqual(choice.members, ["GPT-5.4", "DeepSeek-V4-Pro", "Kimi-K2.6", "openrouter-1o"])
+        self.assertEqual(choice.members, ["GPT-5.4", "DeepSeek-V4-Pro", "Kimi-K2.6"])
         self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
         self.assertEqual(resolve_model_tokens("2, GPT-5.4", ["GPT-5.4", "GLM-5.1"]), ["GLM-5.1", "GPT-5.4"])
 
-    def test_normalize_user_model_selection_fills_to_four_by_preferred_members(self):
+    def test_normalize_user_model_selection_fills_to_three_by_preferred_members(self):
         normalize = getattr(model_selection, "normalize_user_model_selection", None)
         self.assertIsNotNone(normalize, "missing normalize_user_model_selection")
         models = [
@@ -719,13 +742,14 @@ FINAL RANKING:
             selection_surface="agent_assisted",
         )
 
-        self.assertEqual(choice.members, ["Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro", "openrouter-3o"])
+        self.assertEqual(choice.members, ["Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro"])
         self.assertEqual(choice.chairman, "DeepSeek-V4-Pro")
         self.assertEqual(choice.provenance["selection_surface"], "agent_assisted")
         self.assertEqual(choice.provenance["requested_members"], ["Kimi-K2.6", "GPT-5.4"])
-        self.assertEqual(choice.provenance["filled_members"], ["DeepSeek-V4-Pro", "openrouter-3o"])
+        self.assertEqual(choice.provenance["filled_members"], ["DeepSeek-V4-Pro"])
+        self.assertEqual(choice.provenance["normalization_target_members"], 3)
 
-    def test_normalize_user_model_selection_trims_to_four_by_preferred_members(self):
+    def test_normalize_user_model_selection_trims_to_three_by_preferred_members(self):
         normalize = getattr(model_selection, "normalize_user_model_selection", None)
         self.assertIsNotNone(normalize, "missing normalize_user_model_selection")
         models = [
@@ -745,11 +769,11 @@ FINAL RANKING:
             selection_surface="agent_assisted",
         )
 
-        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "GPT-5.4", "openrouter-3o", "Kimi-K2.6"])
-        self.assertEqual(choice.provenance["trimmed_members"], ["Unranked-Model", "openrouter-1o"])
+        self.assertEqual(choice.members, ["DeepSeek-V4-Pro", "openrouter-3o", "GPT-5.4"])
+        self.assertEqual(choice.provenance["trimmed_members"], ["Unranked-Model", "Kimi-K2.6", "openrouter-1o"])
         self.assertEqual(choice.provenance["resolved_members"], choice.members)
 
-    def test_normalize_user_model_selection_keeps_exact_four_user_order(self):
+    def test_normalize_user_model_selection_keeps_exact_three_user_order(self):
         normalize = getattr(model_selection, "normalize_user_model_selection", None)
         self.assertIsNotNone(normalize, "missing normalize_user_model_selection")
         models = [
@@ -762,13 +786,13 @@ FINAL RANKING:
         ]
 
         choice = normalize(
-            requested_members=["GPT-5.4", "DeepSeek-V4-Pro", "Gemini-3.1-Pro-Preview", "openrouter-1o"],
+            requested_members=["GPT-5.4", "DeepSeek-V4-Pro", "openrouter-1o"],
             requested_chairman=None,
             models=models,
             selection_surface="agent_assisted",
         )
 
-        self.assertEqual(choice.members, ["GPT-5.4", "DeepSeek-V4-Pro", "Gemini-3.1-Pro-Preview", "openrouter-1o"])
+        self.assertEqual(choice.members, ["GPT-5.4", "DeepSeek-V4-Pro", "openrouter-1o"])
         self.assertEqual(choice.chairman, "GPT-5.4")
         self.assertEqual(choice.provenance["trimmed_members"], [])
         self.assertEqual(choice.provenance["filled_members"], [])
@@ -785,11 +809,11 @@ FINAL RANKING:
                 selection_surface="agent_assisted",
             )
 
-    def test_normalize_user_model_selection_fails_closed_when_available_fillers_cannot_reach_four(self):
+    def test_normalize_user_model_selection_fails_closed_when_available_fillers_cannot_reach_three(self):
         normalize = getattr(model_selection, "normalize_user_model_selection", None)
         self.assertIsNotNone(normalize, "missing normalize_user_model_selection")
 
-        with self.assertRaisesRegex(ValueError, "无法归一化到 4 个成员"):
+        with self.assertRaisesRegex(ValueError, "无法归一化到 3 个成员"):
             normalize(
                 requested_members=["MiniMax-M2.7"],
                 requested_chairman=None,
@@ -832,7 +856,7 @@ FINAL RANKING:
             args.selected_model_choice = resolve_run_model_choice(args)
         config = build_config(args)
 
-        self.assertEqual(config.members, ["Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro", "openrouter-3o"])
+        self.assertEqual(config.members, ["Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro"])
         self.assertEqual(config.chairman, "DeepSeek-V4-Pro")
         self.assertEqual(config.model_selection_provenance["selection_surface"], "agent_assisted")
         self.assertEqual(config.model_selection_provenance["requested_members"], ["Kimi-K2.6", "GPT-5.4"])
@@ -877,14 +901,15 @@ FINAL RANKING:
 
     def test_initial_manifest_persists_model_selection_provenance(self):
         config = CouncilConfig(
-            members=["Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro", "openrouter-1o"],
+            members=["Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro"],
             chairman="DeepSeek-V4-Pro",
             model_selection_provenance={
                 "selection_surface": "agent_assisted",
                 "requested_members": ["Kimi-K2.6", "GPT-5.4"],
-                "resolved_members": ["Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro", "openrouter-1o"],
+                "resolved_members": ["Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro"],
                 "trimmed_members": [],
-                "filled_members": ["DeepSeek-V4-Pro", "openrouter-1o"],
+                "filled_members": ["DeepSeek-V4-Pro"],
+                "normalization_target_members": 3,
             },
         )
 
@@ -893,7 +918,7 @@ FINAL RANKING:
         self.assertEqual(manifest["metadata"]["model_selection"]["selection_surface"], "agent_assisted")
         self.assertEqual(
             manifest["metadata"]["model_selection"]["resolved_members"],
-            ["Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro", "openrouter-1o"],
+            ["Kimi-K2.6", "GPT-5.4", "DeepSeek-V4-Pro"],
         )
 
     def test_parse_stream_json_extracts_actual_model_and_result(self):
@@ -2332,9 +2357,20 @@ The user is not merely asking whether local inference hardware will improve they
         config = CouncilConfig(members=["A"], chairman="B")
         self.assertEqual(config.min_valid_members, 3)
 
-    def test_target_valid_members_default_is_4(self):
+    def test_target_valid_members_default_is_3(self):
         config = CouncilConfig(members=["A"], chairman="B")
-        self.assertEqual(config.target_valid_members, 4)
+        self.assertEqual(config.target_valid_members, 3)
+
+    def test_build_config_default_models_targets_three_valid_members(self):
+        parser = build_parser()
+        args = parser.parse_args(["run", "--input", "question.md", "--default-models"])
+        args.selected_model_choice = resolve_run_model_choice(args)
+
+        config = build_config(args)
+
+        self.assertEqual(config.members, ["DeepSeek-V4-Pro", "GPT-5.5", "openrouter-3o"])
+        self.assertEqual(config.min_valid_members, 3)
+        self.assertEqual(config.target_valid_members, 3)
 
     def test_use_yolo_default_is_false(self):
         config = CouncilConfig(members=["A"], chairman="B")
@@ -3050,7 +3086,7 @@ The user is not merely asking whether local inference hardware will improve they
             {"name": "Qwen3.6-Plus"},
         ]
         choice = recommend_model_choice(models)
-        self.assertEqual(choice.members, ["Qwen3.6-Plus"])
+        self.assertEqual(choice.members, ["openrouter-2o", "Qwen3.6-Plus"])
         self.assertEqual(choice.source, "recommended")
 
     def test_recommend_model_choice_excludes_seed_doubao_but_allows_gpt55(self):
@@ -3065,7 +3101,7 @@ The user is not merely asking whether local inference hardware will improve they
         ]
         choice = recommend_model_choice(models)
 
-        self.assertEqual(choice.members, ["GPT-5.4", "Kimi-K2.6", "GPT-5.5"])
+        self.assertEqual(choice.members, ["GPT-5.5", "GPT-5.4", "Kimi-K2.6"])
         joined = ",".join(choice.members + [choice.chairman]).lower()
         self.assertNotIn("seed", joined)
         self.assertNotIn("doubao", joined)
@@ -3102,7 +3138,7 @@ The user is not merely asking whether local inference hardware will improve they
 
     def test_recommend_model_choice_does_not_fallback_to_unapproved_openrouter(self):
         from llm_council_for_trae.model_selection import recommend_model_choice
-        models = [{"name": "openrouter-2o"}]
+        models = [{"name": "openrouter-unlisted"}]
         choice = recommend_model_choice(models)
         self.assertEqual(choice.members, [])
         self.assertEqual(choice.chairman, "")
@@ -3584,6 +3620,18 @@ The user is not merely asking whether local inference hardware will improve they
                                 "attribution": {"kind": "multi_member_consensus", "members": ["GPT-5.4", "DeepSeek-V4-Pro"]},
                             },
                             {
+                                "id": "p3",
+                                "type": "paragraph",
+                                "text": "主席把两个成员的材料合并成更清楚的表达。",
+                                "attribution": {"kind": "synthesis", "members": ["GPT-5.4", "DeepSeek-V4-Pro"]},
+                            },
+                            {
+                                "id": "p4",
+                                "type": "paragraph",
+                                "text": "这段无法可靠拆到具体成员。",
+                                "attribution": {"kind": "not_attributable", "members": []},
+                            },
+                            {
                                 "id": "n1",
                                 "type": "editor_note",
                                 "text": "主席注：这是主席基于成员素材延伸的取舍建议。\n\n来源：主席编者注",
@@ -3626,6 +3674,8 @@ The user is not merely asking whether local inference hardware will improve they
         self.assertIn("用户能看到哪些模型实际参与了结论", html)
         self.assertIn("来源：GPT-5.4（同侪#1）", html)
         self.assertIn("多成员共识：GPT-5.4（同侪#1）, DeepSeek-V4-Pro（同侪#2）", html)
+        self.assertIn("主席综合整理，主要参考：GPT-5.4（同侪#1）, DeepSeek-V4-Pro（同侪#2）", html)
+        self.assertIn("来源：无法可靠归因", html)
         self.assertIn("chairman-note", html)
         self.assertIn("主席评注", html)
         self.assertIn("这是主席基于成员素材延伸的取舍建议。", html)

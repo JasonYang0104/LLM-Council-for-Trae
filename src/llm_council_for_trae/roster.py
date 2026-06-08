@@ -1,5 +1,7 @@
 from typing import Optional
 
+from .model_selection import CHAIRMAN_PRIORITY
+
 VENDOR_TIERS = [
     {"vendor": "openai", "primary": "GPT-5.4", "fallback": "GPT-5.2"},
     {"vendor": "deepseek", "primary": "DeepSeek-V4-Pro", "fallback": "DeepSeek-V4-Flash"},
@@ -10,9 +12,9 @@ VENDOR_TIERS = [
     {"vendor": "openrouter", "primary": "openrouter-1o", "fallback": "openrouter-1"},
 ]
 
-PRIMARY_CHAIRMAN = "DeepSeek-V4-Pro"
+PRIMARY_CHAIRMAN = CHAIRMAN_PRIORITY[0]
 
-CHAIRMAN_FALLBACK_CHAIN = ["Kimi-K2.6", "DeepSeek-V4-Flash", "GPT-5.2", "openrouter-1"]
+CHAIRMAN_FALLBACK_CHAIN = CHAIRMAN_PRIORITY[1:]
 
 
 def resolve_fallback(model_name: str) -> Optional[str]:
