@@ -772,12 +772,32 @@ def render_inline(text: str) -> str:
             rendered.append(f"<code>{esc(part[1:-1])}</code>")
             continue
         escaped = esc(part)
-        escaped = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"<a href='\2'>\1</a>", escaped)
+        escaped = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", render_markdown_link, escaped)
         escaped = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", escaped)
         escaped = re.sub(r"__([^_]+)__", r"<strong>\1</strong>", escaped)
         escaped = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", escaped)
         rendered.append(escaped)
     return "".join(rendered)
+
+
+def render_markdown_link(match: re.Match[str]) -> str:
+    label = match.group(1)
+    href = match.group(2).strip()
+    if not is_safe_markdown_href(href):
+        return f"{label} ({href})"
+    return f"<a href='{href}'>{label}</a>"
+
+
+def is_safe_markdown_href(href: str) -> bool:
+    if not href or any(ord(char) < 32 for char in href):
+        return False
+    lowered = href.lower()
+    if lowered.startswith("//"):
+        return False
+    scheme_match = re.match(r"^([a-z][a-z0-9+.-]*):", lowered)
+    if scheme_match:
+        return scheme_match.group(1) in {"http", "https", "mailto"}
+    return True
 
 
 def is_table_start(lines: list[str], index: int) -> bool:
@@ -869,7 +889,7 @@ def render_contribution_map(root: Path, manifest: dict[str, Any]) -> str | None:
         if not isinstance(block, dict):
             continue
         block_type = block.get("type")
-        text = str(block.get("text") or "")
+        text = normalize_contribution_block_text(str(block.get("text") or ""))
         attribution = block.get("attribution") if isinstance(block.get("attribution"), dict) else {}
         source_html = contribution_source_html(attribution, peer_ranks)
         if block_type == "heading":
@@ -877,15 +897,20 @@ def render_contribution_map(root: Path, manifest: dict[str, Any]) -> str | None:
         elif block_type == "editor_note":
             note_text = clean_chairman_note_text(text)
             html_blocks.append(
-                f"<aside class='chairman-note'><strong>主席评注</strong><p>{esc(note_text)}</p></aside>"
+                f"<aside class='chairman-note'><strong>主席评注</strong>{render_markdown(note_text)}</aside>"
             )
         elif block_type == "disagreement":
             html_blocks.append(
-                f"<section class='cell'><h3>观点分歧</h3><p>{esc(text)}</p>{source_html}</section>"
+                f"<section class='cell'><h3>观点分歧</h3>{render_markdown(text)}{source_html}</section>"
             )
         else:
-            html_blocks.append(f"<p>{esc(text)}</p>{source_html}")
+            html_blocks.append(f"{render_markdown(text)}{source_html}")
     return "".join(html_blocks) if html_blocks else None
+
+
+def normalize_contribution_block_text(text: str) -> str:
+    normalized = str(text or "")
+    return normalized.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\n")
 
 
 def clean_chairman_note_text(text: str) -> str:

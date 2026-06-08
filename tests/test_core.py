@@ -171,6 +171,57 @@ def render_manifest_html(manifest):
         return render_html(root, manifest)
 
 
+def render_contribution_map_blocks(blocks):
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "stage3").mkdir()
+        (root / "input.md").write_text("Report topic: 贡献说明 Markdown 测试\n", encoding="utf-8")
+        (root / "stage3" / "final.md").write_text("legacy markdown should not render\n", encoding="utf-8")
+        (root / "stage3" / "chairman.prompt.md").write_text("prompt\n", encoding="utf-8")
+        (root / "stage3" / "contribution_map.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "enabled": True,
+                    "source": "chairman_structured_output",
+                    "blocks": blocks,
+                },
+                ensure_ascii=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        manifest = {
+            "schema_version": 1,
+            "run_id": "run-html-contribution-markdown",
+            "status": "ok",
+            "config": {
+                "members": ["GPT-5.4", "openrouter-3o"],
+                "chairman": "DeepSeek-V4-Pro",
+                "provider_mode": "direct",
+                "runtime_command": "fake",
+            },
+            "metadata": {
+                "aggregate_rankings": [
+                    {"label": "Response A", "model": "GPT-5.4", "average_rank": 1.0},
+                    {"label": "Response B", "model": "openrouter-3o", "average_rank": 2.0},
+                ],
+                "chairman_contribution": {"enabled": True, "path": "stage3/contribution_map.json"},
+            },
+            "stages": {
+                "stage1": [
+                    {"label": "Response A", "file_label": "A", "model": "GPT-5.4", "status": "ok"},
+                    {"label": "Response B", "file_label": "B", "model": "openrouter-3o", "status": "ok"},
+                ],
+                "stage2": [],
+                "stage3": {"model": "DeepSeek-V4-Pro", "status": "ok"},
+            },
+            "warnings": [],
+            "failures": [],
+        }
+        return render_html(root, manifest)
+
+
 def write_reviewer_only_backfill_run(store, *, leak_reviewer_into_subjects: bool = False, ranking_includes_reviewer_subject: bool = False):
     label_to_model = {
         "Response A": "M1",
@@ -3685,6 +3736,89 @@ The user is not merely asking whether local inference hardware will improve they
         self.assertNotIn('<aside class="warning-banner"', html)
         self.assertNotIn("<strong>编者注</strong>", html)
         self.assertNotIn("贡献 37%", html)
+
+    def test_contribution_map_literal_newline_table_renders_as_table(self):
+        html = render_contribution_map_blocks(
+            [
+                {
+                    "id": "table-1",
+                    "type": "paragraph",
+                    "text": "| 维度 | 有糖饮料 | 无糖饮料 |\\n|---|---|---|\\n| 危害证据强度 | 强 | 弱 |",
+                    "attribution": {"kind": "synthesis", "members": ["GPT-5.4", "openrouter-3o"]},
+                }
+            ]
+        )
+
+        self.assertIn("<table>", html)
+        self.assertIn("<th>维度</th>", html)
+        self.assertIn("<td>危害证据强度</td>", html)
+        self.assertNotIn("|---|---|---|", html)
+        self.assertNotIn("\\n|---|", html)
+        self.assertIn("主席综合整理，主要参考", html)
+
+    def test_contribution_map_real_newline_table_still_renders_as_table(self):
+        html = render_contribution_map_blocks(
+            [
+                {
+                    "id": "table-2",
+                    "type": "paragraph",
+                    "text": "| 人群/场景 | 建议 | 理由 |\n|---|---|---|\n| 健康成年人 | 无糖 | 避免空热量 |",
+                    "attribution": {"kind": "synthesis", "members": ["GPT-5.4", "openrouter-3o"]},
+                }
+            ]
+        )
+
+        self.assertIn("<table>", html)
+        self.assertIn("<th>人群/场景</th>", html)
+        self.assertIn("<td>健康成年人</td>", html)
+        self.assertIn("主席综合整理，主要参考", html)
+
+    def test_contribution_map_disagreement_and_editor_note_support_markdown(self):
+        html = render_contribution_map_blocks(
+            [
+                {
+                    "id": "d1",
+                    "type": "disagreement",
+                    "text": "- 观点甲\n- 观点乙",
+                    "attribution": {"kind": "multi_member_consensus", "members": ["GPT-5.4", "openrouter-3o"]},
+                },
+                {
+                    "id": "n1",
+                    "type": "editor_note",
+                    "text": "主席注：- 保留取舍\n- 标明边界\n\n来源：主席编者注",
+                    "attribution": {"kind": "editor_note", "members": []},
+                },
+            ]
+        )
+
+        self.assertIn("<section class='cell'><h3>观点分歧</h3>", html)
+        self.assertIn("<li>观点甲</li>", html)
+        self.assertIn("<li>观点乙</li>", html)
+        self.assertIn("<aside class='chairman-note'>", html)
+        self.assertIn("<li>保留取舍</li>", html)
+        self.assertIn("<li>标明边界</li>", html)
+        self.assertNotIn("主席注：", html)
+        self.assertNotIn("来源：主席编者注", html)
+
+    def test_contribution_map_markdown_escapes_html_and_unsafe_links(self):
+        html = render_contribution_map_blocks(
+            [
+                {
+                    "id": "security-1",
+                    "type": "paragraph",
+                    "text": "<script>alert(1)</script>\n[bad](javascript:alert(1))\n[ok](https://example.com/report)",
+                    "attribution": {"kind": "synthesis", "members": ["GPT-5.4", "openrouter-3o"]},
+                }
+            ]
+        )
+
+        article = html[html.index('<article id="final-answer"'):html.index("</article>")]
+        self.assertNotIn("<script>", article)
+        self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", article)
+        self.assertNotIn("href='javascript:", article)
+        self.assertIn("bad (javascript:alert(1))", article)
+        self.assertIn("<a href='https://example.com/report'>ok</a>", article)
+        self.assertIn("主席综合整理，主要参考", article)
 
     def test_html_falls_back_when_contribution_map_has_invalid_member_reference(self):
         with tempfile.TemporaryDirectory() as tmp:
