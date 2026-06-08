@@ -376,7 +376,7 @@ async def stage2_collect_rankings(
         store.write_json(f"stage2/{label}.review.json", review)
         store.write_json(f"stage2/{label}.meta.json", call.to_json() | {"captured_at": utc_now()})
         stream_path = output_dir / f"{label}.traecli.stream.jsonl"
-        if not stream_path.exists():
+        if not stream_path.exists() or stream_path.stat().st_size == 0:
             stream_text = call.response or call.error or call.status
             store.write_text(f"stage2/{label}.traecli.stream.jsonl", stream_text + "\n")
         stage2_results.append(review)

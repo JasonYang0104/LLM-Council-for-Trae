@@ -120,7 +120,7 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
                 [
                     file_check(store.root, f"stage1/{label}.response.md"),
                     file_check(store.root, f"stage1/{label}.meta.json"),
-                    file_check(store.root, f"stage1/{label}.traecli.stream.jsonl"),
+                    stage_stream_file_check(store.root, f"stage1/{label}.traecli.stream.jsonl", item),
                 ]
             )
             meta, meta_checks = validate_json_file(
@@ -146,7 +146,7 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
                     file_check(store.root, f"stage2/{label}.review.md"),
                     file_check(store.root, f"stage2/{label}.review.json"),
                     file_check(store.root, f"stage2/{label}.meta.json"),
-                    file_check(store.root, f"stage2/{label}.traecli.stream.jsonl"),
+                    stage_stream_file_check(store.root, f"stage2/{label}.traecli.stream.jsonl", item),
                 ]
             )
             meta, meta_checks = validate_json_file(
@@ -544,6 +544,20 @@ def file_check(root: Path, relative: str) -> dict[str, Any]:
     path = root / relative
     ok = path.exists() and path.stat().st_size > 0
     return {"name": f"file:{relative}", "ok": ok, "message": "present" if ok else "missing or empty"}
+
+
+def stage_stream_file_check(root: Path, relative: str, record: dict[str, Any]) -> dict[str, Any]:
+    check = file_check(root, relative)
+    path = root / relative
+    if (
+        not check["ok"]
+        and path.exists()
+        and path.stat().st_size == 0
+        and record.get("status") != "ok"
+        and "cancelled_by_stage_timeout" in str(record.get("error") or "")
+    ):
+        return {"name": f"file:{relative}", "ok": True, "message": "empty accepted for cancelled stage record"}
+    return check
 
 
 def model_match_check(stage: str, item: dict[str, Any]) -> dict[str, Any]:
