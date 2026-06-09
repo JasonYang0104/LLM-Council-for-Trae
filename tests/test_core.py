@@ -3882,6 +3882,34 @@ The user is not merely asking whether local inference hardware will improve they
         self.assertIn("来源：无法可靠归因", article)
         self.assertNotIn("Unknown-Model", article)
 
+    def test_contribution_map_synthesis_members_string_partially_degrades(self):
+        html = render_contribution_map_blocks(
+            [
+                {
+                    "id": "valid-synthesis",
+                    "type": "paragraph",
+                    "text": "合法综合正文",
+                    "attribution": {"kind": "synthesis", "members": ["GPT-5.4", "openrouter-3o"]},
+                },
+                {
+                    "id": "bad-members-type",
+                    "type": "paragraph",
+                    "text": "字符串成员正文仍应保留",
+                    "attribution": {"kind": "synthesis", "members": "GPT-5.4"},
+                },
+            ]
+        )
+        article = html[html.index('<article id="final-answer"'):html.index("</article>")]
+
+        self.assertNotIn("legacy markdown should not render", article)
+        self.assertIn("合法综合正文", article)
+        self.assertIn("主席综合整理，主要参考", article)
+        self.assertIn("字符串成员正文仍应保留", article)
+        self.assertIn("贡献标记部分降级", article)
+        self.assertIn("来源：无法可靠归因", article)
+        self.assertNotIn("G（同侪", article)
+        self.assertNotIn("P（同侪", article)
+
     def test_contribution_map_consensus_member_count_partially_degrades(self):
         html = render_contribution_map_blocks(
             [
