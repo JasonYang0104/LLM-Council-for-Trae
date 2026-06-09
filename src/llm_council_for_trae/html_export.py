@@ -938,8 +938,10 @@ def contribution_attribution_is_reliable(attribution: dict[str, Any], valid_stag
     kind = attribution.get("kind")
     if kind not in ALLOWED_ATTRIBUTION_KINDS:
         return False
-    members = attribution.get("members") if isinstance(attribution.get("members"), list) else []
-    member_names = [member for member in members if isinstance(member, str)]
+    members = contribution_member_names(attribution)
+    if members is None:
+        return False
+    member_names = members
     if any(member not in valid_stage1_models for member in member_names):
         return False
     if kind == "multi_member_consensus" and len(member_names) < 2:
@@ -980,9 +982,20 @@ def contribution_member_label(member: str, peer_ranks: dict[str, int]) -> str:
     return f"{esc(member)}（同侪#{rank}）"
 
 
+def contribution_member_names(attribution: dict[str, Any]) -> list[str] | None:
+    if "members" not in attribution:
+        return []
+    members = attribution.get("members")
+    if not isinstance(members, list):
+        return None
+    if any(not isinstance(member, str) for member in members):
+        return None
+    return members
+
+
 def contribution_source_html(attribution: dict[str, Any], peer_ranks: dict[str, int] | None = None) -> str:
     kind = attribution.get("kind")
-    members = [str(member) for member in attribution.get("members") or [] if isinstance(member, str)]
+    members = contribution_member_names(attribution) or []
     ranks = peer_ranks or {}
     member_labels = [contribution_member_label(member, ranks) for member in members]
     if kind == "single_member" and members:
