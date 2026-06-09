@@ -493,7 +493,12 @@ class RuntimeHardeningTests(unittest.TestCase):
             from llm_council_for_trae.store import ArtifactStore
 
             store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-chair-timeout")
-            config = CouncilConfig(members=["M1"], chairman="M1", chairman_timeout=777)
+            config = CouncilConfig(
+                members=["M1"],
+                chairman="M1",
+                chairman_timeout=777,
+                chairman_contribution_enabled=False,
+            )
             seen_timeouts = []
 
             class FakeProvider:

@@ -2840,6 +2840,219 @@ The user is not merely asking whether local inference hardware will improve they
         import asyncio
         asyncio.run(_run())
 
+    def test_stage3_repairs_missing_contribution_map_sidecar(self):
+        async def _run():
+            from llm_council_for_trae.council import stage3_synthesize_final, CouncilConfig
+            from llm_council_for_trae.provider import ModelCallResult, TraeCliProvider
+            from llm_council_for_trae.store import ArtifactStore
+            from unittest.mock import AsyncMock
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s3-contribution-map-repair-missing")
+            config = CouncilConfig(
+                members=["GPT-5.4", "DeepSeek-V4-Pro"],
+                chairman="GPT-5.4",
+                chairman_contribution_enabled=True,
+            )
+            final_markdown = "最终综述正文。"
+            repair_response = """
+```json
+{
+  "schema_version": 1,
+  "enabled": true,
+  "source": "chairman_structured_output",
+  "blocks": [
+    {
+      "id": "p1",
+      "type": "paragraph",
+      "text": "最终综述正文。",
+      "attribution": {"kind": "synthesis", "members": ["GPT-5.4", "DeepSeek-V4-Pro"]}
+    }
+  ]
+}
+```
+""".strip()
+            first_call = ModelCallResult(
+                expected_model="GPT-5.4", actual_model="GPT-5.4", response=final_markdown,
+                status="ok", session_id="s1", command=["traecli"], exit_code=0,
+                stdout_path="out.jsonl", stderr_path="err.log",
+            )
+            repair_call = ModelCallResult(
+                expected_model="GPT-5.4", actual_model="GPT-5.4", response=repair_response,
+                status="ok", session_id="s2", command=["traecli"], exit_code=0,
+                stdout_path="repair.jsonl", stderr_path="repair.err.log",
+            )
+            provider = TraeCliProvider.__new__(TraeCliProvider)
+            provider.query_model = AsyncMock(side_effect=[first_call, repair_call])
+
+            final, _meta = await stage3_synthesize_final(
+                "test query",
+                [
+                    {"label": "Response A", "model": "GPT-5.4", "response": "A", "status": "ok"},
+                    {"label": "Response B", "model": "DeepSeek-V4-Pro", "response": "B", "status": "ok"},
+                ],
+                [
+                    {
+                        "model": "Reviewer",
+                        "ranking": "FINAL RANKING:\n1. Response A\n2. Response B",
+                        "parsed_ranking": ["Response A", "Response B"],
+                        "status": "ok",
+                        "parse_status": "ok",
+                    }
+                ],
+                config, provider, store,
+            )
+
+            sidecar = store.path("stage3/contribution_map.json")
+            final_json = json.loads(store.path("stage3/final.json").read_text(encoding="utf-8"))
+            sidecar_json = json.loads(sidecar.read_text(encoding="utf-8"))
+
+            self.assertEqual(provider.query_model.await_count, 2)
+            self.assertTrue(sidecar.exists())
+            self.assertEqual(final["response"], final_markdown)
+            self.assertEqual(store.path("stage3/final.md").read_text(encoding="utf-8").strip(), final_markdown)
+            self.assertNotIn("contribution_map_error", final_json)
+            self.assertEqual(final_json["contribution_map_repair"]["status"], "ok")
+            self.assertEqual(final_json["contribution_map_repair"]["attempts"], 1)
+            self.assertEqual(sidecar_json["blocks"][0]["text"], final_markdown)
+            self.assertTrue(store.path("stage3/contribution_map.repair.1.prompt.md").exists())
+            self.assertTrue(store.path("stage3/contribution_map.repair.1.response.md").exists())
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_stage3_records_contribution_map_repair_failure_without_rewriting_final(self):
+        async def _run():
+            from llm_council_for_trae.council import stage3_synthesize_final, CouncilConfig
+            from llm_council_for_trae.provider import ModelCallResult, TraeCliProvider
+            from llm_council_for_trae.store import ArtifactStore
+            from unittest.mock import AsyncMock
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s3-contribution-map-repair-failed")
+            config = CouncilConfig(
+                members=["GPT-5.4", "DeepSeek-V4-Pro"],
+                chairman="GPT-5.4",
+                chairman_contribution_enabled=True,
+            )
+            final_markdown = "最终综述正文。"
+            first_call = ModelCallResult(
+                expected_model="GPT-5.4", actual_model="GPT-5.4", response=final_markdown,
+                status="ok", session_id="s1", command=["traecli"], exit_code=0,
+                stdout_path="out.jsonl", stderr_path="err.log",
+            )
+            bad_repair_1 = ModelCallResult(
+                expected_model="GPT-5.4", actual_model="GPT-5.4", response="不是 JSON",
+                status="ok", session_id="s2", command=["traecli"], exit_code=0,
+                stdout_path="repair1.jsonl", stderr_path="repair1.err.log",
+            )
+            bad_repair_2 = ModelCallResult(
+                expected_model="GPT-5.4", actual_model="GPT-5.4", response="仍然不是 JSON",
+                status="ok", session_id="s3", command=["traecli"], exit_code=0,
+                stdout_path="repair2.jsonl", stderr_path="repair2.err.log",
+            )
+            provider = TraeCliProvider.__new__(TraeCliProvider)
+            provider.query_model = AsyncMock(side_effect=[first_call, bad_repair_1, bad_repair_2])
+
+            final, _meta = await stage3_synthesize_final(
+                "test query",
+                [
+                    {"label": "Response A", "model": "GPT-5.4", "response": "A", "status": "ok"},
+                    {"label": "Response B", "model": "DeepSeek-V4-Pro", "response": "B", "status": "ok"},
+                ],
+                [
+                    {
+                        "model": "Reviewer",
+                        "ranking": "FINAL RANKING:\n1. Response A\n2. Response B",
+                        "parsed_ranking": ["Response A", "Response B"],
+                        "status": "ok",
+                        "parse_status": "ok",
+                    }
+                ],
+                config, provider, store,
+            )
+
+            final_json = json.loads(store.path("stage3/final.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(provider.query_model.await_count, 3)
+            self.assertFalse(store.path("stage3/contribution_map.json").exists())
+            self.assertEqual(final["response"], final_markdown)
+            self.assertEqual(store.path("stage3/final.md").read_text(encoding="utf-8").strip(), final_markdown)
+            self.assertEqual(final_json["contribution_map_error"], "missing_or_invalid_contribution_map_json")
+            self.assertEqual(final_json["contribution_map_repair"]["status"], "failed")
+            self.assertEqual(final_json["contribution_map_repair"]["attempts"], 2)
+            self.assertEqual(len(final_json["contribution_map_repair"]["attempt_records"]), 2)
+
+        import asyncio
+        asyncio.run(_run())
+
+    def test_stage3_skips_contribution_map_repair_when_initial_sidecar_valid(self):
+        async def _run():
+            from llm_council_for_trae.council import stage3_synthesize_final, CouncilConfig
+            from llm_council_for_trae.provider import ModelCallResult, TraeCliProvider
+            from llm_council_for_trae.store import ArtifactStore
+            from unittest.mock import AsyncMock
+
+            store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s3-contribution-map-repair-skip")
+            config = CouncilConfig(
+                members=["GPT-5.4", "DeepSeek-V4-Pro"],
+                chairman="GPT-5.4",
+                chairman_contribution_enabled=True,
+            )
+            response = """
+最终综述正文。
+
+```json
+{
+  "schema_version": 1,
+  "enabled": true,
+  "source": "chairman_structured_output",
+  "blocks": [
+    {
+      "id": "p1",
+      "type": "paragraph",
+      "text": "最终综述正文。",
+      "attribution": {"kind": "synthesis", "members": ["GPT-5.4", "DeepSeek-V4-Pro"]}
+    }
+  ]
+}
+```
+""".strip()
+            ok_call = ModelCallResult(
+                expected_model="GPT-5.4", actual_model="GPT-5.4", response=response,
+                status="ok", session_id="s1", command=["traecli"], exit_code=0,
+                stdout_path="out.jsonl", stderr_path="err.log",
+            )
+            provider = TraeCliProvider.__new__(TraeCliProvider)
+            provider.query_model = AsyncMock(return_value=ok_call)
+
+            final, _meta = await stage3_synthesize_final(
+                "test query",
+                [
+                    {"label": "Response A", "model": "GPT-5.4", "response": "A", "status": "ok"},
+                    {"label": "Response B", "model": "DeepSeek-V4-Pro", "response": "B", "status": "ok"},
+                ],
+                [
+                    {
+                        "model": "Reviewer",
+                        "ranking": "FINAL RANKING:\n1. Response A\n2. Response B",
+                        "parsed_ranking": ["Response A", "Response B"],
+                        "status": "ok",
+                        "parse_status": "ok",
+                    }
+                ],
+                config, provider, store,
+            )
+
+            final_json = json.loads(store.path("stage3/final.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(provider.query_model.await_count, 1)
+            self.assertTrue(store.path("stage3/contribution_map.json").exists())
+            self.assertNotIn("contribution_map_repair", final_json)
+            self.assertFalse(store.path("stage3/contribution_map.repair.1.prompt.md").exists())
+            self.assertEqual(final["response"], "最终综述正文。")
+
+        import asyncio
+        asyncio.run(_run())
+
     def test_stage3_repairs_unescaped_quotes_in_contribution_map_and_strips_final_markdown(self):
         async def _run():
             from llm_council_for_trae.council import stage3_synthesize_final, CouncilConfig
@@ -2942,8 +3155,18 @@ The user is not merely asking whether local inference hardware will improve they
                 status="ok", session_id="s2", command=["traecli"], exit_code=0,
                 stdout_path="retry.jsonl", stderr_path="retry.err.log",
             )
+            repair_response = """
+```json
+{"schema_version": 1, "enabled": true, "source": "chairman_structured_output", "blocks": [{"id": "p1", "type": "paragraph", "text": "综合结论：本地个人 agent 更可能先进入开发者和 prosumer 早期采用，而不是 2026H2 普通家庭爆发。", "attribution": {"kind": "synthesis", "members": ["Kimi-K2.6", "GPT-5.2"]}}]}
+```
+""".strip()
+            repair_call = ModelCallResult(
+                expected_model="Kimi-K2.6", actual_model="Kimi-K2.6", response=repair_response,
+                status="ok", session_id="s3", command=["traecli"], exit_code=0,
+                stdout_path="repair.jsonl", stderr_path="repair.err.log",
+            )
             provider = TraeCliProvider.__new__(TraeCliProvider)
-            provider.query_model = AsyncMock(side_effect=[first_call, retry_call])
+            provider.query_model = AsyncMock(side_effect=[first_call, retry_call, repair_call])
 
             final, meta = await stage3_synthesize_final(
                 "test query",
@@ -2963,8 +3186,9 @@ The user is not merely asking whether local inference hardware will improve they
                 config, provider, store,
             )
 
-            self.assertEqual(provider.query_model.await_count, 2)
+            self.assertEqual(provider.query_model.await_count, 3)
             self.assertEqual(final["response"], rewritten_response)
+            self.assertEqual(final["contribution_map_repair"]["status"], "ok")
             self.assertEqual(final["prompt_path"], "stage3/chairman.copy_retry.prompt.md")
             self.assertEqual(final["original_prompt_path"], "stage3/chairman.prompt.md")
             self.assertEqual(store.path("stage3/final.md").read_text().strip(), rewritten_response)
@@ -2976,6 +3200,8 @@ The user is not merely asking whether local inference hardware will improve they
             retry_prompt = provider.query_model.await_args_list[1].kwargs["prompt"]
             self.assertIn("ANTI-COPY RETRY", retry_prompt)
             self.assertIn("Response A", retry_prompt)
+            repair_prompt = provider.query_model.await_args_list[2].kwargs["prompt"]
+            self.assertIn(rewritten_response, repair_prompt)
 
         import asyncio
         asyncio.run(_run())
@@ -2988,7 +3214,7 @@ The user is not merely asking whether local inference hardware will improve they
             from unittest.mock import AsyncMock
 
             store = ArtifactStore.create(Path(tempfile.mkdtemp()), "run-s3-copy-unresolved")
-            config = CouncilConfig(members=["Kimi-K2.6"], chairman="Kimi-K2.6")
+            config = CouncilConfig(members=["Kimi-K2.6"], chairman="Kimi-K2.6", chairman_contribution_enabled=False)
             copied_response = ("Copied Stage 1 answer. " * 90).strip()
             copy_call = ModelCallResult(
                 expected_model="Kimi-K2.6", actual_model="Kimi-K2.6", response=copied_response,
