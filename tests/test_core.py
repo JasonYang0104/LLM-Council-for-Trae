@@ -13,6 +13,7 @@ from llm_council_for_trae.council import (
     build_stage3_prompt,
     calculate_aggregate_rankings,
     classify_stage1_status,
+    config_to_json,
     CouncilConfig,
     DEFAULT_CHAIRMAN,
     DEFAULT_MEMBERS,
@@ -459,6 +460,17 @@ FINAL RANKING:
 
         self.assertTrue(config.chairman_contribution_enabled)
         self.assertFalse(config.chairman_contribution_required)
+
+    def test_config_to_json_records_contribution_map_repair_attempts(self):
+        config = CouncilConfig(
+            members=["GPT-5.4"],
+            chairman="GPT-5.4",
+            chairman_contribution_repair_attempts=4,
+        )
+
+        serialized = config_to_json(config)
+
+        self.assertEqual(serialized["chairman_contribution_repair_attempts"], 4)
 
     def test_build_config_can_disable_chairman_contribution_map(self):
         parser = build_parser()
