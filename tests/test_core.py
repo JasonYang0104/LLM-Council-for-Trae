@@ -590,6 +590,31 @@ FINAL RANKING:
         self.assertIn("无法可靠归因", prompt)
         self.assertIn("not_attributable", prompt)
 
+    def test_stage3_prompt_includes_contribution_map_display_constraints(self):
+        prompt = build_stage3_prompt(
+            "Explain readable contribution output.",
+            [
+                {"label": "Response A", "model": "GPT-5.5", "response": "A says one thing."},
+                {"label": "Response B", "model": "openrouter-3o", "response": "B says another thing."},
+            ],
+            [
+                {
+                    "model": "GPT-5.5",
+                    "ranking": "FINAL RANKING:\n1. Response A\n2. Response B",
+                    "parsed_ranking": ["Response A", "Response B"],
+                    "status": "ok",
+                }
+            ],
+        )
+
+        self.assertIn("Contribution map 输出约束", prompt)
+        self.assertIn("不得写成一整段内联编号或内联顿号串", prompt)
+        self.assertIn("有顺序关系的要点使用有序列表", prompt)
+        self.assertIn("无顺序关系的并列要点使用无序列表", prompt)
+        self.assertIn("editor_note 类型的 block.text 必须是纯评注意见", prompt)
+        self.assertIn("不得包含“编者注：”“主席评注：”“评注：”", prompt)
+        self.assertIn("不应依赖渲染器二次拆段", prompt)
+
     def test_initial_manifest_records_default_chairman_contribution_metadata(self):
         config = CouncilConfig(members=["GPT-5.4"], chairman="GPT-5.4")
 
