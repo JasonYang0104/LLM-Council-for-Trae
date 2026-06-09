@@ -1476,6 +1476,7 @@ def config_to_json(config: CouncilConfig) -> dict[str, Any]:
         "model_selection_provenance": config.model_selection_provenance,
         "chairman_contribution_enabled": config.chairman_contribution_enabled,
         "chairman_contribution_required": config.chairman_contribution_required,
+        "chairman_contribution_repair_attempts": config.chairman_contribution_repair_attempts,
     }
 
 
