@@ -3820,7 +3820,169 @@ The user is not merely asking whether local inference hardware will improve they
         self.assertIn("<a href='https://example.com/report'>ok</a>", article)
         self.assertIn("主席综合整理，主要参考", article)
 
-    def test_html_falls_back_when_contribution_map_has_invalid_member_reference(self):
+    def test_contribution_map_invalid_attribution_kind_partially_degrades(self):
+        html = render_contribution_map_blocks(
+            [
+                {
+                    "id": "valid-synthesis",
+                    "type": "paragraph",
+                    "text": "合法综合正文",
+                    "attribution": {"kind": "synthesis", "members": ["GPT-5.4", "openrouter-3o"]},
+                },
+                {
+                    "id": "valid-consensus",
+                    "type": "paragraph",
+                    "text": "合法共识正文",
+                    "attribution": {"kind": "multi_member_consensus", "members": ["GPT-5.4", "openrouter-3o"]},
+                },
+                {
+                    "id": "bad-kind",
+                    "type": "paragraph",
+                    "text": "非法 kind 正文仍应保留",
+                    "attribution": {"kind": "disagreement", "members": ["GPT-5.4", "openrouter-3o"]},
+                },
+            ]
+        )
+        article = html[html.index('<article id="final-answer"'):html.index("</article>")]
+
+        self.assertNotIn("legacy markdown should not render", article)
+        self.assertIn("合法综合正文", article)
+        self.assertIn("主席综合整理，主要参考", article)
+        self.assertIn("合法共识正文", article)
+        self.assertIn("多成员共识", article)
+        self.assertIn("同侪#1", article)
+        self.assertIn("同侪#2", article)
+        self.assertIn("非法 kind 正文仍应保留", article)
+        self.assertIn("来源：无法可靠归因", article)
+        self.assertNotIn("kind&quot;: &quot;disagreement", article)
+
+    def test_contribution_map_unknown_member_partially_degrades(self):
+        html = render_contribution_map_blocks(
+            [
+                {
+                    "id": "valid-synthesis",
+                    "type": "paragraph",
+                    "text": "合法综合正文",
+                    "attribution": {"kind": "synthesis", "members": ["GPT-5.4", "openrouter-3o"]},
+                },
+                {
+                    "id": "unknown-member",
+                    "type": "paragraph",
+                    "text": "未知成员正文仍应保留",
+                    "attribution": {"kind": "single_member", "members": ["Unknown-Model"]},
+                },
+            ]
+        )
+        article = html[html.index('<article id="final-answer"'):html.index("</article>")]
+
+        self.assertNotIn("legacy markdown should not render", article)
+        self.assertIn("合法综合正文", article)
+        self.assertIn("主席综合整理，主要参考", article)
+        self.assertIn("未知成员正文仍应保留", article)
+        self.assertIn("来源：无法可靠归因", article)
+        self.assertNotIn("Unknown-Model", article)
+
+    def test_contribution_map_consensus_member_count_partially_degrades(self):
+        html = render_contribution_map_blocks(
+            [
+                {
+                    "id": "valid-consensus",
+                    "type": "paragraph",
+                    "text": "合法共识正文",
+                    "attribution": {"kind": "multi_member_consensus", "members": ["GPT-5.4", "openrouter-3o"]},
+                },
+                {
+                    "id": "bad-consensus",
+                    "type": "paragraph",
+                    "text": "成员不足共识正文仍应保留",
+                    "attribution": {"kind": "multi_member_consensus", "members": ["GPT-5.4"]},
+                },
+            ]
+        )
+        article = html[html.index('<article id="final-answer"'):html.index("</article>")]
+
+        self.assertNotIn("legacy markdown should not render", article)
+        self.assertIn("合法共识正文", article)
+        self.assertIn("多成员共识：GPT-5.4（同侪#1）, openrouter-3o（同侪#2）", article)
+        self.assertIn("成员不足共识正文仍应保留", article)
+        self.assertIn("来源：无法可靠归因", article)
+        self.assertNotIn("<p class='meta'>多成员共识：GPT-5.4（同侪#1）</p>", article)
+
+    def test_contribution_map_invalid_block_type_partially_degrades(self):
+        html = render_contribution_map_blocks(
+            [
+                {
+                    "id": "valid-synthesis",
+                    "type": "paragraph",
+                    "text": "合法综合正文",
+                    "attribution": {"kind": "synthesis", "members": ["GPT-5.4", "openrouter-3o"]},
+                },
+                {
+                    "id": "bad-type",
+                    "type": "unsupported_block_type",
+                    "text": "非法 block type 正文仍应保留",
+                    "attribution": {"kind": "synthesis", "members": ["GPT-5.4", "openrouter-3o"]},
+                },
+            ]
+        )
+        article = html[html.index('<article id="final-answer"'):html.index("</article>")]
+
+        self.assertNotIn("legacy markdown should not render", article)
+        self.assertIn("合法综合正文", article)
+        self.assertIn("主席综合整理，主要参考", article)
+        self.assertIn("非法 block type 正文仍应保留", article)
+        self.assertIn("贡献标记部分降级", article)
+        self.assertIn("来源：无法可靠归因", article)
+        self.assertNotIn("unsupported_block_type", article)
+
+    def test_contribution_map_fatal_structure_still_falls_back_to_final(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "stage3").mkdir()
+            (root / "input.md").write_text("Report topic: 贡献说明 fatal fallback 测试\n", encoding="utf-8")
+            (root / "stage3" / "final.md").write_text("fallback markdown answer\n", encoding="utf-8")
+            (root / "stage3" / "chairman.prompt.md").write_text("prompt\n", encoding="utf-8")
+            (root / "stage3" / "contribution_map.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "enabled": True,
+                        "source": "chairman_structured_output",
+                        "blocks": {"not": "a list"},
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            manifest = {
+                "schema_version": 1,
+                "run_id": "run-html-fatal-contribution",
+                "status": "ok",
+                "config": {"members": ["GPT-5.4"], "chairman": "GPT-5.4", "provider_mode": "direct", "runtime_command": "fake"},
+                "metadata": {
+                    "aggregate_rankings": [{"label": "Response A", "model": "GPT-5.4", "average_rank": 1.0}],
+                    "chairman_contribution": {
+                        "enabled": True,
+                        "requested": True,
+                        "required": False,
+                        "present": True,
+                        "path": "stage3/contribution_map.json",
+                    },
+                },
+                "stages": {
+                    "stage1": [{"label": "Response A", "file_label": "A", "model": "GPT-5.4", "status": "ok"}],
+                    "stage2": [],
+                    "stage3": {"model": "GPT-5.4", "status": "ok"},
+                },
+                "warnings": [],
+                "failures": [],
+            }
+
+            html = render_html(root, manifest)
+
+        self.assertIn("fallback markdown answer", html)
+
+    def test_html_partially_degrades_when_contribution_map_has_invalid_member_reference(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "stage3").mkdir()
@@ -3872,8 +4034,10 @@ The user is not merely asking whether local inference hardware will improve they
 
             html = render_html(root, manifest)
 
-        self.assertIn("fallback markdown answer", html)
-        self.assertNotIn("invalid sidecar should not render", html)
+        article = html[html.index('<article id="final-answer"'):html.index("</article>")]
+        self.assertNotIn("fallback markdown answer", article)
+        self.assertIn("invalid sidecar should not render", article)
+        self.assertIn("来源：无法可靠归因", article)
         self.assertNotIn("Unknown-Model", html)
 
     def test_html_fallback_strips_trailing_contribution_json_block_when_sidecar_missing(self):
