@@ -53,6 +53,7 @@ class CouncilConfig:
     model_selection_provenance: dict[str, Any] | None = None
     chairman_contribution_enabled: bool = True
     chairman_contribution_required: bool = False
+    chairman_contribution_repair_attempts: int = 2
 
     def agent_for_member(self, index: int) -> str | None:
         if not self.member_agents or index >= len(self.member_agents):
@@ -463,6 +464,156 @@ async def cancel_and_drain(tasks: set[asyncio.Task] | list[asyncio.Task]) -> Non
     await asyncio.gather(*pending, return_exceptions=True)
 
 
+def contribution_map_is_renderable(data: dict[str, Any] | None) -> bool:
+    if not isinstance(data, dict):
+        return False
+    blocks = data.get("blocks")
+    if not isinstance(blocks, list) or not blocks:
+        return False
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        if isinstance(block.get("text"), str) and block["text"].strip():
+            return True
+    return False
+
+
+def build_contribution_map_repair_prompt(
+    final_response: str,
+    stage1_results: list[dict[str, Any]],
+    stage2_results: list[dict[str, Any]],
+    aggregate_rankings: list[dict[str, Any]] | None = None,
+    *,
+    previous_error: str | None = None,
+) -> str:
+    stage1_text = "\n\n".join(
+        f"{result.get('label', 'Response ?')}:\nModel: {result.get('model')}\nResponse: {result.get('response', '')}"
+        for result in stage1_results
+        if result.get("status") == "ok"
+    ) or "无可用 Stage 1 成员素材。"
+    stage2_text = "\n\n".join(
+        f"Model: {result.get('model')}\nRanking: {result.get('ranking')}\nParsed: {result.get('parsed_ranking')}"
+        for result in stage2_results
+        if result.get("status") == "ok"
+    ) or "无可用 Stage 2 排序。"
+    aggregate_text = "未生成可用的 Stage 2 综合排序。"
+    if aggregate_rankings:
+        aggregate_text = "\n".join(
+            f"{index}. {item.get('label') or item.get('response_label') or item.get('stage1_label') or item.get('source_stage1_label') or 'Response ?'} | "
+            f"model={item.get('model')} | average_rank={item.get('average_rank')} | "
+            f"rankings_count={item.get('rankings_count')} | positions={item.get('positions', [])}"
+            for index, item in enumerate(aggregate_rankings, start=1)
+        )
+    retry_note = ""
+    if previous_error:
+        retry_note = f"\n上一次生成失败原因：{previous_error}\n这一次必须更严格：只输出 JSON，不要输出解释、正文或注释。\n"
+    return f"""你是 LLM Council 的主席。你已经完成最终综述正文。现在不要改写正文，只为这份 final.md 生成 contribution_map JSON。{retry_note}
+
+要求：
+- 只输出唯一一个 fenced `json` 代码块，代码块内是 JSON object；也允许只输出纯 JSON object。
+- 不要输出正文、解释、注释或额外 Markdown。
+- JSON 必须包含 schema_version=1、enabled=true、source="chairman_structured_output"、blocks。
+- blocks 必须是非空列表；每个 block 必须有 id、type、text、attribution。
+- block.text 必须摘自 final.md 的对应内容，不得新增观点，不得改写最终正文。
+- block.type 只能使用 heading、paragraph、editor_note、disagreement。
+- attribution.kind 只能使用 single_member、multi_member_consensus、editor_note、synthesis、not_attributable。
+- single_member.members 只写一个真实 Stage 1 模型名；multi_member_consensus.members 至少两个真实 Stage 1 模型名。
+- synthesis.members 表示主席主要参考素材，不表示成员共识。
+- 无法可靠归因时用 not_attributable，members 用空列表；不要用 synthesis 当兜底大筐。
+- 有顺序关系要点用有序 Markdown 列表；并列要点用无序 Markdown 列表。
+- editor_note 类型的 block.text 必须是纯评注意见，不得包含“编者注：”“主席评注：”“评注：”前缀。
+
+final.md:
+{final_response}
+
+Stage 1 成员素材:
+{stage1_text}
+
+Stage 2 排序与评价:
+{stage2_text}
+
+Stage 2 综合排序:
+{aggregate_text}
+"""
+
+
+async def repair_contribution_map(
+    *,
+    provider: TraeCliProvider,
+    store: ArtifactStore,
+    model: str,
+    final_response: str,
+    stage1_results: list[dict[str, Any]],
+    stage2_results: list[dict[str, Any]],
+    aggregate_rankings: list[dict[str, Any]],
+    config: CouncilConfig,
+    agent: str | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    max_attempts = max(0, int(config.chairman_contribution_repair_attempts))
+    records: list[dict[str, Any]] = []
+    previous_error: str | None = None
+    for attempt in range(1, max_attempts + 1):
+        prompt_path = f"stage3/contribution_map.repair.{attempt}.prompt.md"
+        response_path = f"stage3/contribution_map.repair.{attempt}.response.md"
+        prompt = build_contribution_map_repair_prompt(
+            final_response,
+            stage1_results,
+            stage2_results,
+            aggregate_rankings,
+            previous_error=previous_error,
+        )
+        store.write_text(prompt_path, prompt + "\n")
+        repair_call = await provider.query_model(
+            model=model,
+            prompt=prompt,
+            run_id=store.root.name,
+            stage="stage3",
+            label=f"contribution-map-repair-{attempt}",
+            output_dir=store.path("stage3"),
+            agent=agent,
+            query_timeout=config.chairman_timeout,
+        )
+        record: dict[str, Any] = {
+            "attempt": attempt,
+            "prompt_path": prompt_path,
+            "response_path": response_path,
+            "status": repair_call.status,
+            "error": repair_call.error,
+        }
+        if repair_call.status != "ok":
+            previous_error = repair_call.error or "provider_failed"
+            record["status"] = "provider_failed"
+            record["error"] = previous_error
+            records.append(record)
+            continue
+        store.write_text(response_path, repair_call.response + "\n")
+        contribution_map = extract_contribution_map(repair_call.response)
+        if contribution_map_is_renderable(contribution_map):
+            record["status"] = "ok"
+            record["error"] = None
+            records.append(record)
+            return contribution_map, {
+                "attempted": True,
+                "attempts": attempt,
+                "status": "ok",
+                "prompt_path": prompt_path,
+                "response_path": response_path,
+                "error": None,
+                "attempt_records": records,
+            }
+        previous_error = "missing_or_invalid_contribution_map_json"
+        record["status"] = "invalid_json"
+        record["error"] = previous_error
+        records.append(record)
+    return None, {
+        "attempted": True,
+        "attempts": max_attempts,
+        "status": "failed",
+        "error": previous_error or "missing_or_invalid_contribution_map_json",
+        "attempt_records": records,
+    }
+
+
 async def stage3_synthesize_final(
     user_query: str,
     stage1_results: list[dict[str, Any]],
@@ -612,10 +763,26 @@ async def stage3_synthesize_final(
     if config.chairman_contribution_enabled:
         final["contribution_map_path"] = "stage3/contribution_map.json"
         contribution_map = extract_contribution_map(call.response)
+        repair_meta = None
+        if not contribution_map_is_renderable(contribution_map):
+            contribution_map, repair_meta = await repair_contribution_map(
+                provider=provider,
+                store=store,
+                model=used,
+                final_response=final_response,
+                stage1_results=stage1_results,
+                stage2_results=stage2_results,
+                aggregate_rankings=aggregate_rankings,
+                config=config,
+                agent=config.chairman_agent if used == config.chairman else None,
+            )
         if contribution_map is None:
             final["contribution_map_error"] = "missing_or_invalid_contribution_map_json"
         else:
             store.write_json("stage3/contribution_map.json", contribution_map)
+            final.pop("contribution_map_error", None)
+        if repair_meta:
+            final["contribution_map_repair"] = repair_meta
         final["contribution_map_stripped_from_response"] = final_response != call.response
     store.write_text("stage3/final.md", final_response + "\n")
     store.write_json("stage3/final.meta.json", call.to_json() | {"captured_at": utc_now()})
