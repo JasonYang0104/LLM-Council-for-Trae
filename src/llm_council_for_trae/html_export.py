@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .contribution_map import contribution_map_semantic_checks, strip_contribution_map_fence
+from .contribution_map import ALLOWED_ATTRIBUTION_KINDS, ALLOWED_BLOCK_TYPES, strip_contribution_map_fence
 from .store import ArtifactStore
 from .utils import read_text, utc_now
 
@@ -879,19 +879,25 @@ def render_contribution_map(root: Path, manifest: dict[str, Any]) -> str | None:
         return None
     stages = manifest.get("stages") if isinstance(manifest.get("stages"), dict) else {}
     stage1 = stages.get("stage1") if isinstance(stages.get("stage1"), list) else []
-    semantic_checks = contribution_map_semantic_checks(data, [item for item in stage1 if isinstance(item, dict)])
-    if any(not check.get("ok") for check in semantic_checks):
-        return None
+    valid_stage1_models = contribution_valid_stage1_models(stage1)
 
     peer_ranks = contribution_peer_ranks(metadata)
     html_blocks: list[str] = []
+    degraded_blocks = 0
     for block in blocks:
         if not isinstance(block, dict):
             continue
         block_type = block.get("type")
         text = normalize_contribution_block_text(str(block.get("text") or ""))
+        if not text.strip():
+            continue
         attribution = block.get("attribution") if isinstance(block.get("attribution"), dict) else {}
-        source_html = contribution_source_html(attribution, peer_ranks)
+        block_type_reliable = block_type in ALLOWED_BLOCK_TYPES
+        attribution_reliable = contribution_attribution_is_reliable(attribution, valid_stage1_models)
+        source_attribution = attribution if attribution_reliable and block_type_reliable else {"kind": "not_attributable"}
+        if not attribution_reliable or not block_type_reliable:
+            degraded_blocks += 1
+        source_html = contribution_source_html(source_attribution, peer_ranks)
         if block_type == "heading":
             html_blocks.append(f"<h3>{esc(text)}</h3>")
         elif block_type == "editor_note":
@@ -905,7 +911,42 @@ def render_contribution_map(root: Path, manifest: dict[str, Any]) -> str | None:
             )
         else:
             html_blocks.append(f"{render_markdown(text)}{source_html}")
-    return "".join(html_blocks) if html_blocks else None
+    if not html_blocks:
+        return None
+    if degraded_blocks:
+        warning = (
+            "<aside class='warning-banner'>"
+            f"贡献标记部分降级：{degraded_blocks} 个 block 的归因无法可靠解析，正文已保留。"
+            "</aside>"
+        )
+        return warning + "".join(html_blocks)
+    return "".join(html_blocks)
+
+
+def contribution_valid_stage1_models(stage1: list[Any]) -> set[str]:
+    return {
+        item.get("model")
+        for item in stage1
+        if isinstance(item, dict)
+        and item.get("status") == "ok"
+        and isinstance(item.get("model"), str)
+        and not item.get("forbidden_tool_calls")
+    }
+
+
+def contribution_attribution_is_reliable(attribution: dict[str, Any], valid_stage1_models: set[str]) -> bool:
+    kind = attribution.get("kind")
+    if kind not in ALLOWED_ATTRIBUTION_KINDS:
+        return False
+    members = attribution.get("members") if isinstance(attribution.get("members"), list) else []
+    member_names = [member for member in members if isinstance(member, str)]
+    if any(member not in valid_stage1_models for member in member_names):
+        return False
+    if kind == "multi_member_consensus" and len(member_names) < 2:
+        return False
+    if kind == "single_member" and len(member_names) != 1:
+        return False
+    return True
 
 
 def normalize_contribution_block_text(text: str) -> str:
