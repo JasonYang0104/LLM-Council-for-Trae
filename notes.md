@@ -239,3 +239,39 @@
 - live ACP transport 仍未实现；validate 校验范围是「结构与证据一致性」，不声称验证「ACP 已隐藏 schema」这类未观察状态（与研究线 HTML / Index Contract 一致）。
 - `tool_policy_record()` 现在无条件写 7 个 evidence 字段；direct run 写的是 direct 默认值，对 manifest 体积有极小增量，已纳入 golden。
 - HTML 五态计数为跨 stage 累加（summary 卡片），trace 行为单 record 维度；二者口径不同已在实现区分，阅读时注意 summary 是聚合视图。
+
+---
+
+# M5：ACP live probe 与 live transport（2026-06-11 ~ 2026-06-12）
+
+## 阶段 A：live probe（commit 6b67c99）
+
+5 项全过，GO。报告：`docs/lct-acp-live-probe-20260611.md`（含 JSON-RPC 摘录与阶段 C 附录）。
+
+1. **模型选择**：`traecli acp serve -c model.name=<modelId>`（与 direct 同 key，来源 `~/.trae/traecli.yaml`）；`session/new` 返回 `currentModelId` 跟随 override 变化，availableModels 20 项可 pre-flight。协议级 `session/set_model` 存在（备选未用）。
+2. **permission 语义**：`--disallowed-tool` = schema 静默隐藏（transcript 零痕迹）→ disabled 态取证 = argv/meta；非白名单工具触发 `session/request_permission`（options 数组，allow_once/reject_once），deny 后 `tool_call_update status=failed`、回合正常 `end_turn`。
+3. **actual model 证据**：update 流无模型字段 → 降级为 session/new `currentModelId` + availableModels 校验 + argv，已在代码注释（`_AcpLiveSession` docstring）与 probe 报告声明。
+4. **stop reason**：正常 `end_turn`；`--query-timeout` 超时 = JSON-RPC error `-32603` data 含 `context deadline exceeded`；`session/cancel` → `stopReason: "cancelled"`。
+5. **进程残留**：SIGTERM 全部干净退出 rc=0，无孤儿。
+
+## 阶段 B：红绿（3e609ad 红 → ee6aa0e 绿）
+
+- 红：`test_acp_live_transcript_parser.py`（8，live 事件形态）+ `test_acp_live_transport.py`（11，fake ACP server 子进程驱动，零 live 依赖）。
+- 绿（parser，纯增量分支，旧 fake 形态分支零改动）：`agent_message_chunk` 逐 chunk 拼接成块、thought 不计入；`sessionUpdate: tool_call` 提取（`title` 大小写无关规范化 `canonical_tool_name`）；live permission（`toolCall.title/rawInput`、决策从 `outcome.optionId` 解析）；被 deny 的 toolCallId 不计入 used；session/new 响应 `currentModelId` 兜底 actual_model；permission 决策记录后 pop pending（防 id 复用串写）。
+- 绿（runtime `_AcpLiveSession`，process-per-query）：spawn argv = base + `-c model.name` + `--query-timeout Ns` + 策略 `--allowed-tool/--disallowed-tool`（+`--yolo` 与 direct 对齐）；initialize（fs 全关）→ session/new（availableModels 缺目标 → `invalid_model:*`；currentModelId 不符 → direct 同款 mismatch 文案）→ session/prompt；permission broker 按策略选 `allow_once`/`reject_once` option，无匹配 option → cancelled outcome；deadline 护栏：startup=acp_startup_timeout、prompt=query_timeout+acp_prompt_grace（新构造参数，默认 30）；失败映射：client deadline 或 `-32603 context deadline exceeded` → `error="timeout"`、`stopReason != end_turn` → `acp_stop_reason: *`、spawn/握手失败 → `acp_startup_failed:*`；全程逐事件追加写 transcript（cancel/startup 失败保留 partial 证据，不再覆盖为空）；`terminate_process_tree()` 所有路径收尾；server stderr tail 追加进 `*.acp.stderr.log`；session 缓存 best-effort 复制（复用 `copy_traecli_session_files`，key 为 ACP server sessionId）。
+- **唯一 M3 断言取代**（已在 commit message 与汇报声明）：`test_default_provider_missing_reports_live_transport_not_implemented`（断言占位文案 "ACP live transport is not implemented yet"）被 `test_default_provider_with_missing_binary_reports_startup_failure`（缺二进制 → `acp_startup_failed: spawn failed:*`）取代——该断言钉住的正是 M5 要替换的行为，实现后必然失效。其余 M1–M4 断言零改动；EXPECTED_META_KEYS 44 键不变；golden 零改动。
+- `make test`：368（349 + 19）全绿；`git diff --check` 通过。
+
+## 阶段 C：live 验证（证据全文见 probe 报告附录）
+
+1. 单查询 smoke：Qwen3.6-Plus，`status=ok`，transcript parser 自检 `protocol_errors=[]`。
+2. answer_only 禁用验证：18 项 disallowed 下发，transcript 零工具痕迹（隐藏语义），meta 一致。
+3. 最小 live E2E：`run-20260611T230225`（默认 3 成员 DeepSeek-V4-Pro/GPT-5.5/openrouter-3o + 主席 DeepSeek-V4-Pro），9 次 ACP 调用全 ok、零 backfill；validate verdict `complete_ok_final`，`usable_final: true`，497 checks（175 ACP）0 failures。
+4. 无孤儿进程（pgrep 证据在报告附录）。
+
+## 残余风险 / 默认切换缺口（§4.4 口径）
+
+- actual model 证据是会话级（currentModelId）非逐响应级，弱于 direct；上游若提供 update 流模型字段应立即升级。
+- 工具名 canonical 映射基于已观察 title 集合（`bash`/`skill`/`WebSearch`）；MCP/未知工具按「非白名单即 deny + 记录原始 title」兜底，未知 title 被 allow 会触发 forbidden 判定（保守安全侧）。
+- ACP 无 direct 的 tool/turn budget 流式监控与单次重试 wrapper（v1 不做，timeout 护栏覆盖挂死）。
+- 默认切换还缺：≥3 次 paired probe（direct vs ACP 同 prompt）、代表性长 E2E、model_benchmark 时延/失败率对比——本轮单次 E2E 不构成切换依据，默认仍 direct。
