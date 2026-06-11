@@ -80,6 +80,7 @@ class AcpTraeCliRuntime:
         session_id = slugify(f"{run_id}-{stage}-{label}")
         transcript_path = output_dir / f"{label}.acp.transcript.jsonl"
         stderr_path = output_dir / f"{label}.acp.stderr.log"
+        relative_transcript_path = f"{output_dir.name}/{transcript_path.name}"
         command = self._build_command()
         effective_timeout = query_timeout if query_timeout is not None else self.query_timeout
         request = AcpQueryRequest(
@@ -110,6 +111,7 @@ class AcpTraeCliRuntime:
                 command=command,
                 transcript_path=transcript_path,
                 stderr_path=stderr_path,
+                relative_transcript_path=relative_transcript_path,
                 agent=agent,
                 error=error,
             )
@@ -124,6 +126,7 @@ class AcpTraeCliRuntime:
                 command=command,
                 transcript_path=transcript_path,
                 stderr_path=stderr_path,
+                relative_transcript_path=relative_transcript_path,
                 agent=agent,
                 error="cancelled",
                 termination={"termination_reason": "cancelled"},
@@ -184,6 +187,13 @@ class AcpTraeCliRuntime:
             raw_partial_recoverable=False,
             tool_calls_count=parsed.tool_calls_count,
             turns_count=parsed.turns_count,
+            runtime_backend="acp",
+            enforcement_method="acp_disabled_tool_permission_broker",
+            enforcement_proof="transcript_permission_evidence",
+            disabled_tools=self.disallowed_tools,
+            tool_permission_requests=parsed.tool_permission_requests,
+            acp_transcript_path=relative_transcript_path,
+            acp_startup_status="ok",
         )
         write_json(output_dir / f"{label}.meta.json", result.to_json() | {"captured_at": utc_now()})
         return result
@@ -221,6 +231,7 @@ class AcpTraeCliRuntime:
         command: list[str],
         transcript_path: Path,
         stderr_path: Path,
+        relative_transcript_path: str,
         agent: str | None,
         error: str,
         termination: dict[str, Any] | None = None,
@@ -244,4 +255,10 @@ class AcpTraeCliRuntime:
             allowed_tools=self.allowed_tools,
             disallowed_tools=self.disallowed_tools,
             termination=termination or {},
+            runtime_backend="acp",
+            enforcement_method="acp_disabled_tool_permission_broker",
+            enforcement_proof="transcript_permission_evidence",
+            disabled_tools=self.disallowed_tools,
+            acp_transcript_path=relative_transcript_path,
+            acp_startup_status="failed" if error.startswith("acp_startup_failed:") else "ok",
         )

@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .acp_transcript import parse_acp_transcript_text, resolve_acp_transcript_path
+from .provider import forbidden_tool_calls_for_mode
 from .schema_contract import (
     CONFIG_SCHEMA,
     CONTRIBUTION_MAP_SCHEMA,
@@ -51,12 +53,20 @@ STAGE_META_COMPAT_OPTIONAL_FIELDS = {
     "assistant_content_chars_total",
     "last_assistant_content_chars",
     "raw_partial_recoverable",
+    "runtime_backend",
+    "enforcement_method",
+    "enforcement_proof",
+    "disabled_tools",
+    "tool_permission_requests",
+    "acp_transcript_path",
+    "acp_startup_status",
 }
 
 
 def validate_run(store: ArtifactStore) -> dict[str, Any]:
     checks: list[dict[str, Any]] = []
     stage_meta_records: list[tuple[str, dict[str, Any]]] = []
+    stage_record_entries: list[tuple[str, dict[str, Any]]] = []
     manifest, manifest_checks = validate_json_file("manifest", store.root / "manifest.json", MANIFEST_SCHEMA)
     checks.extend(manifest_checks)
     if not isinstance(manifest, dict):
@@ -82,6 +92,7 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
     config = manifest.get("config") if isinstance(manifest.get("config"), dict) else {}
     stages = manifest.get("stages") if isinstance(manifest.get("stages"), dict) else {}
     provider_mode = config.get("provider_mode")
+    runtime_backend = config.get("runtime_backend") or "direct"
     subagent_mode = provider_mode == "subagent"
     manifest_status = manifest.get("status")
 
@@ -114,15 +125,17 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
 
     stage1 = stage_items(stages, "stage1", checks)
     for item in stage1:
+        stage_record_entries.append((f"manifest.stage1.{item.get('file_label')}", item))
         label = item.get("file_label")
         if label:
             checks.extend(
                 [
                     file_check(store.root, f"stage1/{label}.response.md"),
                     file_check(store.root, f"stage1/{label}.meta.json"),
-                    stage_stream_file_check(store.root, f"stage1/{label}.traecli.stream.jsonl", item),
                 ]
             )
+            if runtime_backend != "acp":
+                checks.append(stage_stream_file_check(store.root, f"stage1/{label}.traecli.stream.jsonl", item))
             meta, meta_checks = validate_json_file(
                 f"stage1.{label}.meta",
                 store.root / f"stage1/{label}.meta.json",
@@ -139,6 +152,7 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
 
     stage2 = stage_items(stages, "stage2", checks)
     for item in stage2:
+        stage_record_entries.append((f"manifest.stage2.{item.get('reviewer_label')}", item))
         label = item.get("reviewer_label")
         if label:
             checks.extend(
@@ -146,9 +160,10 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
                     file_check(store.root, f"stage2/{label}.review.md"),
                     file_check(store.root, f"stage2/{label}.review.json"),
                     file_check(store.root, f"stage2/{label}.meta.json"),
-                    stage_stream_file_check(store.root, f"stage2/{label}.traecli.stream.jsonl", item),
                 ]
             )
+            if runtime_backend != "acp":
+                checks.append(stage_stream_file_check(store.root, f"stage2/{label}.traecli.stream.jsonl", item))
             meta, meta_checks = validate_json_file(
                 f"stage2.{label}.meta",
                 store.root / f"stage2/{label}.meta.json",
@@ -175,17 +190,16 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
 
     raw_stage3 = stages.get("stage3")
     stage3 = raw_stage3 if isinstance(raw_stage3, dict) else {}
+    if stage3:
+        stage_record_entries.append(("manifest.stage3.final", stage3))
     checks.extend(validate_schema("manifest.stage3.final", stage3, FINAL_JSON_SCHEMA))
     checks.append(model_match_check("stage3", stage3))
     if subagent_mode:
         checks.extend(subagent_schema_checks("manifest.stage3.final", stage3))
         checks.append(subagent_invocation_check("stage3", stage3))
-    checks.extend(
-        [
-            file_check(store.root, "stage3/final.meta.json"),
-            file_check(store.root, "stage3/final.traecli.stream.jsonl"),
-        ]
-    )
+    checks.append(file_check(store.root, "stage3/final.meta.json"))
+    if runtime_backend != "acp":
+        checks.append(file_check(store.root, "stage3/final.traecli.stream.jsonl"))
     final_meta, final_meta_checks = validate_json_file(
         "stage3.final.meta",
         store.root / "stage3/final.meta.json",
@@ -198,6 +212,7 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
     _, final_json_checks = validate_json_file("stage3.final", store.root / "stage3/final.json", FINAL_JSON_SCHEMA)
     checks.extend(final_json_checks)
     checks.extend(tool_contamination_checks(manifest_status, stage1, stage2, stage3, stage_meta_records))
+    checks.extend(acp_evidence_checks(store.root, config, stage_record_entries, stage_meta_records))
     checks.extend(quorum_semantic_checks(manifest_status, manifest, stage1, stage2))
     checks.extend(contribution_map_checks(store.root, manifest, stage1))
 
@@ -391,6 +406,231 @@ def tool_contamination_checks(
             }
         )
     return checks
+
+
+def acp_evidence_checks(
+    run_root: Path,
+    config: dict[str, Any],
+    stage_records: list[tuple[str, dict[str, Any]]],
+    stage_meta_records: list[tuple[str, dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    config_backend = config.get("runtime_backend") or "direct"
+    checks: list[dict[str, Any]] = []
+    if config_backend == "acp" and config.get("provider_mode") == "subagent":
+        checks.append(
+            {
+                "name": "acp_provider_mode_subagent",
+                "ok": False,
+                "message": "runtime_backend=acp is not supported with provider_mode=subagent",
+            }
+        )
+
+    for name, record in stage_records + stage_meta_records:
+        if not record_requires_acp_gate(config_backend, record):
+            continue
+        record_backend = record.get("runtime_backend")
+        record_is_meta = name.endswith(".meta")
+        short = acp_short_record_name(name)
+        if config_backend != "acp":
+            checks.append(
+                {
+                    "name": f"{name}_acp_config_consistency",
+                    "ok": False,
+                    "message": f"record declares ACP while config.runtime_backend={config_backend}",
+                }
+            )
+            continue
+        checks.append(
+            {
+                "name": f"{name}_runtime_backend_acp",
+                "ok": record_backend == "acp",
+                "message": f"runtime_backend={record_backend}",
+            }
+        )
+        checks.append(
+            {
+                "name": f"{name}_acp_enforcement_method",
+                "ok": record.get("enforcement_method") == "acp_disabled_tool_permission_broker",
+                "message": f"enforcement_method={record.get('enforcement_method')}",
+            }
+        )
+        checks.append(
+            {
+                "name": f"{name}_acp_enforcement_proof",
+                "ok": record.get("enforcement_proof") == "transcript_permission_evidence",
+                "message": f"enforcement_proof={record.get('enforcement_proof')}",
+            }
+        )
+        checks.append(
+            {
+                "name": f"{name}_acp_disabled_tools",
+                "ok": isinstance(record.get("disabled_tools"), list),
+                "message": f"disabled_tools={record.get('disabled_tools')}",
+            }
+        )
+        checks.append(
+            {
+                "name": f"{name}_acp_permission_requests_type",
+                "ok": isinstance(record.get("tool_permission_requests"), list),
+                "message": f"tool_permission_requests={record.get('tool_permission_requests')}",
+            }
+        )
+        transcript_path_value = record.get("acp_transcript_path")
+        checks.append(
+            {
+                "name": f"{name}_acp_transcript_path",
+                "ok": isinstance(transcript_path_value, str) and bool(transcript_path_value),
+                "message": f"acp_transcript_path={transcript_path_value}",
+            }
+        )
+        checks.append(
+            {
+                "name": f"{name}_acp_startup_status",
+                "ok": record.get("acp_startup_status") in ("ok", "failed"),
+                "message": f"acp_startup_status={record.get('acp_startup_status')}",
+            }
+        )
+        if not isinstance(transcript_path_value, str) or not transcript_path_value:
+            continue
+        try:
+            transcript_path = resolve_acp_transcript_path(run_root, transcript_path_value)
+            checks.append(
+                {
+                    "name": f"{name}_acp_transcript_path_safe",
+                    "ok": True,
+                    "message": str(transcript_path),
+                }
+            )
+        except ValueError as exc:
+            checks.append(
+                {
+                    "name": f"{name}_acp_transcript_path_safe",
+                    "ok": False,
+                    "message": str(exc),
+                }
+            )
+            continue
+        if not transcript_path.exists() or transcript_path.stat().st_size == 0:
+            checks.append(
+                {
+                    "name": f"{short}_acp_transcript_file",
+                    "ok": False,
+                    "message": f"missing or empty: {transcript_path_value}",
+                }
+            )
+            continue
+        parsed = parse_acp_transcript_text(transcript_path.read_text(encoding="utf-8"))
+        if parsed.protocol_errors:
+            checks.append(
+                {
+                    "name": f"{short}_acp_transcript_protocol",
+                    "ok": False,
+                    "message": "; ".join(parsed.protocol_errors),
+                }
+            )
+            continue
+        checks.append(
+            {
+                "name": f"{short}_acp_transcript_protocol",
+                "ok": True,
+                "message": "ok",
+            }
+        )
+        if not record_is_meta:
+            checks.extend(acp_transcript_semantic_checks(short, record, parsed))
+        else:
+            checks.append(
+                {
+                    "name": f"{name}_acp_permission_requests_match",
+                    "ok": record.get("tool_permission_requests") == parsed.tool_permission_requests,
+                    "message": f"meta={record.get('tool_permission_requests')}, transcript={parsed.tool_permission_requests}",
+                }
+            )
+    return checks
+
+
+def record_requires_acp_gate(config_backend: Any, record: dict[str, Any]) -> bool:
+    enforcement_method = record.get("enforcement_method")
+    return (
+        config_backend == "acp"
+        or record.get("runtime_backend") == "acp"
+        or (isinstance(enforcement_method, str) and "acp" in enforcement_method)
+    )
+
+
+def acp_short_record_name(name: str) -> str:
+    short = name
+    if short.startswith("manifest."):
+        short = short[len("manifest.") :]
+    if short.endswith(".meta"):
+        short = short[: -len(".meta")]
+    if short == "stage3.final":
+        return "stage3.final"
+    return short
+
+
+def acp_transcript_semantic_checks(short: str, record: dict[str, Any], parsed: Any) -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = []
+    checks.append(
+        {
+            "name": f"{short}_acp_permission_requests_match",
+            "ok": record.get("tool_permission_requests") == parsed.tool_permission_requests,
+            "message": f"record={record.get('tool_permission_requests')}, transcript={parsed.tool_permission_requests}",
+        }
+    )
+    forbidden_allowed = forbidden_allowed_acp_permissions(record, parsed.tool_permission_requests)
+    checks.append(
+        {
+            "name": f"{short}_acp_forbidden_permission_allowed",
+            "ok": not forbidden_allowed,
+            "message": f"forbidden_allowed={forbidden_allowed}",
+        }
+    )
+    member_tool_mode = record.get("member_tool_mode") if isinstance(record.get("member_tool_mode"), str) else "search_enabled"
+    forbidden_used = forbidden_tool_calls_for_mode(parsed.tool_calls, member_tool_mode)
+    checks.append(
+        {
+            "name": f"{short}_acp_forbidden_tool_used",
+            "ok": not forbidden_used,
+            "message": f"forbidden_used={forbidden_used}",
+        }
+    )
+    checks.append(
+        {
+            "name": f"{short}_acp_stage_ok_without_forbidden_evidence",
+            "ok": record.get("status") != "ok" or (not forbidden_allowed and not forbidden_used),
+            "message": f"status={record.get('status')}",
+        }
+    )
+    record_forbidden = record.get("forbidden_tool_calls")
+    if isinstance(record_forbidden, list) and record_forbidden:
+        checks.append(
+            {
+                "name": f"{short}_acp_forbidden_evidence_match",
+                "ok": bool(forbidden_used),
+                "message": f"record={record_forbidden}, transcript={forbidden_used}",
+            }
+        )
+    return checks
+
+
+def forbidden_allowed_acp_permissions(record: dict[str, Any], requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    allowed = {
+        item for item in record.get("allowed_tools") or []
+        if isinstance(item, str)
+    }
+    disabled = {
+        item for item in record.get("disabled_tools") or record.get("disallowed_tools") or []
+        if isinstance(item, str)
+    }
+    forbidden: list[dict[str, Any]] = []
+    for request in requests:
+        if request.get("decision") != "allow":
+            continue
+        tool_name = request.get("tool_name")
+        if not isinstance(tool_name, str) or not tool_name or tool_name in disabled or tool_name not in allowed:
+            forbidden.append(request)
+    return forbidden
 
 
 def quorum_semantic_checks(

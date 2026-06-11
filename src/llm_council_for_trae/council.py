@@ -65,6 +65,8 @@ class CouncilConfig:
 
 
 def ensure_stage1_stream_sidecar(store: ArtifactStore, label: str, call: ModelCallResult) -> None:
+    if call.runtime_backend != "direct":
+        return
     stream_path = store.root / "stage1" / f"{label}.traecli.stream.jsonl"
     if stream_path.exists() and stream_path.stat().st_size > 0:
         return
@@ -79,6 +81,24 @@ def ensure_stage1_stream_sidecar(store: ArtifactStore, label: str, call: ModelCa
         "captured_at": utc_now(),
     }
     store.write_text(f"stage1/{label}.traecli.stream.jsonl", json.dumps(stream_event, ensure_ascii=False) + "\n")
+
+
+def runtime_stdout_path(runtime_backend: str, label: str) -> str:
+    if runtime_backend == "acp":
+        return f"{label}.acp.transcript.jsonl"
+    return f"{label}.traecli.stream.jsonl"
+
+
+def runtime_stderr_path(runtime_backend: str, label: str) -> str:
+    if runtime_backend == "acp":
+        return f"{label}.acp.stderr.log"
+    return f"{label}.traecli.stderr.log"
+
+
+def runtime_acp_transcript_path(runtime_backend: str, stage: str, label: str) -> str | None:
+    if runtime_backend != "acp":
+        return None
+    return f"{stage}/{label}.acp.transcript.jsonl"
 
 
 async def stage1_collect_responses(
@@ -140,20 +160,41 @@ async def stage1_collect_responses(
                 try:
                     call_results[idx] = task.result()
                 except (asyncio.CancelledError, Exception) as exc:
-                    call_results[idx] = synthetic_failed_call(model, f"cancelled_by_stage_timeout: {exc}", config)
+                    call_results[idx] = synthetic_failed_call(
+                        model,
+                        f"cancelled_by_stage_timeout: {exc}",
+                        config,
+                        stdout_path=runtime_stdout_path(config.runtime_backend, label),
+                        stderr_path=runtime_stderr_path(config.runtime_backend, label),
+                        acp_transcript_path=runtime_acp_transcript_path(config.runtime_backend, "stage1", label),
+                    )
     finally:
         await cancel_and_drain(pending)
 
     for task in task_map:
         idx, model, label = task_map[task]
         if call_results[idx] is None:
-            call_results[idx] = synthetic_failed_call(model, "cancelled_by_stage_timeout", config)
+            call_results[idx] = synthetic_failed_call(
+                model,
+                "cancelled_by_stage_timeout",
+                config,
+                stdout_path=runtime_stdout_path(config.runtime_backend, label),
+                stderr_path=runtime_stderr_path(config.runtime_backend, label),
+                acp_transcript_path=runtime_acp_transcript_path(config.runtime_backend, "stage1", label),
+            )
 
     stage1_results: list[dict[str, Any]] = []
     for index, (model, call) in enumerate(zip(config.members, call_results)):
         label = chr(65 + index)
         if call is None:
-            call = synthetic_failed_call(model, "cancelled_by_stage_timeout", config)
+            call = synthetic_failed_call(
+                model,
+                "cancelled_by_stage_timeout",
+                config,
+                stdout_path=runtime_stdout_path(config.runtime_backend, label),
+                stderr_path=runtime_stderr_path(config.runtime_backend, label),
+                acp_transcript_path=runtime_acp_transcript_path(config.runtime_backend, "stage1", label),
+            )
         if not (store.root / "stage1" / f"{label}.meta.json").exists():
             store.write_json(f"stage1/{label}.meta.json", call.to_json() | {"captured_at": utc_now()})
         ensure_stage1_stream_sidecar(store, label, call)
@@ -322,7 +363,14 @@ async def stage2_collect_rankings(
                 try:
                     call_results[idx] = task.result()
                 except (asyncio.CancelledError, Exception) as exc:
-                    call_results[idx] = synthetic_failed_call(model, f"cancelled_by_stage_timeout: {exc}", config)
+                    call_results[idx] = synthetic_failed_call(
+                        model,
+                        f"cancelled_by_stage_timeout: {exc}",
+                        config,
+                        stdout_path=runtime_stdout_path(config.runtime_backend, label),
+                        stderr_path=runtime_stderr_path(config.runtime_backend, label),
+                        acp_transcript_path=runtime_acp_transcript_path(config.runtime_backend, "stage2", label),
+                    )
     finally:
         await cancel_and_drain(pending)
 
@@ -332,8 +380,9 @@ async def stage2_collect_rankings(
                 model,
                 "cancelled_by_stage_timeout",
                 config,
-                stdout_path=f"{label}.traecli.stream.jsonl",
-                stderr_path=f"{label}.traecli.stderr.log",
+                stdout_path=runtime_stdout_path(config.runtime_backend, label),
+                stderr_path=runtime_stderr_path(config.runtime_backend, label),
+                acp_transcript_path=runtime_acp_transcript_path(config.runtime_backend, "stage2", label),
             )
 
     stage2_results: list[dict[str, Any]] = []
@@ -346,8 +395,9 @@ async def stage2_collect_rankings(
                 model,
                 "cancelled_by_stage_timeout",
                 config,
-                stdout_path=f"{label}.traecli.stream.jsonl",
-                stderr_path=f"{label}.traecli.stderr.log",
+                stdout_path=runtime_stdout_path(config.runtime_backend, label),
+                stderr_path=runtime_stderr_path(config.runtime_backend, label),
+                acp_transcript_path=runtime_acp_transcript_path(config.runtime_backend, "stage2", label),
             )
         parsed = parse_ranking_from_text(call.response)
         parse_status = "ok" if ranking_is_complete(parsed, valid_labels) else "incomplete"
@@ -379,10 +429,11 @@ async def stage2_collect_rankings(
         store.write_text(f"stage2/{label}.review.md", call.response + "\n")
         store.write_json(f"stage2/{label}.review.json", review)
         store.write_json(f"stage2/{label}.meta.json", call.to_json() | {"captured_at": utc_now()})
-        stream_path = output_dir / f"{label}.traecli.stream.jsonl"
-        if not stream_path.exists() or stream_path.stat().st_size == 0:
-            stream_text = call.response or call.error or call.status
-            store.write_text(f"stage2/{label}.traecli.stream.jsonl", stream_text + "\n")
+        if call.runtime_backend == "direct":
+            stream_path = output_dir / f"{label}.traecli.stream.jsonl"
+            if not stream_path.exists() or stream_path.stat().st_size == 0:
+                stream_text = call.response or call.error or call.status
+                store.write_text(f"stage2/{label}.traecli.stream.jsonl", stream_text + "\n")
         stage2_results.append(review)
 
     aggregate_rankings = calculate_aggregate_rankings(valid_stage2_rankings(stage2_results), label_to_model)
@@ -1520,6 +1571,13 @@ def tool_policy_record(call: ModelCallResult) -> dict[str, Any]:
         "lct_web_tool_effective_calls": call.web_tool_effective_calls_count,
         "lct_web_tool_result_calls": call.web_tool_result_calls_count,
         "termination": call.termination,
+        "runtime_backend": call.runtime_backend,
+        "enforcement_method": call.enforcement_method,
+        "enforcement_proof": call.enforcement_proof,
+        "disabled_tools": call.disabled_tools,
+        "tool_permission_requests": call.tool_permission_requests,
+        "acp_transcript_path": call.acp_transcript_path,
+        "acp_startup_status": call.acp_startup_status,
     }
 
 
@@ -1530,8 +1588,20 @@ def synthetic_failed_call(
     stdout_path: str = "",
     stderr_path: str = "",
     termination: dict[str, Any] | None = None,
+    acp_transcript_path: str | None = None,
 ) -> ModelCallResult:
     allowed_tools, disallowed_tools = tool_policy_for_mode(config.member_tool_mode)
+    kwargs: dict[str, Any] = {}
+    if config.runtime_backend == "acp":
+        kwargs = {
+            "permission_mode": "acp_permission_broker",
+            "runtime_backend": "acp",
+            "enforcement_method": "acp_disabled_tool_permission_broker",
+            "enforcement_proof": "transcript_permission_evidence",
+            "disabled_tools": disallowed_tools,
+            "acp_transcript_path": acp_transcript_path,
+            "acp_startup_status": "failed" if error.startswith("acp_startup_failed:") else "ok",
+        }
     return ModelCallResult(
         expected_model=model,
         actual_model=None,
@@ -1547,6 +1617,7 @@ def synthetic_failed_call(
         allowed_tools=allowed_tools,
         disallowed_tools=disallowed_tools,
         termination=termination or {},
+        **kwargs,
     )
 
 

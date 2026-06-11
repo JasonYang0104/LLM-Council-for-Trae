@@ -165,3 +165,77 @@
 - live ACP transport 仍未实现；当前 ACP runtime 的可验证范围是 offline transcript parsing 与 result mapping，不能把 offline fixture 当 live 证据。
 - ACP evidence 扩字段、validate 反伪造、HTML 五态展示均留到 M4，避免在 parser/runtime skeleton 稳定前污染 direct meta key golden。
 - `ModelRuntime` Protocol 仍为 structural（非 `@runtime_checkable`）；签名门卫测试现在以 `inspect.signature` 在测试期捕获 `AcpTraeCliRuntime` 与 direct/port 的签名漂移，但运行期仍无强约束。
+
+---
+
+# LCT ACP M4 实施记录：evidence 字段、validate 防伪、HTML 五态
+
+- 日期：2026-06-11
+- 分支：`codex/lct-acp-m4-evidence-gate-20260611`（从 `main @ c9b4536` 切出）
+- 上游任务卡：`docs/lct-acp-m4-task-card-20260611.md`
+- 移植源（只读，共享 object store）：`bfa7be9 feat: validate ACP runtime evidence`（P3 主体）＋ `deb9119 fix: keep ACP orchestration evidence provenance`（orchestration provenance follow-up）
+
+## 红绿两 commit
+
+- red：移植 11 个 ACP evidence validation 用例（`tests/contract/test_acp_evidence_validation.py`）＋ deb9119 的 3 个 runtime_backend 用例（sidecar 分流、synthetic ACP defaults）。实现未到位时 12 failures + 2 errors。
+- green：实现 evidence 字段、validate hard gate、HTML 五态、orchestration provenance；`make test` 349 全绿。
+
+## 与研究线适配差异（base 不同）
+
+- 研究线 `bfa7be9` 从更早的 base 切出，缺 M1–M3 演进字段（`tool_result_calls`/`web_tool_*`/`parse_session_log_search_delivery` 等）。因此本轮按 **delta 移植**，不整文件覆盖：只叠加 M4 的 7 个 evidence 字段、validate ACP gate、HTML 五态、deb9119 provenance。
+- `validation.py`：当前 worktree 用 `stage_stream_file_check(...)` 处理 stream（M3 cancelled-stream 兼容）。移植时保留该 helper，仅在 `runtime_backend != "acp"` 时才调用它，ACP run 不再要求 `.traecli.stream.jsonl`。
+- `council.py` stage2 sidecar：当前条件是 `not exists or size==0`（M3 演进），deb9119 是 `not exists`。保留 M3 条件，仅外加 `if call.runtime_backend == "direct":` 守卫。
+- `tool_policy_record()` 显式补写 7 个 evidence 字段，使 manifest stage records 携带 ACP 证据（cross-gate 经 manifest stage record 这一层生效）。
+
+## EXPECTED_META_KEYS 扩列（37 → 44，显式过门）
+
+新增 7 键（字母序插入）：`acp_startup_status`、`acp_transcript_path`、`disabled_tools`、`enforcement_method`、`enforcement_proof`、`runtime_backend`、`tool_permission_requests`。
+
+## ModelCallResult / schema 扩字段（direct 默认值）
+
+- `runtime_backend="direct"`、`enforcement_method="direct_disallowed_tool_post_check"`、`enforcement_proof="post_run_contamination_check"`、`disabled_tools=[]`、`tool_permission_requests=[]`、`acp_transcript_path=None`、`acp_startup_status="not_applicable"`。
+- `STAGE_META_SCHEMA` 同步扩 7 键；`STAGE_META_COMPAT_OPTIONAL_FIELDS` 扩 7 键（legacy run 缺字段不失败）。
+
+## validate ACP hard gate（研究线 Validation Contract 全单照搬）
+
+- cross-gate：`record_requires_acp_gate()` —— config / stage record / meta 的 `runtime_backend` 或 `enforcement_method` 任一声明 ACP 即进 gate，防 `enforcement_method` 单点绕过。
+- 拒绝清单：transcript 路径安全（绝对路径 / `../` 经 `resolve_acp_transcript_path` 抛 ValueError）、transcript 缺失/空、解析失败、无最小协议结构、meta↔transcript permission request 不一致、forbidden permission 被 allow、forbidden tool used、`status=ok` 含 forbidden 证据、record 声明 ACP 而 config=direct（config_consistency）、config=acp 但 record 缺 evidence、枚举语义校验（`enforcement_method`/`enforcement_proof`/`acp_startup_status`）。
+- direct/legacy artifact 不受影响；ACP run 不再强制 `.traecli.stream.jsonl`。
+
+## HTML 五态展示位置（file:line）
+
+- `src/llm_council_for_trae/html_export.py`：
+  - `summarize_acp_tool_state()`（约 1174 行起）：聚合 allowed/disabled/requested/denied/used 计数；无 ACP record 返回 `not_applicable`。
+  - `render_summary_cards()` 内 ACP 卡片（约 1058 行后）：direct/legacy 显示 `not_applicable`，ACP 显示 Allowed/Disabled + Requested/Denied/Used 计数。
+  - `render_metadata()` 运行时 cell 增 `Backend：`（约 1278 行）。
+  - `render_acp_tool_state()` + `format_tool_names()`（`render_trace` 后，约 1305 行起）：每个 stage cell 展示五态工具名；非 ACP 显示 `ACP 工具证据：not_applicable`。
+  - direct/legacy 对 ACP 专属项一律 `not_applicable`，不显示 0。
+
+## orchestration provenance（deb9119）
+
+- `ensure_stage1_stream_sidecar()`：`call.runtime_backend != "direct"` 时早退，不向 ACP call 补 direct sidecar。
+- `runtime_stdout_path()` / `runtime_stderr_path()` / `runtime_acp_transcript_path()`：direct 用 `.traecli.stream.jsonl`/`.traecli.stderr.log`，ACP 用 `.acp.transcript.jsonl`/`.acp.stderr.log`。
+- stage1/stage2 的 `synthetic_failed_call(...)` 全部传 backend-aware 路径。
+- stage2 stream sidecar 仅在 `call.runtime_backend == "direct"` 时补写。
+- `synthetic_failed_call()` 在 `runtime_backend=="acp"` 时写 ACP defaults（含 `permission_mode="acp_permission_broker"`、`acp_startup_status` 由 error 前缀派生）。
+
+## golden 逐字段差异（`tests/golden/direct_full_run/snapshot.json`）
+
+- 18 条记录（stage1/2/3 的 meta、manifest stage records、stage2 reviews、stage3 final）各 +7 字段：`runtime_backend="direct"`、`enforcement_method="direct_disallowed_tool_post_check"`、`enforcement_proof="post_run_contamination_check"`、`disabled_tools=[]`、`tool_permission_requests=[]`、`acp_transcript_path=null`、`acp_startup_status="not_applicable"`。
+- `html_checks.chars`：62049 → 67866（新增 not_applicable 五态卡片与 trace 行）。
+- 差异仅含上述两类；连跑两次 byte-identical 零漂移。golden 用 `sort_keys=True, indent=2, ensure_ascii=False` 重生，与仓库原约定一致。
+
+## 验证（全部通过）
+
+- `make test`：`Ran 349 tests ... OK`（335 基线 ＋ 14 新增：11 evidence validation ＋ 3 runtime_backend）。
+- forged-evidence 负向测试全绿（伪造 transcript / 路径逃逸 / 声明不一致全被拒）。
+- golden 连跑两次零漂移；diff 仅 7 新字段 ＋ chars。
+- M1 测试零改动：`git diff c9b4536..HEAD -- tests/contract/test_direct_*.py tests/contract/test_tool_*.py tests/contract/test_meta_keyset_golden.py tests/contract/test_cancellation_contract.py tests/contract/test_acp_model_runtime_contract.py tests/contract/test_acp_transcript_parser.py` 为空；唯一动过的 support 文件是 `tests/support/runtime_contract.py`（EXPECTED_META_KEYS 显式扩列）。
+- `git diff --check`：通过。
+- `PYTHONPATH=src python3 -m compileall -q src`：通过。
+
+## 残余风险
+
+- live ACP transport 仍未实现；validate 校验范围是「结构与证据一致性」，不声称验证「ACP 已隐藏 schema」这类未观察状态（与研究线 HTML / Index Contract 一致）。
+- `tool_policy_record()` 现在无条件写 7 个 evidence 字段；direct run 写的是 direct 默认值，对 manifest 体积有极小增量，已纳入 golden。
+- HTML 五态计数为跨 stage 累加（summary 卡片），trace 行为单 record 维度；二者口径不同已在实现区分，阅读时注意 summary 是聚合视图。

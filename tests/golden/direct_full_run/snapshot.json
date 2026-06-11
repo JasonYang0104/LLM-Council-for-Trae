@@ -88,7 +88,7 @@
     "stage3/final.traecli.stream.jsonl"
   ],
   "html_checks": {
-    "chars": 62049,
+    "chars": 67866,
     "contains_final_answer": true,
     "contains_search_summary": false,
     "contains_stage1_appendix": true,
@@ -272,6 +272,8 @@
     "stages": {
       "stage1": [
         {
+          "acp_startup_status": "not_applicable",
+          "acp_transcript_path": null,
           "actual_model": "Model-A",
           "agent": null,
           "allowed_tools": [
@@ -280,6 +282,7 @@
           ],
           "attempt_index": 1,
           "attempt_role": "primary",
+          "disabled_tools": [],
           "disallowed_tools": [
             "Skill",
             "Agent",
@@ -298,6 +301,8 @@
             "Grep",
             "LS"
           ],
+          "enforcement_method": "direct_disallowed_tool_post_check",
+          "enforcement_proof": "post_run_contamination_check",
           "error": null,
           "expected_model": "Model-A",
           "file_label": "A",
@@ -314,6 +319,7 @@
           "response_path": "stage1/A.response.md",
           "retried": false,
           "retry_error": null,
+          "runtime_backend": "direct",
           "status": "ok",
           "subagent_invocation": null,
           "termination": {},
@@ -321,6 +327,7 @@
           "tool_calls": [],
           "tool_calls_count": 0,
           "tool_output_conversion_errors": [],
+          "tool_permission_requests": [],
           "tool_result_calls": [],
           "turns_count": 1,
           "web_tool_effective_calls_count": 0,
@@ -328,6 +335,8 @@
           "web_tool_result_calls_count": 0
         },
         {
+          "acp_startup_status": "not_applicable",
+          "acp_transcript_path": null,
           "actual_model": "Model-B",
           "agent": null,
           "allowed_tools": [
@@ -336,6 +345,7 @@
           ],
           "attempt_index": 1,
           "attempt_role": "primary",
+          "disabled_tools": [],
           "disallowed_tools": [
             "Skill",
             "Agent",
@@ -354,6 +364,8 @@
             "Grep",
             "LS"
           ],
+          "enforcement_method": "direct_disallowed_tool_post_check",
+          "enforcement_proof": "post_run_contamination_check",
           "error": null,
           "expected_model": "Model-B",
           "file_label": "B",
@@ -370,6 +382,7 @@
           "response_path": "stage1/B.response.md",
           "retried": false,
           "retry_error": null,
+          "runtime_backend": "direct",
           "status": "ok",
           "subagent_invocation": null,
           "termination": {},
@@ -377,6 +390,7 @@
           "tool_calls": [],
           "tool_calls_count": 0,
           "tool_output_conversion_errors": [],
+          "tool_permission_requests": [],
           "tool_result_calls": [],
           "turns_count": 1,
           "web_tool_effective_calls_count": 0,
@@ -384,6 +398,8 @@
           "web_tool_result_calls_count": 0
         },
         {
+          "acp_startup_status": "not_applicable",
+          "acp_transcript_path": null,
           "actual_model": "Model-C",
           "agent": null,
           "allowed_tools": [
@@ -392,6 +408,7 @@
           ],
           "attempt_index": 1,
           "attempt_role": "primary",
+          "disabled_tools": [],
           "disallowed_tools": [
             "Skill",
             "Agent",
@@ -410,6 +427,8 @@
             "Grep",
             "LS"
           ],
+          "enforcement_method": "direct_disallowed_tool_post_check",
+          "enforcement_proof": "post_run_contamination_check",
           "error": null,
           "expected_model": "Model-C",
           "file_label": "C",
@@ -426,6 +445,7 @@
           "response_path": "stage1/C.response.md",
           "retried": false,
           "retry_error": null,
+          "runtime_backend": "direct",
           "status": "ok",
           "subagent_invocation": null,
           "termination": {},
@@ -433,6 +453,7 @@
           "tool_calls": [],
           "tool_calls_count": 0,
           "tool_output_conversion_errors": [],
+          "tool_permission_requests": [],
           "tool_result_calls": [],
           "turns_count": 1,
           "web_tool_effective_calls_count": 0,
@@ -442,6 +463,8 @@
       ],
       "stage2": [
         {
+          "acp_startup_status": "not_applicable",
+          "acp_transcript_path": null,
           "actual_model": "Model-A",
           "agent": null,
           "allowed_tools": [
@@ -449,6 +472,7 @@
             "WebFetch"
           ],
           "attempt_role": "primary",
+          "disabled_tools": [],
           "disallowed_tools": [
             "Skill",
             "Agent",
@@ -467,6 +491,8 @@
             "Grep",
             "LS"
           ],
+          "enforcement_method": "direct_disallowed_tool_post_check",
+          "enforcement_proof": "post_run_contamination_check",
           "error": null,
           "expected_model": "Model-A",
           "forbidden_tool_calls": [],
@@ -491,6 +517,7 @@
           "reviewer_eligible": true,
           "reviewer_label": "A",
           "reviewer_source": "stage1_ok",
+          "runtime_backend": "direct",
           "status": "ok",
           "subagent_invocation": null,
           "termination": {},
@@ -498,6 +525,7 @@
           "tool_calls": [],
           "tool_calls_count": 0,
           "tool_output_conversion_errors": [],
+          "tool_permission_requests": [],
           "tool_result_calls": [],
           "turns_count": 1,
           "web_tool_effective_calls_count": 0,
@@ -505,6 +533,8 @@
           "web_tool_result_calls_count": 0
         },
         {
+          "acp_startup_status": "not_applicable",
+          "acp_transcript_path": null,
           "actual_model": "Model-B",
           "agent": null,
           "allowed_tools": [
@@ -512,6 +542,7 @@
             "WebFetch"
           ],
           "attempt_role": "primary",
+          "disabled_tools": [],
           "disallowed_tools": [
             "Skill",
             "Agent",
@@ -530,6 +561,8 @@
             "Grep",
             "LS"
           ],
+          "enforcement_method": "direct_disallowed_tool_post_check",
+          "enforcement_proof": "post_run_contamination_check",
           "error": null,
           "expected_model": "Model-B",
           "forbidden_tool_calls": [],
@@ -554,6 +587,7 @@
           "reviewer_eligible": true,
           "reviewer_label": "B",
           "reviewer_source": "stage1_ok",
+          "runtime_backend": "direct",
           "status": "ok",
           "subagent_invocation": null,
           "termination": {},
@@ -561,6 +595,7 @@
           "tool_calls": [],
           "tool_calls_count": 0,
           "tool_output_conversion_errors": [],
+          "tool_permission_requests": [],
           "tool_result_calls": [],
           "turns_count": 1,
           "web_tool_effective_calls_count": 0,
@@ -568,6 +603,8 @@
           "web_tool_result_calls_count": 0
         },
         {
+          "acp_startup_status": "not_applicable",
+          "acp_transcript_path": null,
           "actual_model": "Model-C",
           "agent": null,
           "allowed_tools": [
@@ -575,6 +612,7 @@
             "WebFetch"
           ],
           "attempt_role": "primary",
+          "disabled_tools": [],
           "disallowed_tools": [
             "Skill",
             "Agent",
@@ -593,6 +631,8 @@
             "Grep",
             "LS"
           ],
+          "enforcement_method": "direct_disallowed_tool_post_check",
+          "enforcement_proof": "post_run_contamination_check",
           "error": null,
           "expected_model": "Model-C",
           "forbidden_tool_calls": [],
@@ -617,6 +657,7 @@
           "reviewer_eligible": true,
           "reviewer_label": "C",
           "reviewer_source": "stage1_ok",
+          "runtime_backend": "direct",
           "status": "ok",
           "subagent_invocation": null,
           "termination": {},
@@ -624,6 +665,7 @@
           "tool_calls": [],
           "tool_calls_count": 0,
           "tool_output_conversion_errors": [],
+          "tool_permission_requests": [],
           "tool_result_calls": [],
           "turns_count": 1,
           "web_tool_effective_calls_count": 0,
@@ -632,6 +674,8 @@
         }
       ],
       "stage3": {
+        "acp_startup_status": "not_applicable",
+        "acp_transcript_path": null,
         "actual_model": "Chair-Model",
         "agent": null,
         "allowed_tools": [
@@ -650,6 +694,7 @@
         "contribution_map_requested": true,
         "contribution_map_required": false,
         "contribution_map_stripped_from_response": true,
+        "disabled_tools": [],
         "disallowed_tools": [
           "Skill",
           "Agent",
@@ -668,6 +713,8 @@
           "Grep",
           "LS"
         ],
+        "enforcement_method": "direct_disallowed_tool_post_check",
+        "enforcement_proof": "post_run_contamination_check",
         "error": null,
         "expected_model": "Chair-Model",
         "forbidden_tool_calls": [],
@@ -684,6 +731,7 @@
         "response_path": "stage3/final.md",
         "retried": false,
         "retry_error": null,
+        "runtime_backend": "direct",
         "status": "ok",
         "subagent_invocation": null,
         "termination": {},
@@ -691,6 +739,7 @@
         "tool_calls": [],
         "tool_calls_count": 0,
         "tool_output_conversion_errors": [],
+        "tool_permission_requests": [],
         "tool_result_calls": [],
         "turns_count": 1,
         "web_tool_effective_calls_count": 0,
@@ -704,6 +753,8 @@
   },
   "stage1_meta": {
     "A": {
+      "acp_startup_status": "not_applicable",
+      "acp_transcript_path": null,
       "actual_model": "Model-A",
       "agent": null,
       "allowed_tools": [
@@ -719,6 +770,7 @@
         "Model-A"
       ],
       "copied_session_files": {},
+      "disabled_tools": [],
       "disallowed_tools": [
         "Skill",
         "Agent",
@@ -737,6 +789,8 @@
         "Grep",
         "LS"
       ],
+      "enforcement_method": "direct_disallowed_tool_post_check",
+      "enforcement_proof": "post_run_contamination_check",
       "error": null,
       "exit_code": 0,
       "expected_model": "Model-A",
@@ -751,6 +805,7 @@
       "response_chars": 25,
       "retried": false,
       "retry_error": null,
+      "runtime_backend": "direct",
       "runtime_cwd": "<TMP>",
       "session_id": "<RUN_ID>-stage1-A",
       "status": "ok",
@@ -762,6 +817,7 @@
       "tool_calls": [],
       "tool_calls_count": 0,
       "tool_output_conversion_errors": [],
+      "tool_permission_requests": [],
       "tool_result_calls": [],
       "turns_count": 1,
       "web_tool_effective_calls_count": 0,
@@ -769,6 +825,8 @@
       "web_tool_result_calls_count": 0
     },
     "B": {
+      "acp_startup_status": "not_applicable",
+      "acp_transcript_path": null,
       "actual_model": "Model-B",
       "agent": null,
       "allowed_tools": [
@@ -784,6 +842,7 @@
         "Model-B"
       ],
       "copied_session_files": {},
+      "disabled_tools": [],
       "disallowed_tools": [
         "Skill",
         "Agent",
@@ -802,6 +861,8 @@
         "Grep",
         "LS"
       ],
+      "enforcement_method": "direct_disallowed_tool_post_check",
+      "enforcement_proof": "post_run_contamination_check",
       "error": null,
       "exit_code": 0,
       "expected_model": "Model-B",
@@ -816,6 +877,7 @@
       "response_chars": 26,
       "retried": false,
       "retry_error": null,
+      "runtime_backend": "direct",
       "runtime_cwd": "<TMP>",
       "session_id": "<RUN_ID>-stage1-B",
       "status": "ok",
@@ -827,6 +889,7 @@
       "tool_calls": [],
       "tool_calls_count": 0,
       "tool_output_conversion_errors": [],
+      "tool_permission_requests": [],
       "tool_result_calls": [],
       "turns_count": 1,
       "web_tool_effective_calls_count": 0,
@@ -834,6 +897,8 @@
       "web_tool_result_calls_count": 0
     },
     "C": {
+      "acp_startup_status": "not_applicable",
+      "acp_transcript_path": null,
       "actual_model": "Model-C",
       "agent": null,
       "allowed_tools": [
@@ -849,6 +914,7 @@
         "Model-C"
       ],
       "copied_session_files": {},
+      "disabled_tools": [],
       "disallowed_tools": [
         "Skill",
         "Agent",
@@ -867,6 +933,8 @@
         "Grep",
         "LS"
       ],
+      "enforcement_method": "direct_disallowed_tool_post_check",
+      "enforcement_proof": "post_run_contamination_check",
       "error": null,
       "exit_code": 0,
       "expected_model": "Model-C",
@@ -881,6 +949,7 @@
       "response_chars": 27,
       "retried": false,
       "retry_error": null,
+      "runtime_backend": "direct",
       "runtime_cwd": "<TMP>",
       "session_id": "<RUN_ID>-stage1-C",
       "status": "ok",
@@ -892,6 +961,7 @@
       "tool_calls": [],
       "tool_calls_count": 0,
       "tool_output_conversion_errors": [],
+      "tool_permission_requests": [],
       "tool_result_calls": [],
       "turns_count": 1,
       "web_tool_effective_calls_count": 0,
@@ -901,6 +971,8 @@
   },
   "stage2_meta": {
     "A": {
+      "acp_startup_status": "not_applicable",
+      "acp_transcript_path": null,
       "actual_model": "Model-A",
       "agent": null,
       "allowed_tools": [
@@ -916,6 +988,7 @@
         "Model-A"
       ],
       "copied_session_files": {},
+      "disabled_tools": [],
       "disallowed_tools": [
         "Skill",
         "Agent",
@@ -934,6 +1007,8 @@
         "Grep",
         "LS"
       ],
+      "enforcement_method": "direct_disallowed_tool_post_check",
+      "enforcement_proof": "post_run_contamination_check",
       "error": null,
       "exit_code": 0,
       "expected_model": "Model-A",
@@ -948,6 +1023,7 @@
       "response_chars": 67,
       "retried": false,
       "retry_error": null,
+      "runtime_backend": "direct",
       "runtime_cwd": "<TMP>",
       "session_id": "<RUN_ID>-stage2-A",
       "status": "ok",
@@ -959,6 +1035,7 @@
       "tool_calls": [],
       "tool_calls_count": 0,
       "tool_output_conversion_errors": [],
+      "tool_permission_requests": [],
       "tool_result_calls": [],
       "turns_count": 1,
       "web_tool_effective_calls_count": 0,
@@ -966,6 +1043,8 @@
       "web_tool_result_calls_count": 0
     },
     "B": {
+      "acp_startup_status": "not_applicable",
+      "acp_transcript_path": null,
       "actual_model": "Model-B",
       "agent": null,
       "allowed_tools": [
@@ -981,6 +1060,7 @@
         "Model-B"
       ],
       "copied_session_files": {},
+      "disabled_tools": [],
       "disallowed_tools": [
         "Skill",
         "Agent",
@@ -999,6 +1079,8 @@
         "Grep",
         "LS"
       ],
+      "enforcement_method": "direct_disallowed_tool_post_check",
+      "enforcement_proof": "post_run_contamination_check",
       "error": null,
       "exit_code": 0,
       "expected_model": "Model-B",
@@ -1013,6 +1095,7 @@
       "response_chars": 67,
       "retried": false,
       "retry_error": null,
+      "runtime_backend": "direct",
       "runtime_cwd": "<TMP>",
       "session_id": "<RUN_ID>-stage2-B",
       "status": "ok",
@@ -1024,6 +1107,7 @@
       "tool_calls": [],
       "tool_calls_count": 0,
       "tool_output_conversion_errors": [],
+      "tool_permission_requests": [],
       "tool_result_calls": [],
       "turns_count": 1,
       "web_tool_effective_calls_count": 0,
@@ -1031,6 +1115,8 @@
       "web_tool_result_calls_count": 0
     },
     "C": {
+      "acp_startup_status": "not_applicable",
+      "acp_transcript_path": null,
       "actual_model": "Model-C",
       "agent": null,
       "allowed_tools": [
@@ -1046,6 +1132,7 @@
         "Model-C"
       ],
       "copied_session_files": {},
+      "disabled_tools": [],
       "disallowed_tools": [
         "Skill",
         "Agent",
@@ -1064,6 +1151,8 @@
         "Grep",
         "LS"
       ],
+      "enforcement_method": "direct_disallowed_tool_post_check",
+      "enforcement_proof": "post_run_contamination_check",
       "error": null,
       "exit_code": 0,
       "expected_model": "Model-C",
@@ -1078,6 +1167,7 @@
       "response_chars": 67,
       "retried": false,
       "retry_error": null,
+      "runtime_backend": "direct",
       "runtime_cwd": "<TMP>",
       "session_id": "<RUN_ID>-stage2-C",
       "status": "ok",
@@ -1089,6 +1179,7 @@
       "tool_calls": [],
       "tool_calls_count": 0,
       "tool_output_conversion_errors": [],
+      "tool_permission_requests": [],
       "tool_result_calls": [],
       "turns_count": 1,
       "web_tool_effective_calls_count": 0,
@@ -1098,6 +1189,8 @@
   },
   "stage2_reviews": {
     "A": {
+      "acp_startup_status": "not_applicable",
+      "acp_transcript_path": null,
       "actual_model": "Model-A",
       "agent": null,
       "allowed_tools": [
@@ -1105,6 +1198,7 @@
         "WebFetch"
       ],
       "attempt_role": "primary",
+      "disabled_tools": [],
       "disallowed_tools": [
         "Skill",
         "Agent",
@@ -1123,6 +1217,8 @@
         "Grep",
         "LS"
       ],
+      "enforcement_method": "direct_disallowed_tool_post_check",
+      "enforcement_proof": "post_run_contamination_check",
       "error": null,
       "expected_model": "Model-A",
       "forbidden_tool_calls": [],
@@ -1147,6 +1243,7 @@
       "reviewer_eligible": true,
       "reviewer_label": "A",
       "reviewer_source": "stage1_ok",
+      "runtime_backend": "direct",
       "status": "ok",
       "subagent_invocation": null,
       "termination": {},
@@ -1154,6 +1251,7 @@
       "tool_calls": [],
       "tool_calls_count": 0,
       "tool_output_conversion_errors": [],
+      "tool_permission_requests": [],
       "tool_result_calls": [],
       "turns_count": 1,
       "web_tool_effective_calls_count": 0,
@@ -1161,6 +1259,8 @@
       "web_tool_result_calls_count": 0
     },
     "B": {
+      "acp_startup_status": "not_applicable",
+      "acp_transcript_path": null,
       "actual_model": "Model-B",
       "agent": null,
       "allowed_tools": [
@@ -1168,6 +1268,7 @@
         "WebFetch"
       ],
       "attempt_role": "primary",
+      "disabled_tools": [],
       "disallowed_tools": [
         "Skill",
         "Agent",
@@ -1186,6 +1287,8 @@
         "Grep",
         "LS"
       ],
+      "enforcement_method": "direct_disallowed_tool_post_check",
+      "enforcement_proof": "post_run_contamination_check",
       "error": null,
       "expected_model": "Model-B",
       "forbidden_tool_calls": [],
@@ -1210,6 +1313,7 @@
       "reviewer_eligible": true,
       "reviewer_label": "B",
       "reviewer_source": "stage1_ok",
+      "runtime_backend": "direct",
       "status": "ok",
       "subagent_invocation": null,
       "termination": {},
@@ -1217,6 +1321,7 @@
       "tool_calls": [],
       "tool_calls_count": 0,
       "tool_output_conversion_errors": [],
+      "tool_permission_requests": [],
       "tool_result_calls": [],
       "turns_count": 1,
       "web_tool_effective_calls_count": 0,
@@ -1224,6 +1329,8 @@
       "web_tool_result_calls_count": 0
     },
     "C": {
+      "acp_startup_status": "not_applicable",
+      "acp_transcript_path": null,
       "actual_model": "Model-C",
       "agent": null,
       "allowed_tools": [
@@ -1231,6 +1338,7 @@
         "WebFetch"
       ],
       "attempt_role": "primary",
+      "disabled_tools": [],
       "disallowed_tools": [
         "Skill",
         "Agent",
@@ -1249,6 +1357,8 @@
         "Grep",
         "LS"
       ],
+      "enforcement_method": "direct_disallowed_tool_post_check",
+      "enforcement_proof": "post_run_contamination_check",
       "error": null,
       "expected_model": "Model-C",
       "forbidden_tool_calls": [],
@@ -1273,6 +1383,7 @@
       "reviewer_eligible": true,
       "reviewer_label": "C",
       "reviewer_source": "stage1_ok",
+      "runtime_backend": "direct",
       "status": "ok",
       "subagent_invocation": null,
       "termination": {},
@@ -1280,6 +1391,7 @@
       "tool_calls": [],
       "tool_calls_count": 0,
       "tool_output_conversion_errors": [],
+      "tool_permission_requests": [],
       "tool_result_calls": [],
       "turns_count": 1,
       "web_tool_effective_calls_count": 0,
@@ -1288,6 +1400,8 @@
     }
   },
   "stage3_final": {
+    "acp_startup_status": "not_applicable",
+    "acp_transcript_path": null,
     "actual_model": "Chair-Model",
     "agent": null,
     "allowed_tools": [
@@ -1306,6 +1420,7 @@
     "contribution_map_requested": true,
     "contribution_map_required": false,
     "contribution_map_stripped_from_response": true,
+    "disabled_tools": [],
     "disallowed_tools": [
       "Skill",
       "Agent",
@@ -1324,6 +1439,8 @@
       "Grep",
       "LS"
     ],
+    "enforcement_method": "direct_disallowed_tool_post_check",
+    "enforcement_proof": "post_run_contamination_check",
     "error": null,
     "expected_model": "Chair-Model",
     "forbidden_tool_calls": [],
@@ -1340,6 +1457,7 @@
     "response_path": "stage3/final.md",
     "retried": false,
     "retry_error": null,
+    "runtime_backend": "direct",
     "status": "ok",
     "subagent_invocation": null,
     "termination": {},
@@ -1347,6 +1465,7 @@
     "tool_calls": [],
     "tool_calls_count": 0,
     "tool_output_conversion_errors": [],
+    "tool_permission_requests": [],
     "tool_result_calls": [],
     "turns_count": 1,
     "web_tool_effective_calls_count": 0,
@@ -1354,6 +1473,8 @@
     "web_tool_result_calls_count": 0
   },
   "stage3_meta": {
+    "acp_startup_status": "not_applicable",
+    "acp_transcript_path": null,
     "actual_model": "Chair-Model",
     "agent": null,
     "allowed_tools": [
@@ -1369,6 +1490,7 @@
       "Chair-Model"
     ],
     "copied_session_files": {},
+    "disabled_tools": [],
     "disallowed_tools": [
       "Skill",
       "Agent",
@@ -1387,6 +1509,8 @@
       "Grep",
       "LS"
     ],
+    "enforcement_method": "direct_disallowed_tool_post_check",
+    "enforcement_proof": "post_run_contamination_check",
     "error": null,
     "exit_code": 0,
     "expected_model": "Chair-Model",
@@ -1401,6 +1525,7 @@
     "response_chars": 354,
     "retried": false,
     "retry_error": null,
+    "runtime_backend": "direct",
     "runtime_cwd": "<TMP>",
     "session_id": "<RUN_ID>-stage3-final",
     "status": "ok",
@@ -1412,6 +1537,7 @@
     "tool_calls": [],
     "tool_calls_count": 0,
     "tool_output_conversion_errors": [],
+    "tool_permission_requests": [],
     "tool_result_calls": [],
     "turns_count": 1,
     "web_tool_effective_calls_count": 0,

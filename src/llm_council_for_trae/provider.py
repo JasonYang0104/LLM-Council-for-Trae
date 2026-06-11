@@ -103,6 +103,13 @@ class ModelCallResult:
     retried: bool = False
     retry_error: str | None = None
     termination: dict[str, Any] = field(default_factory=dict)
+    runtime_backend: str = "direct"
+    enforcement_method: str = "direct_disallowed_tool_post_check"
+    enforcement_proof: str = "post_run_contamination_check"
+    disabled_tools: list[str] = field(default_factory=list)
+    tool_permission_requests: list[dict[str, Any]] = field(default_factory=list)
+    acp_transcript_path: str | None = None
+    acp_startup_status: str = "not_applicable"
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -143,6 +150,13 @@ class ModelCallResult:
             "retried": self.retried,
             "retry_error": self.retry_error,
             "termination": self.termination,
+            "runtime_backend": self.runtime_backend,
+            "enforcement_method": self.enforcement_method,
+            "enforcement_proof": self.enforcement_proof,
+            "disabled_tools": self.disabled_tools,
+            "tool_permission_requests": self.tool_permission_requests,
+            "acp_transcript_path": self.acp_transcript_path,
+            "acp_startup_status": self.acp_startup_status,
         }
 
 

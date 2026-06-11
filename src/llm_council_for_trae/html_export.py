@@ -1058,6 +1058,15 @@ def render_summary_cards(manifest: dict[str, Any], aggregate: list[dict[str, Any
     if search["lct_web_tool_calls"] > 0:
         search_text = f"调用次数：{search['lct_web_tool_calls']}"
         cards.append(f"<div class='summary-card'><h3>搜索工具</h3><p>{esc(search_text)}</p></div>")
+    acp_state = summarize_acp_tool_state(manifest)
+    if acp_state["state"] == "not_applicable":
+        cards.append("<div class='summary-card'><h3>ACP 工具证据</h3><p>not_applicable</p></div>")
+    else:
+        cards.append(
+            "<div class='summary-card'><h3>ACP 工具证据</h3>"
+            f"<p>Allowed {esc(acp_state['allowed_count'])} · Disabled {esc(acp_state['disabled_count'])}</p>"
+            f"<p class='meta'>Requested {esc(acp_state['requested_count'])} · Denied {esc(acp_state['denied_count'])} · Used {esc(acp_state['used_count'])}</p></div>"
+        )
     return "".join(cards)
 
 
@@ -1162,6 +1171,51 @@ def summarize_search_usage(manifest: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def summarize_acp_tool_state(manifest: dict[str, Any]) -> dict[str, Any]:
+    records = iter_stage_records(manifest)
+    acp_records = [item for item in records if item.get("runtime_backend") == "acp"]
+    if not acp_records:
+        return {
+            "state": "not_applicable",
+            "allowed_count": 0,
+            "disabled_count": 0,
+            "requested_count": 0,
+            "denied_count": 0,
+            "used_count": 0,
+        }
+
+    allowed: set[str] = set()
+    disabled: set[str] = set()
+    requested: list[str] = []
+    denied: list[str] = []
+    used: list[str] = []
+    for item in acp_records:
+        allowed.update(tool for tool in item.get("allowed_tools") or [] if isinstance(tool, str))
+        disabled.update(tool for tool in item.get("disabled_tools") or [] if isinstance(tool, str))
+        for request in item.get("tool_permission_requests") or []:
+            if not isinstance(request, dict):
+                continue
+            tool_name = request.get("tool_name")
+            if isinstance(tool_name, str) and tool_name:
+                requested.append(tool_name)
+                if request.get("decision") == "deny":
+                    denied.append(tool_name)
+        for call in item.get("tool_calls") or []:
+            if not isinstance(call, dict):
+                continue
+            name = call.get("name")
+            if isinstance(name, str) and name:
+                used.append(name)
+    return {
+        "state": "acp",
+        "allowed_count": len(allowed),
+        "disabled_count": len(disabled),
+        "requested_count": len(requested),
+        "denied_count": len(denied),
+        "used_count": len(used),
+    }
+
+
 def iter_stage_records(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     stages = manifest.get("stages") if isinstance(manifest.get("stages"), dict) else {}
     records: list[dict[str, Any]] = []
@@ -1232,7 +1286,7 @@ def render_metadata(manifest: dict[str, Any], warnings: list[Any], failures: lis
     return (
         "<div class='matrix'>"
         f"<div class='cell'><h3>模型阵容</h3><p>成员：{esc(', '.join(config.get('members') or []))}</p><p>主席：{esc(config.get('chairman'))}</p></div>"
-        f"<div class='cell'><h3>运行时</h3><p>Provider：{esc(config.get('provider_mode'))}</p><p>命令：{esc(config.get('runtime_command'))}</p></div>"
+        f"<div class='cell'><h3>运行时</h3><p>Provider：{esc(config.get('provider_mode'))}</p><p>Backend：{esc(config.get('runtime_backend') or 'direct')}</p><p>命令：{esc(config.get('runtime_command'))}</p></div>"
         f"<div class='cell'><h3>警告 / 失败</h3>{warning_html}{failure_html}</div>"
         "</div>"
     )
@@ -1273,7 +1327,8 @@ def render_trace(stage1: list[Any], stage2: list[Any], stage3: dict[str, Any] | 
                 source_html = f" · 来源：{esc(item.get('reviewer_source'))}"
             rows.append(
                 f"<div class='cell'><h3>{esc(stage_name)} · {esc(item.get('file_label') or item.get('reviewer_label'))}</h3>"
-                f"<p>{esc(item.get('expected_model'))} -> {esc(item.get('actual_model'))}</p><p class='meta'>{esc(item.get('status'))}{budget_html}{source_html}</p></div>"
+                f"<p>{esc(item.get('expected_model'))} -> {esc(item.get('actual_model'))}</p><p class='meta'>{esc(item.get('status'))}{budget_html}{source_html}</p>"
+                f"{render_acp_tool_state(item)}</div>"
             )
     if stage3:
         budget_html = ""
@@ -1281,9 +1336,29 @@ def render_trace(stage1: list[Any], stage2: list[Any], stage3: dict[str, Any] | 
         if tool_budget_status and tool_budget_status not in ("ok", None):
             budget_html = f" · <span class='warning'>工具预算：{esc(tool_budget_status)}</span>"
         rows.append(
-            f"<div class='cell'><h3>stage3 · 主席</h3><p>{esc(stage3.get('expected_model'))} -> {esc(stage3.get('actual_model'))}</p><p class='meta'>{esc(stage3.get('status'))}{budget_html}</p></div>"
+            f"<div class='cell'><h3>stage3 · 主席</h3><p>{esc(stage3.get('expected_model'))} -> {esc(stage3.get('actual_model'))}</p><p class='meta'>{esc(stage3.get('status'))}{budget_html}</p>{render_acp_tool_state(stage3)}</div>"
         )
     return "<div class='matrix'>" + "".join(rows) + "</div>"
+
+
+def render_acp_tool_state(item: dict[str, Any]) -> str:
+    if item.get("runtime_backend") != "acp":
+        return "<p class='meta'>ACP 工具证据：not_applicable</p>"
+    allowed = format_tool_names(item.get("allowed_tools"))
+    disabled = format_tool_names(item.get("disabled_tools"))
+    requests = [request for request in item.get("tool_permission_requests") or [] if isinstance(request, dict)]
+    requested = format_tool_names([request.get("tool_name") for request in requests])
+    denied = format_tool_names([request.get("tool_name") for request in requests if request.get("decision") == "deny"])
+    used = format_tool_names([call.get("name") for call in item.get("tool_calls") or [] if isinstance(call, dict)])
+    return (
+        "<p class='meta'>ACP 工具证据："
+        f"Allowed {esc(allowed)} · Disabled {esc(disabled)} · Requested {esc(requested)} · Denied {esc(denied)} · Used {esc(used)}</p>"
+    )
+
+
+def format_tool_names(value: Any) -> str:
+    names = [str(item) for item in value or [] if isinstance(item, str) and item]
+    return ", ".join(names) if names else "none"
 
 
 def render_flow_svg() -> str:

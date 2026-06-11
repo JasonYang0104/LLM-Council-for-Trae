@@ -106,6 +106,13 @@ STAGE_META_SCHEMA: dict[str, JsonTypeCheck] = {
     "assistant_content_chars_total": is_int,
     "last_assistant_content_chars": is_int,
     "raw_partial_recoverable": is_bool,
+    "runtime_backend": is_str,
+    "enforcement_method": is_str,
+    "enforcement_proof": is_str,
+    "disabled_tools": is_list_of_str,
+    "tool_permission_requests": is_list_of_dict,
+    "acp_transcript_path": is_str_or_none,
+    "acp_startup_status": is_str,
 }
 
 
