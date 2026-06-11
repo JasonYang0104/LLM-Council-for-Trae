@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from llm_council_for_trae.acp_runtime import AcpTraeCliRuntime
 from llm_council_for_trae.cli import build_config, build_parser
 from llm_council_for_trae.council import CouncilConfig, build_model_runtime, config_to_json
 from llm_council_for_trae.provider import DirectTraeCliRuntime, TraeCliProvider
@@ -85,13 +86,16 @@ class RuntimeBackendContractTests(unittest.TestCase):
         self.assertIsInstance(runtime, TraeCliProvider)
         self.assertEqual(runtime.member_tool_mode, "answer_only")
 
-    def test_acp_runtime_backend_fails_fast_until_adapter_exists(self):
-        with self.assertRaisesRegex(ValueError, "runtime_backend=acp is not implemented"):
-            build_model_runtime(
-                CouncilConfig(members=["M1"], chairman="Chair", runtime_backend="acp"),
-                provider_runtime_cwd=None,
-                provider_member_tool_mode="answer_only",
-            )
+    def test_acp_runtime_backend_builds_experimental_acp_runtime(self):
+        runtime = build_model_runtime(
+            CouncilConfig(members=["M1"], chairman="Chair", runtime_backend="acp", acp_startup_timeout=12),
+            provider_runtime_cwd=None,
+            provider_member_tool_mode="answer_only",
+        )
+
+        self.assertIsInstance(runtime, AcpTraeCliRuntime)
+        self.assertEqual(runtime.member_tool_mode, "answer_only")
+        self.assertEqual(runtime.acp_startup_timeout, 12)
 
 
 if __name__ == "__main__":
