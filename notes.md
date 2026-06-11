@@ -113,3 +113,55 @@
 
 - acp backend 仅 fail-fast，无 adapter / transcript parser / live transport——M3 范围，符合任务卡边界。
 - `ModelRuntime` Protocol 当前仅 `TraeCliProvider` 实现（structural 鸭子类型，未运行期 `@runtime_checkable` 校验）；M3 接入 ACP adapter 时需保证其 `query_model` 签名与该 Protocol 一致。
+
+## M3：offline ACP adapter 与 transcript parser
+
+### 阶段目标
+
+- 新增 ACP transcript 纯函数 parser（不依赖 live `traecli`）。
+- 新增 `AcpTraeCliRuntime` offline skeleton：经可注入 `transcript_provider` 离线证明 `query_model()` mapping；默认 provider 缺失时失败语义诚实，不伪装 live。
+- 让 `runtime_backend=acp` 进入 runtime factory，返回 `AcpTraeCliRuntime`；live transport 仍明确未实现。
+- 解决上轮 review 两处发现：`repair_contribution_map` 类型收窄、签名门卫契约测试。
+
+### 产品代码变更（src 仅 3 文件）
+
+- 新增 `src/llm_council_for_trae/acp_transcript.py`：`parse_acp_transcript_text()`、`AcpTranscriptParseResult`、`resolve_acp_transcript_path()`（拒绝绝对路径与逃出 run root 的 `../`）。
+- 新增 `src/llm_council_for_trae/acp_runtime.py`：`AcpStartupError`、`AcpQueryRequest`、`AcpTraeCliRuntime`。command 记录为 `["<traecli>", "acp", "serve"]`；默认 provider 缺失 → `acp_startup_failed: ACP live transport is not implemented yet`。
+- `council.py`：
+  - `build_model_runtime()` 的 acp 分支从 fail-fast 改为返回 `AcpTraeCliRuntime`（透传 `runtime_command/query_timeout/runtime_cwd/use_yolo/member_tool_mode/acp_startup_timeout`）。
+  - **review 发现 1（类型收窄）**：`repair_contribution_map()` 的 `provider` 标注由 `TraeCliProvider` 收窄为 `ModelRuntime`（纯类型层面，行为不变）。这与 M2 notes 中“暂保留 `TraeCliProvider`”形成对照——M3 已按本轮 review 收窄。
+
+### 测试变更
+
+- 新增 `tests/contract/test_acp_transcript_parser.py`（5 个）：response/actual_model/tool_calls 提取、permission request 与 decision、坏 JSONL 不静默、无最小 ACP 结构报 missing required method、路径约束（绝对路径与 `../` 逃逸均拒，比较用 `root.resolve()`）。
+- 新增 `tests/contract/test_acp_model_runtime_contract.py`（10 个）：factory 返回 `AcpTraeCliRuntime`；clean transcript → ok ＋ 三 sidecar 落盘；forbidden permission deny 且未 used → ok；forbidden permission allow → fail；forbidden tool used → fail；protocol error / startup error / cancellation 各自映射；默认 provider 缺失 → live transport not implemented；**review 发现 2（签名门卫）**：`test_acp_query_model_signature_matches_model_runtime_port` 用 `inspect.signature` 对比 `AcpTraeCliRuntime.query_model` 与 `TraeCliProvider.query_model` 及 `ModelRuntime.query_model` 的参数名集合、顺序、kind 一致。
+- 改动 `tests/contract/test_runtime_backend_contract.py`（M2 测试唯一允许的改动）：新增 `AcpTraeCliRuntime` import；`test_acp_runtime_backend_fails_fast_until_adapter_exists` → `test_acp_runtime_backend_builds_experimental_acp_runtime`，断言 factory 返回 `AcpTraeCliRuntime` 且透传 `member_tool_mode/acp_startup_timeout`。理由：acp 分支语义已从 fail-fast 翻转为返回 adapter，旧断言会必然失败，必须同步。
+
+### 红绿过程与已知坑
+
+- 红态确认：仅提交三个测试文件后，`PYTHONPATH=src:tests python3 -m unittest tests.contract.test_acp_transcript_parser tests.contract.test_acp_model_runtime_contract tests.contract.test_runtime_backend_contract` → `ModuleNotFoundError: No module named 'llm_council_for_trae.acp_runtime'`（红，3 模块 import 失败）。红态 commit：`bd8f35d`。
+- 已知坑（直接吸收，未重踩）：
+  - Python 3.9 类型别名禁 `str | Any` 运行期求值 → `TranscriptProvider = Callable[..., Any]`（本机 Python 3.14，但保留 3.9-safe 形态）。
+  - macOS 临时目录 `/var/...` → `/private/var/...`：路径约束测试用 `root.resolve()` 比较。
+  - P1 的 acp fail-fast 测试已更新为 factory 返回 `AcpTraeCliRuntime` 契约。
+
+### 边界恪守
+
+- 未新增 validation hard gate、未改 HTML、`EXPECTED_META_KEYS`（37 键）不变（evidence 字段属 M4）。
+- 未实现 live transport。
+- M1 contract tests 与 golden 零改动；本阶段无 config 字段新增，golden 未重生成。
+- `src/` 改动限于两个新模块 ＋ `council.py`。
+
+### 验证（全部通过）
+
+- `make test`：`Ran 335 tests ... OK`（320 基线 ＋ 15 新增：5 transcript parser ＋ 10 runtime contract）。
+- `git diff main..HEAD -- tests/golden/`：空（golden 零改动）。
+- M1 测试零改动：`git diff main..HEAD -- tests/contract/test_direct_*.py tests/contract/test_tool_*.py tests/contract/test_meta_keyset_golden.py tests/contract/test_cancellation_contract.py tests/support/runtime_contract.py` 为空。
+- `git diff --check`：通过。
+- `PYTHONPATH=src python3 -m compileall -q src`：通过。
+
+### 残余风险
+
+- live ACP transport 仍未实现；当前 ACP runtime 的可验证范围是 offline transcript parsing 与 result mapping，不能把 offline fixture 当 live 证据。
+- ACP evidence 扩字段、validate 反伪造、HTML 五态展示均留到 M4，避免在 parser/runtime skeleton 稳定前污染 direct meta key golden。
+- `ModelRuntime` Protocol 仍为 structural（非 `@runtime_checkable`）；签名门卫测试现在以 `inspect.signature` 在测试期捕获 `AcpTraeCliRuntime` 与 direct/port 的签名漂移，但运行期仍无强约束。

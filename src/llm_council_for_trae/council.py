@@ -9,6 +9,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
+from .acp_runtime import AcpTraeCliRuntime
 from .models import doctor as runtime_doctor
 from .models import get_models, require_models_available
 from .contribution_map import extract_contribution_map, strip_contribution_map_fence
@@ -541,7 +542,7 @@ Stage 2 综合排序:
 
 async def repair_contribution_map(
     *,
-    provider: TraeCliProvider,
+    provider: ModelRuntime,
     store: ArtifactStore,
     model: str,
     final_response: str,
@@ -1492,7 +1493,14 @@ def build_model_runtime(
             member_tool_mode=provider_member_tool_mode,
         )
     if config.runtime_backend == "acp":
-        raise ValueError("runtime_backend=acp is not implemented yet")
+        return AcpTraeCliRuntime(
+            config.runtime_command,
+            config.query_timeout,
+            runtime_cwd=provider_runtime_cwd,
+            use_yolo=config.use_yolo,
+            member_tool_mode=provider_member_tool_mode,
+            acp_startup_timeout=config.acp_startup_timeout,
+        )
     raise ValueError(f"unknown runtime_backend: {config.runtime_backend}")
 
 
