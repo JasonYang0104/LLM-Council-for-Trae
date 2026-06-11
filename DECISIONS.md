@@ -25,7 +25,7 @@
 5. **C-1 ACP**：研究分支（本地 9 commits）先 push 备份，再按 P0→P3 逐阶段移植新 main，不整体 merge；live transport 单独立项且以 traecli ACP 能力 probe 为 go/no-go 前提；默认 runtime 维持 direct 直至切换条件全部达成。
 6. **C-2 可扩展性**：用户级 `config.toml`（四字段白名单：preferred_members / default_member_count / backfill_candidates / rubric_path）＋ rubric 注入 Stage 2 评审标准段；排名解析契约不可配；provenance 记 manifest。
 
-批次编排：第一批 C-1a（contract tests 移植）＋ B-2；第二批 A-1 ＋ C-2；第三批 B-1a；第四批 C-1b ＋ A-2。每批独立 PR，validate / make test 逐层绿。
+批次编排（2026-06-11 用户裁决：机制升级与 ACP 切换为优先推进重点，A 轨后置）：第一批 M0–M2（备份分支 ＋ contract tests ＋ ModelRuntime port）＋ B-2 stats；第二批 B-1a 质询轮（面向 ModelRuntime 抽象开发）＋ M3–M4（offline ACP adapter ＋ evidence gate）；第三批 M5 live ACP transport（probe 清单前置）；A-1/A-2/C-2 顺延。每批独立 PR，validate / make test 逐层绿。
 
 ### 依据与取舍
 
@@ -40,6 +40,12 @@
 - 数据模型：新增 `stage3/presentation_plan.json`（schema_version 1）、`stage2_5/*.rebuttal.md`、manifest `metadata.presentation` / `metadata.debate` / `metadata.user_config`。
 - 公共接口：新增 `--debate`、`--config`、`stats` 子命令、（移植）`--runtime-backend`；现有参数语义全部不变。
 - 协作：ACP 研究分支需 push 备份；后续每批独立 PR。
+
+### 深化设计补充（2026-06-11）
+
+- Track B 深化：`docs/lct-debate-stats-architecture-20260611.md`——质询轮固定 1 轮、评审材料去 FINAL RANKING ＋ 评审者匿名、无答辩 backfill（刻意分叉）、debate 失败永不阻断 Stage 3；stats 为 manifest-only 只读、逐评审员重算位置（不用 aggregate_rankings，因其无评审者归属）、自评剔除、归一化位次。
+- Track C-1 深化：`docs/lct-acp-migration-architecture-20260611.md`——**本机实测 `traecli acp serve` 握手通过**（initialize protocolVersion 1、session/new 返回 availableModels、启动 flags 含 --disallowed-tool），go/no-go 首关已过；移植路线 M0–M5，M5 live transport 前置 5 项 probe 清单（模型选择机制、permission 语义、actual model 证据、stop reason、进程残留）。
+- B-1a 依赖建议：先完成 M2（ModelRuntime port），质询轮直接面向 `ModelRuntime` 抽象开发，自动兼容未来 ACP backend。
 
 ### 推翻条件
 
