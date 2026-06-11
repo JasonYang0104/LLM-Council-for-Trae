@@ -47,6 +47,12 @@
 - Track C-1 深化：`docs/lct-acp-migration-architecture-20260611.md`——**本机实测 `traecli acp serve` 握手通过**（initialize protocolVersion 1、session/new 返回 availableModels、启动 flags 含 --disallowed-tool），go/no-go 首关已过；移植路线 M0–M5，M5 live transport 前置 5 项 probe 清单（模型选择机制、permission 语义、actual model 证据、stop reason、进程残留）。
 - B-1a 依赖建议：先完成 M2（ModelRuntime port），质询轮直接面向 `ModelRuntime` 抽象开发，自动兼容未来 ACP backend。
 
+### 流程裁决（2026-06-11，用户拍板）
+
+- ACP 路线优先启动；**GitHub 推送暂缓**——M0 的远端备份分支改为本地 bundle 备份（`lct-acp-research-backup-20260611.bundle`，verify 通过；研究目录实为主 repo worktree，9 commits 已在主 repo object store 内）。
+- 开发验证流程：本机测试 ＋ 架构师 review ＋ 隔离 worktree，每阶段完成后停在分支等 review，不自行合并 main、不开 PR。恢复推送 GitHub 的时机由用户后续裁决。
+- M1 基线已锚定：`main @ 04a1b9b`，`make test` 295 个 unittest 全绿（2026-06-11 本机实测）；M1 worktree：`COCO-llm-council-acp-m1-20260611`，任务卡 `docs/lct-acp-m1-task-card-20260611.md`。
+
 ### 推翻条件
 
 - A-1：主席 genre 错判率高 → 降级启发式或仅 `--genre` 显式覆盖。
