@@ -13,7 +13,7 @@ from .models import doctor as runtime_doctor
 from .models import get_models, require_models_available
 from .contribution_map import extract_contribution_map, strip_contribution_map_fence
 from .model_selection import DEFAULT_CHAIRMAN, DEFAULT_MEMBERS
-from .provider import ModelCallResult, TraeCliProvider, tool_policy_for_mode
+from .provider import ModelCallResult, ModelRuntime, TraeCliProvider, tool_policy_for_mode
 from .store import ArtifactStore
 from .utils import utc_now, write_json
 
@@ -44,6 +44,8 @@ class CouncilConfig:
     member_mode: str = "normal"
     member_tool_mode: str = "search_enabled"
     member_runtime_cwd_mode: str = "isolated_temp"
+    runtime_backend: str = "direct"
+    acp_startup_timeout: int = 30
     stage1_max_retries: int = 1
     backfill_members: list[str] = field(default_factory=list)
     stage1_auto_backfill: bool = True
@@ -81,7 +83,7 @@ def ensure_stage1_stream_sidecar(store: ArtifactStore, label: str, call: ModelCa
 async def stage1_collect_responses(
     user_query: str,
     config: CouncilConfig,
-    provider: TraeCliProvider,
+    provider: ModelRuntime,
     store: ArtifactStore,
 ) -> list[dict[str, Any]]:
     prompt = build_stage1_prompt(user_query)
@@ -186,7 +188,7 @@ async def backfill_stage1_responses(
     user_query: str,
     stage1_results: list[dict[str, Any]],
     config: CouncilConfig,
-    provider: TraeCliProvider,
+    provider: ModelRuntime,
     store: ArtifactStore,
     runtime_models: list[dict[str, Any]],
     target_valid_members: int | None = None,
@@ -263,7 +265,7 @@ async def stage2_collect_rankings(
     user_query: str,
     stage1_results: list[dict[str, Any]],
     config: CouncilConfig,
-    provider: TraeCliProvider,
+    provider: ModelRuntime,
     store: ArtifactStore,
     reviewers: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, str]]:
@@ -393,7 +395,7 @@ async def backfill_stage2_reviewers(
     existing_stage1_results: list[dict[str, Any]],
     failed_stage2_results: list[dict[str, Any]],
     config: CouncilConfig,
-    provider: TraeCliProvider,
+    provider: ModelRuntime,
     store: ArtifactStore,
     runtime_models: list[dict[str, Any]],
     needed_reviewers: int,
@@ -619,7 +621,7 @@ async def stage3_synthesize_final(
     stage1_results: list[dict[str, Any]],
     stage2_results: list[dict[str, Any]],
     config: CouncilConfig,
-    provider: TraeCliProvider,
+    provider: ModelRuntime,
     store: ArtifactStore,
     fallback_chain: list[str] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -1183,13 +1185,7 @@ async def run_full_council(
         store.event("member_runtime_cwd_ready", {"mode": config.member_runtime_cwd_mode, "path": str(provider_runtime_cwd)})
 
     provider_member_tool_mode = "subagent_invocation" if config.provider_mode == "subagent" else config.member_tool_mode
-    provider = TraeCliProvider(
-        config.runtime_command,
-        config.query_timeout,
-        runtime_cwd=provider_runtime_cwd,
-        use_yolo=config.use_yolo,
-        member_tool_mode=provider_member_tool_mode,
-    )
+    provider = build_model_runtime(config, provider_runtime_cwd, provider_member_tool_mode)
 
     store.event("stage1_start", {"members": config.members})
     stage1_results = await stage1_collect_responses(user_query, config, provider, store)
@@ -1467,6 +1463,8 @@ def config_to_json(config: CouncilConfig) -> dict[str, Any]:
         "member_mode": config.member_mode,
         "member_tool_mode": config.member_tool_mode,
         "member_runtime_cwd_mode": config.member_runtime_cwd_mode,
+        "runtime_backend": config.runtime_backend,
+        "acp_startup_timeout": config.acp_startup_timeout,
         "stage1_max_retries": config.stage1_max_retries,
         "backfill_members": config.backfill_members,
         "stage1_auto_backfill": config.stage1_auto_backfill,
@@ -1478,6 +1476,24 @@ def config_to_json(config: CouncilConfig) -> dict[str, Any]:
         "chairman_contribution_required": config.chairman_contribution_required,
         "chairman_contribution_repair_attempts": config.chairman_contribution_repair_attempts,
     }
+
+
+def build_model_runtime(
+    config: CouncilConfig,
+    provider_runtime_cwd: Path | None,
+    provider_member_tool_mode: str,
+) -> ModelRuntime:
+    if config.runtime_backend == "direct":
+        return TraeCliProvider(
+            config.runtime_command,
+            config.query_timeout,
+            runtime_cwd=provider_runtime_cwd,
+            use_yolo=config.use_yolo,
+            member_tool_mode=provider_member_tool_mode,
+        )
+    if config.runtime_backend == "acp":
+        raise ValueError("runtime_backend=acp is not implemented yet")
+    raise ValueError(f"unknown runtime_backend: {config.runtime_backend}")
 
 
 def tool_policy_record(call: ModelCallResult) -> dict[str, Any]:

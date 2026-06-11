@@ -69,6 +69,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--member-mode", choices=["normal", "deep_research"], default="normal", help="Member execution mode.")
     run_p.add_argument("--member-tool-mode", choices=["answer_only", "search_enabled", "workspace_enabled"], default="search_enabled", help="Tool capability policy for direct member runtime.")
     run_p.add_argument("--member-runtime-cwd-mode", choices=["isolated_temp", "inherit"], default="isolated_temp", help="Working-directory isolation mode for direct member runtime when --runtime-cwd is omitted.")
+    run_p.add_argument("--runtime-backend", choices=["direct", "acp"], default="direct", help="Runtime backend implementation. ACP is experimental and direct remains the default.")
+    run_p.add_argument("--acp-startup-timeout", type=int, default=30, help="ACP startup timeout seconds when --runtime-backend acp is used.")
     run_p.add_argument("--skip-html", action="store_true", help="Skip automatic HTML export after Stage 3.")
     run_p.add_argument("--chairman-contribution-map", dest="chairman_contribution_map", action="store_true", default=None, help="Compatibility alias: Stage 3 requests a contribution-map sidecar by default.")
     run_p.add_argument("--no-chairman-contribution-map", dest="chairman_contribution_map", action="store_false", help="Do not ask Stage 3 to emit a contribution-map sidecar.")
@@ -246,6 +248,8 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
     chairman_agent = None
     model_selection_provenance = None
     if provider_mode == "subagent":
+        if getattr(args, "runtime_backend", "direct") == "acp":
+            raise ValueError("runtime_backend=acp is not supported with provider_mode=subagent")
         members, member_agents = parse_subagent_members(profile.get("members") or [])
         chairman, chairman_agent = parse_subagent_chairman(profile.get("chairman") or {})
         runtime_cwd = str(Path(args.runtime_cwd).expanduser().resolve()) if args.runtime_cwd else str(PROJECT_ROOT)
@@ -288,6 +292,8 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
         member_mode=getattr(args, "member_mode", "normal"),
         member_tool_mode=getattr(args, "member_tool_mode", "search_enabled"),
         member_runtime_cwd_mode=getattr(args, "member_runtime_cwd_mode", "isolated_temp"),
+        runtime_backend=getattr(args, "runtime_backend", "direct"),
+        acp_startup_timeout=getattr(args, "acp_startup_timeout", 30),
         backfill_members=split_csv(getattr(args, "backfill_members", "") or ""),
         stage1_auto_backfill=not getattr(args, "no_auto_backfill", False),
         stage2_auto_backfill=not getattr(args, "no_auto_backfill", False),

@@ -1,5 +1,6 @@
 {
   "config": {
+    "acp_startup_timeout": 30,
     "allow_low_quorum": true,
     "backfill_members": [],
     "chairman": "Chair-Model",
@@ -27,6 +28,7 @@
     "model_selection_provenance": null,
     "provider_mode": "direct",
     "query_timeout": 180,
+    "runtime_backend": "direct",
     "runtime_command": "fake-traecli",
     "runtime_cwd": "<TMP>",
     "stage1_auto_backfill": true,
@@ -86,7 +88,7 @@
     "stage3/final.traecli.stream.jsonl"
   ],
   "html_checks": {
-    "chars": 61883,
+    "chars": 62049,
     "contains_final_answer": true,
     "contains_search_summary": false,
     "contains_stage1_appendix": true,
@@ -110,6 +112,7 @@
       "runtime_models": "runtime/traecli.models.json"
     },
     "config": {
+      "acp_startup_timeout": 30,
       "allow_low_quorum": true,
       "backfill_members": [],
       "chairman": "Chair-Model",
@@ -137,6 +140,7 @@
       "model_selection_provenance": null,
       "provider_mode": "direct",
       "query_timeout": 180,
+      "runtime_backend": "direct",
       "runtime_command": "fake-traecli",
       "runtime_cwd": "<TMP>",
       "stage1_auto_backfill": true,

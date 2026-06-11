@@ -7,7 +7,7 @@ import signal
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from .utils import DEFAULT_TRAECLI, slugify, utc_now, write_json, write_text
 
@@ -144,6 +144,21 @@ class ModelCallResult:
             "retry_error": self.retry_error,
             "termination": self.termination,
         }
+
+
+class ModelRuntime(Protocol):
+    async def query_model(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        run_id: str,
+        stage: str,
+        label: str,
+        output_dir: Path,
+        agent: str | None = None,
+        query_timeout: int | float | None = None,
+    ) -> ModelCallResult: ...
 
 
 async def monitor_stream_for_budget(
@@ -461,6 +476,9 @@ class TraeCliProvider:
         )
         write_json(output_dir / f"{label}.meta.json", result.to_json() | {"captured_at": utc_now()})
         return result
+
+
+DirectTraeCliRuntime = TraeCliProvider
 
 
 def safe_command(cmd: list[str]) -> list[str]:
