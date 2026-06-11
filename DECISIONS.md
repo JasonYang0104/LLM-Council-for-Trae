@@ -53,6 +53,15 @@
 - 开发验证流程：本机测试 ＋ 架构师 review ＋ 隔离 worktree，每阶段完成后停在分支等 review，不自行合并 main、不开 PR。恢复推送 GitHub 的时机由用户后续裁决。
 - M1 基线已锚定：`main @ 04a1b9b`，`make test` 295 个 unittest 全绿（2026-06-11 本机实测）；M1 worktree：`COCO-llm-council-acp-m1-20260611`，任务卡 `docs/lct-acp-m1-task-card-20260611.md`。
 
+### 执行结果（2026-06-11/12，M1–M5 全部完成并合入本地 main）
+
+- 流水线：每阶段独立 worktree ＋ 执行 Agent（M1–M4 Opus，M5 Fable）＋ 架构师独立复核 ＋ ff-only 合并；回滚 tags：`pre-acp-m1` … `pre-acp-m5`。
+- 测试演进：295 → 314（M1 direct 契约冻结）→ 320（M2 ModelRuntime port）→ 335（M3 offline adapter）→ 349（M4 evidence gate）→ **368 全绿**（M5 live transport）。golden 漂移全程仅限各阶段任务卡声明范围。
+- M5 live probe 结论（`docs/lct-acp-live-probe-20260611.md`）：模型选择 **GO**（`-c model.name=<modelId>`，session/new 的 `currentModelId` 实证跟随）；`--disallowed-tool` 为 schema 静默隐藏（disabled 态取证 = argv/meta）；update 流无模型字段（actual model 证据为会话级 currentModelId，已如实声明）；stop reason 三态探明；无进程残留。
+- live E2E：`run-20260611T230225`（3 成员 + 主席，9 次 ACP 调用全 ok、零 backfill），validate `complete_ok_final / usable_final: true`，497 checks（含 175 项 ACP gate）0 failures；架构师重跑 validate 复核一致。artifact store 已复制到 `lct-acp-m5-live-evidence-20260611/` 留存。
+- 唯一被取代的历史断言：M3 占位文案 `acp_startup_failed: ACP live transport is not implemented yet` → `spawn failed:*` 等价新契约（实现 live transport 的必然后果，已声明）。
+- **默认 backend 仍是 direct**。切换前还缺（§4.4）：≥3 次 paired probe、代表性长 E2E、`model_benchmark.py` 口径时延/失败率对比。GitHub 推送依旧暂缓，待用户裁决。
+
 ### 推翻条件
 
 - A-1：主席 genre 错判率高 → 降级启发式或仅 `--genre` 显式覆盖。
