@@ -4,6 +4,53 @@
 
 ---
 
+## ADR-0002：LCT 三轨升级路线（体验 / 机制 / 架构）
+
+- 日期：2026-06-11
+- 状态：提案（待用户拍板；用户已给定三轨方向，批次编排与各轨方案选型为架构师推荐）
+- 输入：`docs/lct-three-track-upgrade-architecture-20260611.md`
+
+### 背景
+
+用户提出三轨升级：①体验——制品风格随内容自适应（技术决策出结构化对比、创意问题出发散展示），并借 Open Design 把交付形态扩展到 PPT/动画/demo；②机制——让持不同观点的模型直接交锋，并把「N 模型同题作答」副产品系统化为轻量级横评；③架构——traecli 直调切 ACP 协议，并开放模型与评审规则自定义。
+
+### 决策（推荐项）
+
+总原则沿用 ADR-0001：升级落在 sidecar、展示层、Skill 层与新增只读命令；不破坏三阶段协议、HTML 确定性导出、validate 证据链。
+
+1. **A-1 风格自适应**：`stage3/presentation_plan.json` sidecar（复用 contribution_map 的 fence 机制），genre 枚举首版 3 个（`decision_matrix` / `divergent_panorama` / `default`）；export 只消费不重算，缺失回退默认模板。
+2. **A-2 多形态交付**：Open Design 接入在 Skill/Agent 层，core 不内置 PPTX；core 职责收敛为稳定的「artifact 消费契约」。
+3. **B-1a 对线首版 = 全员质询轮**：opt-in `--debate` 插入 Stage 2.5，每成员对针对自己的匿名批评作一轮答辩；匿名标签不破、轮次固定 1、失败降级沿用 backfill 语义。1v1 多轮对线（B-1b）等灰度证据再立项。
+4. **B-2 横评系统化**：独立只读 `stats` 命令跨 run 聚合同侪偏好统计；单次 council 报告维持「不做模型评比」红线；报告强制免责声明、带样本量、禁止合成总分。
+5. **C-1 ACP**：研究分支（本地 9 commits）先 push 备份，再按 P0→P3 逐阶段移植新 main，不整体 merge；live transport 单独立项且以 traecli ACP 能力 probe 为 go/no-go 前提；默认 runtime 维持 direct 直至切换条件全部达成。
+6. **C-2 可扩展性**：用户级 `config.toml`（四字段白名单：preferred_members / default_member_count / backfill_candidates / rubric_path）＋ rubric 注入 Stage 2 评审标准段；排名解析契约不可配；provenance 记 manifest。
+
+批次编排：第一批 C-1a（contract tests 移植）＋ B-2；第二批 A-1 ＋ C-2；第三批 B-1a；第四批 C-1b ＋ A-2。每批独立 PR，validate / make test 逐层绿。
+
+### 依据与取舍
+
+- 分类是模型工作（run 期落盘）、渲染是确定性工作（export 期消费），是保住 HTML 确定性红线的唯一分层方式。
+- 质询轮优先于 1v1 对线：无选边与轮次终止问题，复杂度最低且已构成真实交锋。
+- stats 与单次报告分面，化解与 ADR-0001「排名≠贡献」红线的张力。
+- ACP 不整体 merge 是研究线两个 reviewer 的一致结论（behind 56，混入 contribution_map 链路）。
+- 否决：core 内置 PPTX / 视频（重依赖破坏确定性导出定位）；export 期调模型判风格（破红线）；插件式 runtime 注册（抽象先于需求）。
+
+### 影响范围
+
+- 数据模型：新增 `stage3/presentation_plan.json`（schema_version 1）、`stage2_5/*.rebuttal.md`、manifest `metadata.presentation` / `metadata.debate` / `metadata.user_config`。
+- 公共接口：新增 `--debate`、`--config`、`stats` 子命令、（移植）`--runtime-backend`；现有参数语义全部不变。
+- 协作：ACP 研究分支需 push 备份；后续每批独立 PR。
+
+### 推翻条件
+
+- A-1：主席 genre 错判率高 → 降级启发式或仅 `--genre` 显式覆盖。
+- B-1a：rebuttal 普遍无增量 → 退为实验 flag，B-1b 不立项。
+- B-2：stats 被当排行榜误传 → 收紧为 JSON only。
+- C-1b：traecli probe no-go → live ACP 冻结，已移植 contract tests 仍保留。
+- C-2：出现真实第二 runtime 需求 → 再评估 runtime 注册抽象。
+
+---
+
 ## ADR-0001：LCT 体验升级方向（四项）
 
 - 日期：2026-06-06
