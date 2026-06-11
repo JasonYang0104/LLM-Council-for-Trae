@@ -8,6 +8,41 @@ from typing import Any
 
 REQUIRED_ACP_METHODS = ("initialize", "session/new", "session/prompt", "session/update")
 
+# Canonical builtin tool names. Live traecli `session/update` events carry the
+# tool name in `title`, sometimes lowercased ("bash") and sometimes canonical
+# ("WebSearch"); policy lists use the canonical spelling, so live evidence is
+# normalised case-insensitively before policy checks.
+KNOWN_TOOL_NAMES = (
+    "Agent",
+    "AskUserQuestion",
+    "Bash",
+    "Edit",
+    "Glob",
+    "Grep",
+    "LS",
+    "MultiEdit",
+    "NotebookEdit",
+    "Read",
+    "Skill",
+    "TaskCreate",
+    "TaskGet",
+    "TaskList",
+    "TaskUpdate",
+    "TodoWrite",
+    "WebFetch",
+    "WebSearch",
+    "Write",
+)
+
+_CANONICAL_TOOL_NAMES = {name.lower(): name for name in KNOWN_TOOL_NAMES}
+
+
+def canonical_tool_name(title: Any) -> str:
+    if not isinstance(title, str):
+        return ""
+    stripped = title.strip()
+    return _CANONICAL_TOOL_NAMES.get(stripped.lower(), stripped)
+
 
 @dataclass
 class AcpTranscriptParseResult:
@@ -25,7 +60,17 @@ def parse_acp_transcript_text(transcript_text: str) -> AcpTranscriptParseResult:
     seen_methods: set[str] = set()
     response_parts: list[str] = []
     pending_permission_indexes: dict[str, int] = {}
+    permission_tool_call_ids: dict[str, str] = {}
+    denied_tool_call_ids: set[str] = set()
+    session_new_request_ids: set[str] = set()
+    session_model: str | None = None
+    live_message_buffer: list[str] = []
     saw_line = False
+
+    def flush_live_message() -> None:
+        if live_message_buffer:
+            response_parts.append("".join(live_message_buffer))
+            live_message_buffer.clear()
 
     for line_number, raw_line in enumerate(transcript_text.splitlines(), start=1):
         if not raw_line.strip():
@@ -44,26 +89,72 @@ def parse_acp_transcript_text(transcript_text: str) -> AcpTranscriptParseResult:
         if isinstance(method, str):
             seen_methods.add(method)
         params = event.get("params") if isinstance(event.get("params"), dict) else {}
+        event_id = _id_to_str(event.get("id"))
+
+        if method == "session/new" and event_id:
+            session_new_request_ids.add(event_id)
+            continue
 
         if method == "session/request_permission":
-            request_id = _id_to_str(event.get("id"))
+            tool_call = params.get("toolCall") if isinstance(params.get("toolCall"), dict) else None
+            if tool_call is not None:
+                tool_name = canonical_tool_name(tool_call.get("title")) or _tool_name_from_params(params)
+                arguments = _normalise_arguments(tool_call.get("rawInput") or {})
+                tool_call_id = tool_call.get("toolCallId")
+                if isinstance(tool_call_id, str) and tool_call_id:
+                    permission_tool_call_ids[event_id] = tool_call_id
+            else:
+                tool_name = _tool_name_from_params(params)
+                arguments = _normalise_arguments(params.get("arguments") or params.get("input") or {})
             permission = {
-                "id": request_id,
-                "tool_name": _tool_name_from_params(params),
-                "arguments": _normalise_arguments(params.get("arguments") or params.get("input") or {}),
+                "id": event_id,
+                "tool_name": tool_name,
+                "arguments": arguments,
                 "decision": "unknown",
             }
-            pending_permission_indexes[request_id] = len(result.tool_permission_requests)
+            pending_permission_indexes[event_id] = len(result.tool_permission_requests)
             result.tool_permission_requests.append(permission)
             continue
 
-        if _id_to_str(event.get("id")) in pending_permission_indexes and "result" in event:
-            request_id = _id_to_str(event.get("id"))
+        if event_id in pending_permission_indexes and "result" in event:
             decision = _normalise_decision(event.get("result"))
-            result.tool_permission_requests[pending_permission_indexes[request_id]]["decision"] = decision
+            result.tool_permission_requests[pending_permission_indexes.pop(event_id)]["decision"] = decision
+            if decision == "deny" and event_id in permission_tool_call_ids:
+                denied_tool_call_ids.add(permission_tool_call_ids[event_id])
+            continue
+
+        if event_id in session_new_request_ids and "result" in event:
+            session_new_request_ids.discard(event_id)
+            session_result = event.get("result") if isinstance(event.get("result"), dict) else {}
+            models = session_result.get("models") if isinstance(session_result.get("models"), dict) else {}
+            current_model = models.get("currentModelId")
+            if isinstance(current_model, str) and current_model:
+                session_model = current_model
             continue
 
         if method != "session/update":
+            continue
+
+        update = params.get("update") if isinstance(params.get("update"), dict) else None
+        if update is not None and ("sessionUpdate" in update or "availableCommands" in update):
+            session_update = update.get("sessionUpdate")
+            if session_update == "agent_message_chunk":
+                text = _chunk_text(update)
+                if text:
+                    live_message_buffer.append(text)
+            elif session_update == "tool_call":
+                flush_live_message()
+                result.turns_count += 1
+                result.tool_calls.append(
+                    {
+                        "id": _id_to_str(update.get("toolCallId")),
+                        "name": canonical_tool_name(update.get("title")),
+                        "arguments": _normalise_arguments(update.get("rawInput") or {}),
+                        "turn_index": result.turns_count,
+                    }
+                )
+            # agent_thought_chunk / tool_call_update / availableCommands and
+            # other live updates carry no response or policy evidence.
             continue
 
         result.turns_count += 1
@@ -75,12 +166,21 @@ def parse_acp_transcript_text(transcript_text: str) -> AcpTranscriptParseResult:
             response_parts.append(content)
         result.tool_calls.extend(_extract_tool_calls(params, result.turns_count))
 
+    if live_message_buffer:
+        result.turns_count += 1
+        flush_live_message()
     if not saw_line:
         result.protocol_errors.append("empty_transcript")
     for required in REQUIRED_ACP_METHODS:
         if required not in seen_methods:
             result.protocol_errors.append(f"missing_required_method:{required}")
 
+    if denied_tool_call_ids:
+        result.tool_calls = [
+            call for call in result.tool_calls if call.get("id") not in denied_tool_call_ids
+        ]
+    if result.actual_model is None and session_model:
+        result.actual_model = session_model
     result.response = "\n".join(part.strip() for part in response_parts if part.strip()).strip()
     result.tool_calls_count = len(result.tool_calls)
     return result
@@ -103,6 +203,15 @@ def _id_to_str(value: Any) -> str:
     if value is None:
         return ""
     return str(value)
+
+
+def _chunk_text(update: dict[str, Any]) -> str:
+    content = update.get("content")
+    if isinstance(content, dict) and isinstance(content.get("text"), str):
+        return content["text"]
+    if isinstance(content, str):
+        return content
+    return ""
 
 
 def _tool_name_from_params(params: dict[str, Any]) -> str:
@@ -133,6 +242,18 @@ def _normalise_decision(value: Any) -> str:
     if isinstance(value, str):
         return _decision_from_string(value)
     if isinstance(value, dict):
+        outcome = value.get("outcome")
+        if isinstance(outcome, dict):
+            option_id = outcome.get("optionId")
+            if isinstance(option_id, str):
+                lowered = option_id.lower()
+                if "allow" in lowered:
+                    return "allow"
+                if "reject" in lowered or "deny" in lowered:
+                    return "deny"
+            if outcome.get("outcome") == "cancelled":
+                return "deny"
+            return "unknown"
         for key in ("decision", "status", "action", "value"):
             decision = value.get(key)
             if isinstance(decision, str):

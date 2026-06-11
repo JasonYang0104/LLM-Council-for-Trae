@@ -198,7 +198,10 @@ class AcpModelRuntimeContractTests(unittest.TestCase):
         self.assertEqual(transcript_text, "")
         self.assertIn(result.error, stderr_text)
 
-    def test_default_provider_missing_reports_live_transport_not_implemented(self):
+    def test_default_provider_with_missing_binary_reports_startup_failure(self):
+        # M5 superseded the M3 placeholder assertion ("ACP live transport is
+        # not implemented yet"): the default path now runs the live transport,
+        # so a missing binary must surface as an honest spawn startup failure.
         runtime = AcpTraeCliRuntime(
             runtime_command="fake-traecli",
             query_timeout=30,
@@ -208,10 +211,11 @@ class AcpModelRuntimeContractTests(unittest.TestCase):
         result, meta, transcript_text, stderr_text = self.run_runtime(runtime)
 
         self.assertEqual(result.status, "failed")
-        self.assertEqual(
+        self.assertTrue(
+            result.error.startswith("acp_startup_failed: spawn failed:"),
             result.error,
-            "acp_startup_failed: ACP live transport is not implemented yet",
         )
+        self.assertEqual(result.acp_startup_status, "failed")
         self.assertEqual(meta["error"], result.error)
         self.assertEqual(transcript_text, "")
         self.assertIn(result.error, stderr_text)
