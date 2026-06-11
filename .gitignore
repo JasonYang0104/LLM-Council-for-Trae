@@ -48,3 +48,4 @@ examples/q[0-9]-*
 examples/hackathon-*.md
 examples/local-ai-*.md
 examples/reliability-*.md
+tmp-probe/
