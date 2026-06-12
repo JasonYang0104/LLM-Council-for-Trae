@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from llm_council_for_trae.acp_runtime import AcpTraeCliRuntime
-from llm_council_for_trae.cli import build_config, build_parser
+from llm_council_for_trae.cli import acp_startup_failure_hint, build_config, build_parser
 from llm_council_for_trae.council import (
     CouncilConfig,
     build_model_runtime,
@@ -65,11 +65,64 @@ class FakeAcpRuntime:
 
 
 class RuntimeBackendContractTests(unittest.TestCase):
-    def test_council_config_defaults_to_direct_runtime_backend(self):
+    def test_council_config_dataclass_default_stays_direct(self):
+        # The dataclass-level default stays "direct" so library callers and the
+        # golden harness are unaffected; the CLI default switch (acp) lives in
+        # build_config, not in the CouncilConfig default.
         config = CouncilConfig(members=["M1"], chairman="Chair")
 
         self.assertEqual(config.runtime_backend, "direct")
         self.assertEqual(config.acp_startup_timeout, 30)
+
+    def test_cli_run_defaults_to_acp_runtime_backend(self):
+        args = build_parser().parse_args([
+            "run",
+            "--input",
+            "question.md",
+            "--default-models",
+        ])
+
+        config = build_config(args)
+
+        self.assertEqual(config.runtime_backend, "acp")
+
+    def test_cli_run_help_documents_acp_as_default_direct_as_fallback(self):
+        action = next(
+            a for a in build_parser()._subparsers._group_actions[0].choices["run"]._actions
+            if "--runtime-backend" in a.option_strings
+        )
+        help_text = action.help or ""
+
+        self.assertIn("acp", help_text.lower())
+        self.assertIn("default", help_text.lower())
+        self.assertIn("direct", help_text.lower())
+        self.assertNotIn("experimental", help_text.lower())
+
+    def test_subagent_profile_without_explicit_backend_resolves_to_direct(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            profile_path = Path(tmp) / "subagent-profile.json"
+            profile_path.write_text(
+                json.dumps(
+                    {
+                        "provider_mode": "subagent",
+                        "members": [{"agent": "council-a", "model": "M1"}],
+                        "chairman": {"agent": "chair", "model": "Chair"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            args = build_parser().parse_args([
+                "run",
+                "--input",
+                "question.md",
+                "--profile",
+                str(profile_path),
+            ])
+
+            config = build_config(args)
+
+            self.assertEqual(config.provider_mode, "subagent")
+            self.assertEqual(config.runtime_backend, "direct")
 
     def test_build_config_accepts_runtime_backend_and_acp_startup_timeout(self):
         args = build_parser().parse_args([
@@ -206,6 +259,41 @@ class RuntimeBackendContractTests(unittest.TestCase):
 
         self.assertTrue(acp_transcript_exists)
         self.assertFalse(direct_stream_exists)
+
+    def test_acp_startup_failure_appends_direct_fallback_hint_to_failures(self):
+        manifest = {
+            "status": "failed",
+            "failures": [
+                {
+                    "stage_record": "Response A",
+                    "status": "failed",
+                    "error": "acp_startup_failed: server closed stream during startup: stdout EOF (returncode=1)",
+                    "expected_model": "DeepSeek-V4-Pro",
+                    "actual_model": None,
+                }
+            ],
+        }
+
+        hint = acp_startup_failure_hint(manifest)
+
+        self.assertIsNotNone(hint)
+        self.assertIn("--runtime-backend direct", hint)
+
+    def test_no_startup_hint_when_no_acp_startup_failure(self):
+        manifest = {
+            "status": "failed",
+            "failures": [
+                {
+                    "stage_record": "Response B",
+                    "status": "failed",
+                    "error": "timeout",
+                    "expected_model": "GPT-5.5",
+                    "actual_model": "GPT-5.5",
+                }
+            ],
+        }
+
+        self.assertIsNone(acp_startup_failure_hint(manifest))
 
     def test_acp_synthetic_failed_call_uses_acp_evidence_defaults(self):
         config = CouncilConfig(
