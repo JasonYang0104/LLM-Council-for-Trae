@@ -62,12 +62,22 @@
 - 唯一被取代的历史断言：M3 占位文案 `acp_startup_failed: ACP live transport is not implemented yet` → `spawn failed:*` 等价新契约（实现 live transport 的必然后果，已声明）。
 - **默认 backend 仍是 direct**。切换前还缺（§4.4）：≥3 次 paired probe、代表性长 E2E、`model_benchmark.py` 口径时延/失败率对比。GitHub 推送依旧暂缓，待用户裁决。
 
+### 执行结果补充（2026-06-12，M6–M7：ACP 转正为默认 backend）
+
+- **决策性质：用户指定**——用户 2026-06-12 裁决"ACP 是主路"，M6 为转正证据采集、M7 为默认切换实施。
+- M6 转正实测（`docs/lct-acp-promotion-probe-20260612.md`）：4 组 direct/ACP 同题对照（P1 事实 / P2 推理 / P3 开放 / L1 长任务）。P1–P3 ACP 全部 `complete_ok_final`，耗时比率 0.77x–1.49x（全部 ≤2x 判据内）；L1 ACP 两次复现 GPT-5.5 超时 → backfill GPT-5.4 → `usable_degraded_final`（usable_final true）。全程零进程残留、零 validate failures。结论 CONDITIONAL GO。架构师保留意见：L1 超时"纯模型问题"的归因未坐实（同题 direct 一次过、ACP 耗时比率随任务变长上升），列为观察项。run 证据留存 `lct-acp-m6-promotion-evidence-20260612/`。
+- M7 默认切换（main @ `4eeeed9`，375 测试全绿）：CLI 默认 backend direct → acp（`resolve_runtime_backend()`，default=None 区分显式/默认）；`provider_mode=subagent` 未显式传参时自动 direct（不报错），显式 acp+subagent 维持报错；`acp_startup_failed` 时 failures[] 追加 `--runtime-backend direct` 退回提示（不自动回落）；HTML hero 加 acp-only `Backend acp` 标注（direct 不加，受 golden 字节锁定约束）；README/Skill 补 ACP 主路文档。`CouncilConfig` dataclass 默认仍为 direct（库级兼容 + golden 零漂移前提）。golden 零漂移、`EXPECTED_META_KEYS` 44 键不变、validate 与 timeout 默认值未动。
+- M6 报告建议中**未采纳**三项（防无人要的抽象）：配置文件级 backend 覆盖、自适应 timeout、transcript 压缩；长任务超时只进文档"已知行为"。
+- 回滚锚：`pre-acp-m7`（= bd296ff 前的 main 状态为 88f9836；tag 打在 M6 合并后、M7 合并前）。回退默认值只需 revert M7 的 feat commit（`c2bd5c0`）或整段 revert。
+- 遗留观察项：①默认 ACP 后长任务个别模型超时概率高于 direct（backfill 兜底、verdict 如实降级）；②direct run HTML 头部无 backend 标注（golden 锁定取舍）；③actual model 证据仍为会话级 currentModelId。
+
 ### 推翻条件
 
 - A-1：主席 genre 错判率高 → 降级启发式或仅 `--genre` 显式覆盖。
 - B-1a：rebuttal 普遍无增量 → 退为实验 flag，B-1b 不立项。
 - B-2：stats 被当排行榜误传 → 收紧为 JSON only。
 - C-1b：traecli probe no-go → live ACP 冻结，已移植 contract tests 仍保留。
+- C-1c（ACP 默认）：日常使用中 ACP 侧成员失败率/超时显著高于 direct 时期，或出现 direct 不存在的管道级故障 → revert `c2bd5c0` 退回 direct 默认，ACP 降回显式选项。
 - C-2：出现真实第二 runtime 需求 → 再评估 runtime 注册抽象。
 
 ---
