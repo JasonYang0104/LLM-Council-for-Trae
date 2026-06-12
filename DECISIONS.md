@@ -4,6 +4,84 @@
 
 ---
 
+## ADR-0002：LCT 三轨升级路线（体验 / 机制 / 架构）
+
+- 日期：2026-06-11
+- 状态：提案（待用户拍板；用户已给定三轨方向，批次编排与各轨方案选型为架构师推荐）
+- 输入：`docs/lct-three-track-upgrade-architecture-20260611.md`
+
+### 背景
+
+用户提出三轨升级：①体验——制品风格随内容自适应（技术决策出结构化对比、创意问题出发散展示），并借 Open Design 把交付形态扩展到 PPT/动画/demo；②机制——让持不同观点的模型直接交锋，并把「N 模型同题作答」副产品系统化为轻量级横评；③架构——traecli 直调切 ACP 协议，并开放模型与评审规则自定义。
+
+### 决策（推荐项）
+
+总原则沿用 ADR-0001：升级落在 sidecar、展示层、Skill 层与新增只读命令；不破坏三阶段协议、HTML 确定性导出、validate 证据链。
+
+1. **A-1 风格自适应**：`stage3/presentation_plan.json` sidecar（复用 contribution_map 的 fence 机制），genre 枚举首版 3 个（`decision_matrix` / `divergent_panorama` / `default`）；export 只消费不重算，缺失回退默认模板。
+2. **A-2 多形态交付**：Open Design 接入在 Skill/Agent 层，core 不内置 PPTX；core 职责收敛为稳定的「artifact 消费契约」。
+3. **B-1a 对线首版 = 全员质询轮**：opt-in `--debate` 插入 Stage 2.5，每成员对针对自己的匿名批评作一轮答辩；匿名标签不破、轮次固定 1、失败降级沿用 backfill 语义。1v1 多轮对线（B-1b）等灰度证据再立项。
+4. **B-2 横评系统化**：独立只读 `stats` 命令跨 run 聚合同侪偏好统计；单次 council 报告维持「不做模型评比」红线；报告强制免责声明、带样本量、禁止合成总分。
+5. **C-1 ACP**：研究分支（本地 9 commits）先 push 备份，再按 P0→P3 逐阶段移植新 main，不整体 merge；live transport 单独立项且以 traecli ACP 能力 probe 为 go/no-go 前提；默认 runtime 维持 direct 直至切换条件全部达成。
+6. **C-2 可扩展性**：用户级 `config.toml`（四字段白名单：preferred_members / default_member_count / backfill_candidates / rubric_path）＋ rubric 注入 Stage 2 评审标准段；排名解析契约不可配；provenance 记 manifest。
+
+批次编排（2026-06-11 用户裁决：机制升级与 ACP 切换为优先推进重点，A 轨后置）：第一批 M0–M2（备份分支 ＋ contract tests ＋ ModelRuntime port）＋ B-2 stats；第二批 B-1a 质询轮（面向 ModelRuntime 抽象开发）＋ M3–M4（offline ACP adapter ＋ evidence gate）；第三批 M5 live ACP transport（probe 清单前置）；A-1/A-2/C-2 顺延。每批独立 PR，validate / make test 逐层绿。
+
+### 依据与取舍
+
+- 分类是模型工作（run 期落盘）、渲染是确定性工作（export 期消费），是保住 HTML 确定性红线的唯一分层方式。
+- 质询轮优先于 1v1 对线：无选边与轮次终止问题，复杂度最低且已构成真实交锋。
+- stats 与单次报告分面，化解与 ADR-0001「排名≠贡献」红线的张力。
+- ACP 不整体 merge 是研究线两个 reviewer 的一致结论（behind 56，混入 contribution_map 链路）。
+- 否决：core 内置 PPTX / 视频（重依赖破坏确定性导出定位）；export 期调模型判风格（破红线）；插件式 runtime 注册（抽象先于需求）。
+
+### 影响范围
+
+- 数据模型：新增 `stage3/presentation_plan.json`（schema_version 1）、`stage2_5/*.rebuttal.md`、manifest `metadata.presentation` / `metadata.debate` / `metadata.user_config`。
+- 公共接口：新增 `--debate`、`--config`、`stats` 子命令、（移植）`--runtime-backend`；现有参数语义全部不变。
+- 协作：ACP 研究分支需 push 备份；后续每批独立 PR。
+
+### 深化设计补充（2026-06-11）
+
+- Track B 深化：`docs/lct-debate-stats-architecture-20260611.md`——质询轮固定 1 轮、评审材料去 FINAL RANKING ＋ 评审者匿名、无答辩 backfill（刻意分叉）、debate 失败永不阻断 Stage 3；stats 为 manifest-only 只读、逐评审员重算位置（不用 aggregate_rankings，因其无评审者归属）、自评剔除、归一化位次。
+- Track C-1 深化：`docs/lct-acp-migration-architecture-20260611.md`——**本机实测 `traecli acp serve` 握手通过**（initialize protocolVersion 1、session/new 返回 availableModels、启动 flags 含 --disallowed-tool），go/no-go 首关已过；移植路线 M0–M5，M5 live transport 前置 5 项 probe 清单（模型选择机制、permission 语义、actual model 证据、stop reason、进程残留）。
+- B-1a 依赖建议：先完成 M2（ModelRuntime port），质询轮直接面向 `ModelRuntime` 抽象开发，自动兼容未来 ACP backend。
+
+### 流程裁决（2026-06-11，用户拍板）
+
+- ACP 路线优先启动；**GitHub 推送暂缓**——M0 的远端备份分支改为本地 bundle 备份（`lct-acp-research-backup-20260611.bundle`，verify 通过；研究目录实为主 repo worktree，9 commits 已在主 repo object store 内）。
+- 开发验证流程：本机测试 ＋ 架构师 review ＋ 隔离 worktree，每阶段完成后停在分支等 review，不自行合并 main、不开 PR。恢复推送 GitHub 的时机由用户后续裁决。
+- M1 基线已锚定：`main @ 04a1b9b`，`make test` 295 个 unittest 全绿（2026-06-11 本机实测）；M1 worktree：`COCO-llm-council-acp-m1-20260611`，任务卡 `docs/lct-acp-m1-task-card-20260611.md`。
+
+### 执行结果（2026-06-11/12，M1–M5 全部完成并合入本地 main）
+
+- 流水线：每阶段独立 worktree ＋ 执行 Agent（M1–M4 Opus，M5 Fable）＋ 架构师独立复核 ＋ ff-only 合并；回滚 tags：`pre-acp-m1` … `pre-acp-m5`。
+- 测试演进：295 → 314（M1 direct 契约冻结）→ 320（M2 ModelRuntime port）→ 335（M3 offline adapter）→ 349（M4 evidence gate）→ **368 全绿**（M5 live transport）。golden 漂移全程仅限各阶段任务卡声明范围。
+- M5 live probe 结论（`docs/lct-acp-live-probe-20260611.md`）：模型选择 **GO**（`-c model.name=<modelId>`，session/new 的 `currentModelId` 实证跟随）；`--disallowed-tool` 为 schema 静默隐藏（disabled 态取证 = argv/meta）；update 流无模型字段（actual model 证据为会话级 currentModelId，已如实声明）；stop reason 三态探明；无进程残留。
+- live E2E：`run-20260611T230225`（3 成员 + 主席，9 次 ACP 调用全 ok、零 backfill），validate `complete_ok_final / usable_final: true`，497 checks（含 175 项 ACP gate）0 failures；架构师重跑 validate 复核一致。artifact store 已复制到 `lct-acp-m5-live-evidence-20260611/` 留存。
+- 唯一被取代的历史断言：M3 占位文案 `acp_startup_failed: ACP live transport is not implemented yet` → `spawn failed:*` 等价新契约（实现 live transport 的必然后果，已声明）。
+- **默认 backend 仍是 direct**。切换前还缺（§4.4）：≥3 次 paired probe、代表性长 E2E、`model_benchmark.py` 口径时延/失败率对比。GitHub 推送依旧暂缓，待用户裁决。
+
+### 执行结果补充（2026-06-12，M6–M7：ACP 转正为默认 backend）
+
+- **决策性质：用户指定**——用户 2026-06-12 裁决"ACP 是主路"，M6 为转正证据采集、M7 为默认切换实施。
+- M6 转正实测（`docs/lct-acp-promotion-probe-20260612.md`）：4 组 direct/ACP 同题对照（P1 事实 / P2 推理 / P3 开放 / L1 长任务）。P1–P3 ACP 全部 `complete_ok_final`，耗时比率 0.77x–1.49x（全部 ≤2x 判据内）；L1 ACP 两次复现 GPT-5.5 超时 → backfill GPT-5.4 → `usable_degraded_final`（usable_final true）。全程零进程残留、零 validate failures。结论 CONDITIONAL GO。架构师保留意见：L1 超时"纯模型问题"的归因未坐实（同题 direct 一次过、ACP 耗时比率随任务变长上升），列为观察项。run 证据留存 `lct-acp-m6-promotion-evidence-20260612/`。
+- M7 默认切换（main @ `4eeeed9`，375 测试全绿）：CLI 默认 backend direct → acp（`resolve_runtime_backend()`，default=None 区分显式/默认）；`provider_mode=subagent` 未显式传参时自动 direct（不报错），显式 acp+subagent 维持报错；`acp_startup_failed` 时 failures[] 追加 `--runtime-backend direct` 退回提示（不自动回落）；HTML hero 加 acp-only `Backend acp` 标注（direct 不加，受 golden 字节锁定约束）；README/Skill 补 ACP 主路文档。`CouncilConfig` dataclass 默认仍为 direct（库级兼容 + golden 零漂移前提）。golden 零漂移、`EXPECTED_META_KEYS` 44 键不变、validate 与 timeout 默认值未动。
+- M6 报告建议中**未采纳**三项（防无人要的抽象）：配置文件级 backend 覆盖、自适应 timeout、transcript 压缩；长任务超时只进文档"已知行为"。
+- 回滚锚：`pre-acp-m7`（= bd296ff 前的 main 状态为 88f9836；tag 打在 M6 合并后、M7 合并前）。回退默认值只需 revert M7 的 feat commit（`c2bd5c0`）或整段 revert。
+- 遗留观察项：①默认 ACP 后长任务个别模型超时概率高于 direct（backfill 兜底、verdict 如实降级）；②direct run HTML 头部无 backend 标注（golden 锁定取舍）；③actual model 证据仍为会话级 currentModelId。
+
+### 推翻条件
+
+- A-1：主席 genre 错判率高 → 降级启发式或仅 `--genre` 显式覆盖。
+- B-1a：rebuttal 普遍无增量 → 退为实验 flag，B-1b 不立项。
+- B-2：stats 被当排行榜误传 → 收紧为 JSON only。
+- C-1b：traecli probe no-go → live ACP 冻结，已移植 contract tests 仍保留。
+- C-1c（ACP 默认）：日常使用中 ACP 侧成员失败率/超时显著高于 direct 时期，或出现 direct 不存在的管道级故障 → revert `c2bd5c0` 退回 direct 默认，ACP 降回显式选项。
+- C-2：出现真实第二 runtime 需求 → 再评估 runtime 注册抽象。
+
+---
+
 ## ADR-0001：LCT 体验升级方向（四项）
 
 - 日期：2026-06-06
