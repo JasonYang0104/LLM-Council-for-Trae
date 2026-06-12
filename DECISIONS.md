@@ -4,6 +4,46 @@
 
 ---
 
+## ADR-0003：Track B 开工——质询轮选方案 A（固定一轮 Stage 2.5），stats 选方案 A（只读聚合命令）
+
+- 日期：2026-06-13
+- 状态：已裁决（**用户拍板推进 Track B**；两项方案选型为架构师推荐、用户审阅三案对比后认可）
+- 输入：`docs/lct-track-b-execution-architecture-20260613.md`（选型裁决）、`docs/lct-debate-stats-architecture-20260611.md`（深化设计，继续有效）
+
+### 背景
+
+ACP 迁移线（M1–M7）完成并已推 GitHub（main @ `9abb2d1`，ACP 为默认 backend）。按 ADR-0002 既定优先级进入 Track B。开工前对两个功能各做了三案对比（执行架构文档 §2 全文），并调研外部 skill 仓库确认无可借力的起草工具（按本仓库 ADR 惯例直接起草）。
+
+### 决策
+
+1. **B-1a 质询轮：方案 A**——Stage 2 与 Stage 3 之间加固定一轮答辩（Stage 2.5）：成员看到针对自己的匿名、去排名批评，产出"承认/反驳/修正"三分结构回应；主席综合时同时获得批评与辩护。`--debate` 显式 opt-in，默认行为逐字节不变。
+2. **B-2 stats：方案 A**——新增只读 `stats` 子命令，聚合历史 manifest 的互评数据（按评审员重算位次、剔自评、归一化、不造综合分、强制免责声明）。零模型调用。
+3. 开工顺序 B1 → B2（B2 可在 B1 review 期并行），沿用 worktree + 红绿 TDD + 架构师复核 + ff-only 流水线；回滚锚 `pre-track-b1` / `pre-track-b2`。
+
+### 依据
+
+- B-1a 三案中唯有质询轮引入**新信息**（辩护方持有评审没有的上下文）；主席裁决（方案 B）零成本但法官兼任辩护律师，仅作 A 失效后的退路；定向质询（方案 C）的"实质性批评"判定是新的边界负担，否决。
+- B-2 三案中 stats 命令是需求的**成本下界**（历史数据已付费、统计零调用）；主动 benchmark（方案 B）烧钱养题库，否决；野生脚本（方案 C）让 manifest 格式知识流落产品外，对 PM 用户是负资产，否决。
+
+### 取舍
+
+- 接受质询轮的成本增量（+N 次调用、约 +1 阶段墙钟，M6 口径预估 +30~50% 总耗时）换取批评的对抗检验；以 opt-in 默认关闭控制日常成本。
+- 接受 stats"自然实验"数据的统计偏差（题目分布、position bias、文风识别），以呈现红线（免责声明、n<5 标灰、禁合成总分）控制误用，不为严格性升级到主动评测。
+
+### 影响范围
+
+- council 主流程（Stage 2.5 注入）、manifest（`stages.stage2_5[]`、`metadata.debate`，additive）、Stage 3 prompt（可选答辩段）、validate（debate 校验 + stage2_5 进 M4 ACP 防伪门）、HTML（答辩折叠区）、CLI（`--debate`、`stats` 子命令）、新模块 `stats.py`。
+- ACP 转正差量：rebuttal 调用默认走 acp，meta 沿用 44 键契约不扩列；双 runtime 验收（acp live + direct 回退）。
+- contribution_map 契约、安装契约、`EXPECTED_META_KEYS`、既有 golden：零变更。
+
+### 推翻条件
+
+- 质询轮答辩普遍无增量（复读原观点）→ 退方案 B（主席裁决 prompt），A 降为实验 flag，B-1b 不立项。
+- stats 历史数据可比性不足（阵容过于单一）→ 评估方案 B 的小题库补采样。
+- 其余沿用深化设计 §1.8 / §2.7（评审者身份可推断 → 主席预压缩摘要；stats 被当排行榜误传 → 收紧 JSON only）。
+
+---
+
 ## ADR-0002：LCT 三轨升级路线（体验 / 机制 / 架构）
 
 - 日期：2026-06-11
