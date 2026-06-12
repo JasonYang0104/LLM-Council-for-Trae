@@ -212,6 +212,27 @@ llm-council-for-trae run \
   --json
 ```
 
+#### Runtime backend：ACP 为默认，direct 为回退
+
+`run` 的默认 runtime backend 是 ACP（每次模型调用通过 `traecli acp serve` 起一个独立子进程会话）。不传 `--runtime-backend` 的 run 走 ACP，manifest `config.runtime_backend` 如实记录 `acp`，HTML 头部 run-meta 行会标注 `Backend acp`。需要回退到直连 runtime 时，显式传 `--runtime-backend direct`：
+
+```bash
+llm-council-for-trae run \
+  --input _lct_question.md \
+  --default-models \
+  --runtime-backend direct \
+  --json
+```
+
+subagent profile（`provider_mode=subagent`）不支持 ACP：不显式传 `--runtime-backend` 时自动按 direct 执行（manifest 如实记录 `direct`，不报错）；显式传 `--runtime-backend acp` + subagent profile 会直接报错。
+
+ACP 启动失败排查：
+
+- 确认 `traecli`（或 override 场景下的 `coco`）已安装且在 PATH 中：`traecli --version`。
+- 确认 `traecli acp serve` 能正常启动：启动失败时成员 meta 记录 `acp_startup_status: failed`，run summary 的 failures 会追加一条用 `--runtime-backend direct` 回退的提示；LCT 不会静默降级到 direct。
+
+已知行为：长任务（超长输入/多阶段累积 prompt）下个别成员模型可能在 ACP 路径超时，由 auto-backfill 兜底补足 quorum，validate verdict 会如实降级为 `usable_degraded_final`（`usable_final: true` 仍可交付）。
+
 默认 direct run 不再传 `--yolo`，并使用 `--member-tool-mode search_enabled`：成员模型可使用 `WebSearch` / `WebFetch`，但 `Skill`、`Agent`、workspace 读写和 shell 会被禁止并由 provider 做污染检测。search_enabled 只表示搜索被允许，不表示模型实际搜索了；HTML 和索引应分开记录 `lct_search_allowed` 与 `lct_search_used`，并用 `agent_external_search_*` 单独记录外层 Agent 是否自己做了外部检索。只有明确需要绕过权限时才传 `--yolo`；普通 council 成员不应使用它。
 
 可选工具模式：

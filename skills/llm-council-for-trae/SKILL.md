@@ -240,6 +240,8 @@ llm-council-for-trae --runtime-command coco run \
   --json
 ```
 
+默认 runtime backend 是 ACP：不带 `--runtime-backend` 的 run 走 `traecli acp serve`，manifest `config.runtime_backend` 如实记录 `acp`。需要回退直连 runtime 时显式追加 `--runtime-backend direct`。subagent profile 不支持 ACP：不显式传 backend 时自动按 direct 执行（manifest 如实记录 `direct`），显式 `--runtime-backend acp` + subagent profile 会报错。ACP 启动失败排查两步：先确认 `traecli`（或 override 的 `coco`）已安装且在 PATH 中（`traecli --version`）；再确认 `traecli acp serve` 能正常启动——成员 meta `acp_startup_status: failed` 时，run summary 的 failures 会追加 `--runtime-backend direct` 回退提示，LCT 不会静默降级到 direct。已知行为：长任务下个别成员模型可能在 ACP 路径超时，由 auto-backfill 兜底补足 quorum，validate verdict 如实降级为 `usable_degraded_final`（`usable_final: true` 仍可交付）。
+
 记录：
 
 ```text
