@@ -16,6 +16,7 @@ from llm_council_for_trae.council import (
     stage2_collect_rankings,
     synthetic_failed_call,
 )
+from llm_council_for_trae.html_export import render_html
 from llm_council_for_trae.provider import DirectTraeCliRuntime, ModelCallResult, TraeCliProvider
 from llm_council_for_trae.store import ArtifactStore
 
@@ -294,6 +295,40 @@ class RuntimeBackendContractTests(unittest.TestCase):
         }
 
         self.assertIsNone(acp_startup_failure_hint(manifest))
+
+    def test_html_hero_shows_backend_badge_for_acp_runs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            html = render_html(
+                root,
+                {
+                    "run_id": "run-acp-badge",
+                    "status": "ok",
+                    "config": {"runtime_backend": "acp"},
+                    "stages": {},
+                    "metadata": {},
+                },
+            )
+
+        self.assertIn("· Backend <strong>acp</strong>", html)
+
+    def test_html_hero_has_no_backend_badge_for_direct_runs(self):
+        # Direct-run HTML must stay byte-identical so the direct golden
+        # snapshot does not drift; the badge is acp-only.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            html = render_html(
+                root,
+                {
+                    "run_id": "run-direct-no-badge",
+                    "status": "ok",
+                    "config": {"runtime_backend": "direct"},
+                    "stages": {},
+                    "metadata": {},
+                },
+            )
+
+        self.assertNotIn("· Backend <strong>", html)
 
     def test_acp_synthetic_failed_call_uses_acp_evidence_defaults(self):
         config = CouncilConfig(
