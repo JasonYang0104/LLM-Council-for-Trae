@@ -322,6 +322,9 @@ def render_html(root: Path, manifest: dict[str, Any]) -> str:
     )
 
     final_html = render_contribution_map(root, manifest) or render_markdown(strip_contribution_map_fence(final_text))
+    config = manifest.get("config") if isinstance(manifest.get("config"), dict) else {}
+    # acp-only badge: direct-run HTML stays byte-identical to the pinned golden snapshot.
+    backend_badge = " · Backend <strong>acp</strong>" if config.get("runtime_backend") == "acp" else ""
     metadata_html = render_metadata(manifest, warnings, failures)
     trace_html = render_trace(stage1, stage2, stage3)
     ranking_html = render_ranking_matrix(aggregate)
@@ -578,7 +581,7 @@ svg {{ width:100%; max-width:760px; height:auto; display:block; }}
       <div>
       <h1>{esc(page_title)}</h1>
       <details id="input-prompt" class="question-context"><summary>输入提示词</summary><div class="details-body">{esc(input_text.strip())}</div></details>
-      <p class="run-meta">运行 {esc(manifest.get('run_id'))} · 状态 <strong class="status-{esc(manifest.get('status'))}">{esc(manifest.get('status'))}</strong> · 导出 {esc(generated_at)}</p>
+      <p class="run-meta">运行 {esc(manifest.get('run_id'))} · 状态 <strong class="status-{esc(manifest.get('status'))}">{esc(manifest.get('status'))}</strong> · 导出 {esc(generated_at)}{backend_badge}</p>
     </div>
     <div class="toolbar" aria-label="导出操作">
       <button type="button" onclick="copyPayload('markdown')">复制 Markdown</button>
