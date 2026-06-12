@@ -69,7 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--member-mode", choices=["normal", "deep_research"], default="normal", help="Member execution mode.")
     run_p.add_argument("--member-tool-mode", choices=["answer_only", "search_enabled", "workspace_enabled"], default="search_enabled", help="Tool capability policy for direct member runtime.")
     run_p.add_argument("--member-runtime-cwd-mode", choices=["isolated_temp", "inherit"], default="isolated_temp", help="Working-directory isolation mode for direct member runtime when --runtime-cwd is omitted.")
-    run_p.add_argument("--runtime-backend", choices=["direct", "acp"], default="direct", help="Runtime backend implementation. ACP is experimental and direct remains the default.")
+    run_p.add_argument("--runtime-backend", choices=["direct", "acp"], default=None, help="Runtime backend implementation. ACP is the default; pass --runtime-backend direct to fall back to the direct runtime. (subagent profiles always run on the direct backend.)")
     run_p.add_argument("--acp-startup-timeout", type=int, default=30, help="ACP startup timeout seconds when --runtime-backend acp is used.")
     run_p.add_argument("--skip-html", action="store_true", help="Skip automatic HTML export after Stage 3.")
     run_p.add_argument("--chairman-contribution-map", dest="chairman_contribution_map", action="store_true", default=None, help="Compatibility alias: Stage 3 requests a contribution-map sidecar by default.")
@@ -170,6 +170,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     if manifest.get("status") in ("ok", "degraded_ok") and config.export_html:
         export_record = export_html(store)
         manifest = store.read_manifest()
+    summary_failures = list(manifest.get("failures", []))
+    startup_hint = acp_startup_failure_hint(manifest)
+    if startup_hint:
+        summary_failures.append(startup_hint)
     payload = {
         "run_id": run_id,
         "status": manifest.get("status"),
@@ -178,7 +182,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         "manifest": str(store.root / "manifest.json"),
         "html": str(store.root / "html" / "index.html") if export_record else None,
         "warnings": manifest.get("warnings", []),
-        "failures": manifest.get("failures", []),
+        "failures": summary_failures,
         "recommendations": failure_recommendations(manifest),
     }
     return emit(payload, args.json_output, ok=manifest.get("status") in ("ok", "degraded_ok"), text=f"run {run_id} {manifest.get('status')} -> {store.root}")
@@ -244,12 +248,11 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
     if getattr(args, "profile", None):
         profile = load_profile(Path(args.profile).expanduser().resolve())
     provider_mode = profile.get("provider_mode") or profile.get("provider", {}).get("mode") or "direct"
+    runtime_backend = resolve_runtime_backend(getattr(args, "runtime_backend", None), provider_mode)
     member_agents = None
     chairman_agent = None
     model_selection_provenance = None
     if provider_mode == "subagent":
-        if getattr(args, "runtime_backend", "direct") == "acp":
-            raise ValueError("runtime_backend=acp is not supported with provider_mode=subagent")
         members, member_agents = parse_subagent_members(profile.get("members") or [])
         chairman, chairman_agent = parse_subagent_chairman(profile.get("chairman") or {})
         runtime_cwd = str(Path(args.runtime_cwd).expanduser().resolve()) if args.runtime_cwd else str(PROJECT_ROOT)
@@ -292,7 +295,7 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
         member_mode=getattr(args, "member_mode", "normal"),
         member_tool_mode=getattr(args, "member_tool_mode", "search_enabled"),
         member_runtime_cwd_mode=getattr(args, "member_runtime_cwd_mode", "isolated_temp"),
-        runtime_backend=getattr(args, "runtime_backend", "direct"),
+        runtime_backend=runtime_backend,
         acp_startup_timeout=getattr(args, "acp_startup_timeout", 30),
         backfill_members=split_csv(getattr(args, "backfill_members", "") or ""),
         stage1_auto_backfill=not getattr(args, "no_auto_backfill", False),
@@ -303,6 +306,21 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
         chairman_contribution_enabled=bool(chairman_contribution_requested),
         chairman_contribution_required=chairman_contribution_required,
     )
+
+
+def resolve_runtime_backend(requested: str | None, provider_mode: str) -> str:
+    """Resolve the effective runtime backend.
+
+    Explicit user input wins. When the user does not pass --runtime-backend
+    (requested is None), subagent profiles resolve to direct (acp is not
+    supported there) and every other run uses the new acp default. An explicit
+    --runtime-backend acp combined with a subagent profile stays a hard error.
+    """
+    if requested is None:
+        return "direct" if provider_mode == "subagent" else "acp"
+    if requested == "acp" and provider_mode == "subagent":
+        raise ValueError("runtime_backend=acp is not supported with provider_mode=subagent")
+    return requested
 
 
 def resolve_run_model_choice(args: argparse.Namespace) -> ModelChoice | None:
@@ -406,6 +424,22 @@ def failure_recommendations(manifest: dict[str, Any]) -> list[str]:
         elif "model(s) not available" in lower_error:
             recommendations.append("模型不在当前 traecli models --json 列表中；请先运行 llm-council-for-trae models --recommend --json，再显式传 --members/--chairman。")
     return unique_strings(recommendations)
+
+
+def acp_startup_failure_hint(manifest: dict[str, Any]) -> str | None:
+    """Return a readable fallback hint when an ACP startup failure sank the run.
+
+    This only adds user-facing guidance; it does not change failure semantics
+    and never auto-falls back to the direct runtime.
+    """
+    failures = manifest.get("failures") or []
+    if not isinstance(failures, list):
+        return None
+    for failure in failures:
+        error = failure.get("error") if isinstance(failure, dict) else failure
+        if isinstance(error, str) and "acp_startup_failed" in error:
+            return "ACP startup failed; retry with --runtime-backend direct to fall back to the direct runtime."
+    return None
 
 
 def successful_stage1_models(manifest: dict[str, Any]) -> list[str]:
