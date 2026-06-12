@@ -275,3 +275,43 @@
 - 工具名 canonical 映射基于已观察 title 集合（`bash`/`skill`/`WebSearch`）；MCP/未知工具按「非白名单即 deny + 记录原始 title」兜底，未知 title 被 allow 会触发 forbidden 判定（保守安全侧）。
 - ACP 无 direct 的 tool/turn budget 流式监控与单次重试 wrapper（v1 不做，timeout 护栏覆盖挂死）。
 - 默认切换还缺：≥3 次 paired probe（direct vs ACP 同 prompt）、代表性长 E2E、model_benchmark 时延/失败率对比——本轮单次 E2E 不构成切换依据，默认仍 direct。
+
+# M7：ACP 默认 backend 切换（2026-06-12）
+
+上游：M6 转正实测 CONDITIONAL GO + 用户裁决 ACP 转主路。分支 `codex/lct-acp-m7-default-switch-20260612`（基于 `main @ bd296ff`），回滚锚点 `pre-acp-m7`。
+
+## 改动
+
+1. **默认值切换**（`cli.py`）：`--runtime-backend` argparse default `"direct"` → `None` 后置解析（`resolve_runtime_backend`）：未显式传参时 direct provider 解析为 `acp`（新默认）、subagent profile 解析为 `direct`（不报错，manifest 如实记录）；显式 `--runtime-backend acp` + subagent 维持 ValueError。help 文案改为 ACP 默认、direct 回退，去掉 experimental。**`CouncilConfig` dataclass 默认仍是 `direct`**——库级调用方和 golden harness 不受影响，切换只发生在 CLI 解析层。
+2. **启动失败退回提示**（`cli.py`）：新增 `acp_startup_failure_hint(manifest)`，manifest failures 中任一条 error 含 `acp_startup_failed` 时，`cmd_run` 在 run summary 的 `failures[]` 追加 "ACP startup failed; retry with --runtime-backend direct to fall back to the direct runtime."。只加提示文本：持久化 manifest 不变、失败语义不变、不自动回落。
+3. **HTML backend 可见性**（`html_export.py`）：核对结论——run 级 backend 此前只在折叠的附录 D（`render_metadata` 运行时 cell）可见，summary 的「ACP 工具证据」卡是工具证据状态非 config backend。补标注：hero run-meta 行在 `config.runtime_backend == "acp"` 时追加 `· Backend acp`；**direct run HTML 字节不变**（golden `html_checks.chars` 钉住了 direct 输出，acp-only badge 是零漂移的唯一解）。
+4. **README + 双 SKILL.md**（byte-identical 镜像）：ACP 默认主路、`--runtime-backend direct` 回退、启动失败排查两行（traecli 安装/PATH、acp serve 可用性）、长任务超时已知行为（backfill 兜底、verdict 如实降级）。安装契约零改动。
+
+## 红绿 commit
+
+- 96a702d test（契约：CLI 默认 acp、subagent 自动 direct、显式 acp+subagent 报错、startup hint 正反例、help 文案）→ c2bd5c0 feat
+- 25b2313 test（HTML badge：acp 有、direct 无）→ eeb2567 feat
+- 30ba199 docs（README + 双 SKILL.md）
+
+## 契约测试改动精确范围
+
+`test_runtime_backend_contract.py` 唯一被改的既有用例：`test_council_config_defaults_to_direct_runtime_backend` 改名为 `test_council_config_dataclass_default_stays_direct`（断言不变，加注释说明 dataclass 默认与 CLI 默认分层）。新增 7 个用例。其余 M1-M6 既有断言零改动；EXPECTED_META_KEYS 44 键不变；validate 逻辑、timeout 默认值不动。
+
+## 验证
+
+- `make test`：375（368 + 7）全绿；`git diff --check` 通过。
+- golden 零内容漂移：`git diff main..HEAD -- tests/golden/` 为空；golden harness 也零改动（其直接构造 `CouncilConfig`，不经过 CLI argparse，dataclass 默认未变所以无需显式固定参数）。
+- live smoke ①（不带 backend 参数）：`run-m7-smoke-acp`，status ok，validate `complete_ok_final`，`usable_final: true`，全 7 个 meta `runtime_backend=acp` / `acp_startup_status=ok`，HTML hero 含 `Backend acp` badge，无 acp serve 残留。
+- live smoke ②（`--runtime-backend direct`）：`run-m7-smoke-direct`，status ok，validate `complete_ok_final`，`usable_final: true`，meta `runtime_backend=direct` / `acp_startup_status=not_applicable`，HTML 无 badge（与 golden 字节行为一致）。
+
+## 未采纳建议（M6 报告，按任务卡裁决）
+
+- 9.1.3 配置文件级 default_runtime_backend 覆盖：不采纳。
+- 9.2 长期方案（member_tool_mode 感知自适应 timeout；含短期提高 chairman timeout / 移出 GPT-5.5）：不采纳，timeout 默认值零改动，长任务超时只进文档已知行为。
+- 9.5 transcript 压缩/大小上限：不采纳。
+
+## 残余风险
+
+- 默认走 ACP 后，长任务个别模型（M6 实测 GPT-5.5 于 L1 级输入两次复现）超时概率高于 direct，由 backfill 兜底、verdict 如实降级；用户可显式 `--runtime-backend direct` 回退。
+- M5 已知 ACP 弱点未变：actual model 证据为会话级、无 direct 的 tool/turn budget 流式监控与单次重试 wrapper。
+- direct run HTML 头部仍无 backend 标注（与 M4 之前一致）：golden 字节锁定下的取舍，badge 为 acp-only。
