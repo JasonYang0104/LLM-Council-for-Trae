@@ -9,6 +9,8 @@ description: 当用户要求安装/更新 LCT、从 GitHub main 全局安装最�
 
 当用户说“安装 LCT”“更新 LCT”“从 GitHub main 全局安装最新版 LCT”“使用 LCT”“跑 LCT”“council run”“用委员会回答”“让多个模型讨论”或明确要求 `LLM-Council-for-Trae` 时触发。
 
+当用户明确说“启用 debate”“开质询轮”“让成员答辩”“加一轮反驳”“challenge”“rebuttal”“互相挑战”或“让成员回应批评后再综合”时，仍按本 Skill 触发，并且 run 命令必须追加 `--debate`。只说“多模型讨论”“多模型评估”“深入评估”或“更严格评审”不自动启用 debate；普通 LCT run 保持 Stage 1 / Stage 2 / Stage 3 三阶段，不追加 `--debate`。
+
 ## Global Install / Update From GitHub Main
 
 当用户只要求安装或更新 LCT，而不是立即运行 council，先完成安装并写 `notes.md`，不要把安装成功包装成 E2E 成功。执行顺序：
@@ -170,6 +172,14 @@ lct_search_used: true|false
 lct_web_tool_calls: <number>
 lct_web_tool_effective_calls: <number>
 lct_search_conversion_errors: <number>
+debate_enabled: true|false
+debate_rounds: <number>
+debate_participants: <models or none>
+debate_completed: <models or none>
+debate_failed: <models or none>
+debate_failed_all: true|false
+stage2_5_count: <number>
+debate_used_by_stage3: true|false|not_applicable
 agent_external_search_allowed: true|false
 agent_external_search_used: true|false
 agent_sources: <URLs or none>
@@ -229,6 +239,8 @@ llm-council-for-trae run \
   --json
 ```
 
+如果用户明确要求 debate / 质询 / 答辩 / 反驳，在 run 命令末尾追加独立参数 `--debate`。不要把 `--debate` 写入 `_lct_question.md`，也不要把“多模型讨论”自动扩大成 debate。
+
 如果 Preflight 触发 runtime override，run 和 validate 必须都显式使用同一个 runtime command：
 
 ```bash
@@ -286,7 +298,7 @@ cat ".llm-council-for-trae/runs/$FINAL_RUN_ID/stage3/final.md"
 
 8. 在当前 workspace 根目录写出：
    - `$RUN_ID-final.md`：主席最终答案。
-   - `$RUN_ID-index.md`：run id、run status、validate status、HTML 路径、Input mode、runtime_default_command、runtime_default_version、runtime_default_models_status、runtime_default_models_count、runtime_override_used、runtime_override_command、runtime_override_reason、runtime_override_version、runtime_override_doctor_ok、runtime_override_models_count、runtime_override_recommendation_members、runtime_used_by_lct、lct_search_allowed、lct_search_used、lct_web_tool_calls、lct_web_tool_effective_calls、lct_search_conversion_errors、agent_external_search_allowed、agent_external_search_used、agent_sources、agent_fact_pack_path、agent_added_context、final_answer_source、valid_stage1_models、quorum_default、quorum_effective、low_quorum_used、backfill_candidates、backfill_attempts、stage2_reviewers、stage1_backfill_members、stage2_reviewer_backfill、review_subject_count、reviewer_count、chairman_fallback_used、default attempt 状态、失败模型或 timeout。
+   - `$RUN_ID-index.md`：run id、run status、validate status、validate verdict、HTML 路径、Input mode、runtime_default_command、runtime_default_version、runtime_default_models_status、runtime_default_models_count、runtime_override_used、runtime_override_command、runtime_override_reason、runtime_override_version、runtime_override_doctor_ok、runtime_override_models_count、runtime_override_recommendation_members、runtime_used_by_lct、lct_search_allowed、lct_search_used、lct_web_tool_calls、lct_web_tool_effective_calls、lct_search_conversion_errors、debate_enabled、debate_rounds、debate_participants、debate_completed、debate_failed、debate_failed_all、stage2_5_count、debate_used_by_stage3、agent_external_search_allowed、agent_external_search_used、agent_sources、agent_fact_pack_path、agent_added_context、final_answer_source、valid_stage1_models、quorum_default、quorum_effective、low_quorum_used、backfill_candidates、backfill_attempts、stage2_reviewers、stage1_backfill_members、stage2_reviewer_backfill、review_subject_count、reviewer_count、chairman_fallback_used、default attempt 状态、失败模型或 timeout。
 
 ## Report
 
@@ -311,6 +323,9 @@ cat ".llm-council-for-trae/runs/$FINAL_RUN_ID/stage3/final.md"
 - lct_web_tool_calls：LCT artifacts 中的 Web 工具调用数量
 - lct_web_tool_effective_calls：有证据证明搜索结果成功进入模型上下文的 Web 工具调用数量
 - lct_search_conversion_errors：WebSearch / WebFetch 输出转换失败相关 warning 数量
+- debate_enabled / debate_rounds / stage2_5_count：是否启用 `--debate`、轮数和 Stage 2.5 记录数
+- debate_participants / debate_completed / debate_failed / debate_failed_all：Stage 2.5 参与、完成、失败和全部失败状态
+- debate_used_by_stage3：有成功答辩时，主席 prompt 是否读取 Stage 2.5 材料；无成功答辩时写 `not_applicable`
 - agent_external_search_allowed：外层 Agent 是否被允许在 LCT 之外自行检索
 - agent_external_search_used：外层 Agent 是否实际在 LCT 之外自行检索
 - agent_sources / agent_fact_pack_path：外层 Agent 补充给问题文件的来源或 fact pack
@@ -327,6 +342,11 @@ cat ".llm-council-for-trae/runs/$FINAL_RUN_ID/stage3/final.md"
 - chairman_fallback_used：主席是否使用备选链
 - failed models / timeout
 - live `traecli` 是否可用
+- manifest.warnings：manifest 中的非阻断 warning，例如 `traecli doctor reported warnings`
+- validate.warnings：`validate <run_id> --json` 返回的 warning
+- runtime/doctor.json ignored_errors：被判定为非阻断的 runtime doctor error
+
+不要笼统说“无 warnings”。必须分别汇报 `manifest.warnings`、`validate.warnings` 和 `runtime/doctor.json ignored_errors`；其中任一项非空时都要保留来源。
 
 `--member-tool-mode search_enabled` 只代表搜索工具被允许，不代表模型实际搜索了。必须把 `lct_search_allowed` 和 `lct_search_used` 分开说；如果 manifest 中 tool call count 为 0，就明确说搜索被允许但未发生。外层 Agent 自己做的网页检索必须进入 `agent_external_search_*` 字段，不要混进 LCT 的 `lct_search_*` 字段。
 

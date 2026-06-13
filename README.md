@@ -86,6 +86,14 @@ PY
 使用 LCT，回答："""<你的问题>"""
 ```
 
+如果要启用质询轮，直接说：
+
+```text
+使用 LCT，并启用 debate，回答："""<你的问题>"""
+```
+
+明确说“启用 debate”“开质询轮”“让成员答辩”“加一轮反驳”“challenge”“rebuttal”“互相挑战”或“让成员回应批评后再综合”时，外层 Agent 必须在 run 命令追加 `--debate`。只说“多模型讨论”“多模型评估”“深入评估”或“更严格评审”不自动启用 debate。
+
 输入边界短例：
 
 - 反例：不要写入 `_lct_question.md`：`使用LCT回答："""`
@@ -94,7 +102,7 @@ PY
 
 Agent 应先确认 `_lct_question.md` 的输入边界：它只写 council-facing 问题、必要事实背景、输出要求和 `Report topic: <中文议题>`。`Report topic` 是报告元数据，供 HTML 标题稳定生成 `<中文议题>：多模型智囊团评估`，不是成员任务指令。外层执行指令不得写入 _lct_question.md：包括维护 notes.md、运行 validate、写 final/index、生成 HTML、Git/PR/测试职责、开 branch 或提交代码。
 
-Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo（出现 `src/llm_council_for_trae/`、`.trae/agents/` 或 `profiles/subagents.json` 时停止）→ 确认 `traecli` 和 `llm-council-for-trae` 可用 → 检查 `traecli models --json` → 准备 `_lct_question.md` → 先记录 `models --recommend --json`，作为当前模型可用性和安全过滤参考 → 使用 `--default-models`、`--json` 非交互运行，auto-backfill **（注释：自动补位，指 CLI 在同一次运行里追加候补模型而不是重新跑整轮）** 默认启用，必要时可用 `--backfill-members` 显式提供候补优先级 → 如果默认成员失败、超时或不可用，CLI 在同一个 run 内追加 backfill 成员补足 quorum，不整轮重跑，不覆盖已成功 Stage 1 输出 → 如果 Stage 1 quorum 已满足但 Stage 2 reviewer 失败，CLI 只做 reviewer-only backfill **（注释：仅评审者补位，指候补模型只补交 Stage 2 评审，不新增 Stage 1 候选答案）** → 先读取 terminal manifest 并执行 `llm-council-for-trae validate <run_id> --json` → 只有 validate JSON 显示 `usable_final: true` 时读取 `stage3/final.md` → 在问题 workspace 根目录写出 `<run_id>-final.md` 和 `<run_id>-index.md`（必须包含 run status、validate status、validate verdict、HTML path、Input mode、runtime_default_command、runtime_default_version、runtime_default_models_status、runtime_default_models_count、runtime_override_used、runtime_override_command、runtime_override_reason、runtime_override_version、runtime_override_doctor_ok、runtime_override_models_count、runtime_override_recommendation_members、runtime_used_by_lct、lct_search_allowed、lct_search_used、lct_web_tool_calls、lct_web_tool_effective_calls、lct_search_conversion_errors、agent_external_search_allowed、agent_external_search_used、agent_sources、agent_fact_pack_path、agent_added_context、final_answer_source、valid_stage1_models、quorum_default、quorum_effective、low_quorum_used、backfill_candidates、backfill_attempts、stage2_reviewers、stage1_backfill_members、stage2_reviewer_backfill、review_subject_count、reviewer_count、chairman_fallback_used、failed models / timeout）→ 返回 run status、validate status、最终答案路径、HTML 报告路径和 live runtime。`degraded_ok 是可用结果`；成员失败不等于 run 失败。
+Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo（出现 `src/llm_council_for_trae/`、`.trae/agents/` 或 `profiles/subagents.json` 时停止）→ 确认 `traecli` 和 `llm-council-for-trae` 可用 → 检查 `traecli models --json` → 准备 `_lct_question.md` → 先记录 `models --recommend --json`，作为当前模型可用性和安全过滤参考 → 使用 `--default-models`、`--json` 非交互运行，auto-backfill **（注释：自动补位，指 CLI 在同一次运行里追加候补模型而不是重新跑整轮）** 默认启用，必要时可用 `--backfill-members` 显式提供候补优先级；用户明确要求 debate / 质询 / 答辩 / 反驳时追加 `--debate` → 如果默认成员失败、超时或不可用，CLI 在同一个 run 内追加 backfill 成员补足 quorum，不整轮重跑，不覆盖已成功 Stage 1 输出 → 如果 Stage 1 quorum 已满足但 Stage 2 reviewer 失败，CLI 只做 reviewer-only backfill **（注释：仅评审者补位，指候补模型只补交 Stage 2 评审，不新增 Stage 1 候选答案）** → 先读取 terminal manifest 并执行 `llm-council-for-trae validate <run_id> --json` → 只有 validate JSON 显示 `usable_final: true` 时读取 `stage3/final.md` → 在问题 workspace 根目录写出 `<run_id>-final.md` 和 `<run_id>-index.md`（必须包含 run status、validate status、validate verdict、HTML path、Input mode、runtime_default_command、runtime_default_version、runtime_default_models_status、runtime_default_models_count、runtime_override_used、runtime_override_command、runtime_override_reason、runtime_override_version、runtime_override_doctor_ok、runtime_override_models_count、runtime_override_recommendation_members、runtime_used_by_lct、lct_search_allowed、lct_search_used、lct_web_tool_calls、lct_web_tool_effective_calls、lct_search_conversion_errors、debate_enabled、debate_rounds、debate_participants、debate_completed、debate_failed、debate_failed_all、stage2_5_count、debate_used_by_stage3、agent_external_search_allowed、agent_external_search_used、agent_sources、agent_fact_pack_path、agent_added_context、final_answer_source、valid_stage1_models、quorum_default、quorum_effective、low_quorum_used、backfill_candidates、backfill_attempts、stage2_reviewers、stage1_backfill_members、stage2_reviewer_backfill、review_subject_count、reviewer_count、chairman_fallback_used、failed models / timeout）→ 返回 run status、validate status、最终答案路径、HTML 报告路径和 live runtime，并分开汇报 `manifest.warnings`、`validate.warnings`、`runtime/doctor.json ignored_errors`。`degraded_ok 是可用结果`；成员失败不等于 run 失败。
 
 `<run_id>-index.md` 的 `backfill_candidates` 必须来自 terminal manifest 的 `metadata.quorum.backfill_candidates`。如果 terminal manifest 没有记录该字段，写 `backfill_candidates: not recorded`；不得从默认成员阵容、不得从 models --recommend --json 的 primary roster、不得从实际有效 Stage 1 成员猜测候补池。
 
@@ -278,7 +286,7 @@ chairman: DeepSeek-V4-Pro
 
 `--default-models` 始终使用这套静态默认阵容。run 内 auto-backfill 默认启用：默认 auto-backfill 只从成员整体优先级中选择候补，排除 primary members、已尝试成员、主席和当前不可用/不安全模型；不会追加未批准的 runtime safe models。显式传 `--backfill-members` 时，CLI 按显式列表过滤后使用。在同一个 run 内追加候补只为补到 3 个有效成员；它不整轮重跑，也不会把已成功 Stage 1 输出替换掉。交付索引里只能记录 terminal manifest 的 `metadata.quorum.backfill_candidates`；如果没有记录则写 `not recorded`，不得从默认成员阵容或 `models --recommend --json` 的 primary roster 替代。
 
-可选质询轮通过 `--debate` 启用。启用后，CLI 会在 Stage 2 匿名互评之后、Stage 3 主席综合之前生成 Stage 2.5：每个有效 Stage 1 成员只看到针对自己的匿名批评材料，并输出一份答辩。未传 `--debate` 时不会生成 `stage2_5/`，现有 Stage 1 / 2 / 3 prompt 和 artifact 结构保持旧路径。
+可选质询轮通过 `--debate` 启用。启用后，CLI 会在 Stage 2 匿名互评之后、Stage 3 主席综合之前生成 Stage 2.5：每个有效 Stage 1 成员只看到针对自己的匿名批评材料，并输出一份答辩。未传 `--debate` 时不会生成 `stage2_5/`，现有 Stage 1 / 2 / 3 prompt 和 artifact 结构保持旧路径。自然语言入口必须把“启用 debate / 质询 / 答辩 / 反驳 / challenge / rebuttal / 互相挑战 / 让成员回应批评后再综合”映射为 run 命令追加 `--debate`；“多模型讨论 / 多模型评估 / 深入评估 / 更严格评审”默认仍走普通三阶段。
 
 如果用户明确要挑成员或指定主席，外层 Agent 可以进入 agent-assisted 自选模型路径：先读取当前模型清单，必要时用 `AskUserQuestionTool` 展示选择卡片；工具不可用时使用文本 fallback。该路径必须调用独立参数 `--selected-members` / `--selected-chairman`，不要复用原生 `--members`。原生 `--members` 是 power-user 精确路径，给几个跑几个，不补足、不裁剪；agent-assisted 自选路径才会归一化到 3 并记录 `selection_surface=agent_assisted`、用户请求、解析结果、补足成员、裁剪成员和最终 config。
 
@@ -435,11 +443,13 @@ html/export.json
 - manifest、stage meta、review json、final json、html export json 是否包含最小必填字段和正确类型。
 - Stage 1 / 2 / 3 的 expected model 和 actual model 是否一致。
 - Stage 2 ranking 是否能解析出有效排序。
-- Stage 2.5 启用时，参与者是否来自有效 Stage 1 成员、答辩文件是否完整、ACP transcript 是否进入证据校验。
+- Stage 2.5 启用时，`config.debate_enabled=true` 必须对应 `metadata.debate.enabled=true` 和 `stages.stage2_5`；参与者必须匹配有效 Stage 1 成员；答辩 prompt / meta / response path 必须是 canonical artifact path；prompt 不得泄露成员模型名或 `FINAL RANKING:`；有成功答辩时 Stage 3 prompt 必须读取 Stage 2.5 材料；ACP transcript 必须进入证据校验。
 - subagent mode 是否真的触发 traecli Agent tool，而不是普通 prompt 直答。
 - HTML export JSON 是否存在并可被消费。
 
 `validate <run_id> --json` 会输出终局判定字段：`terminal`、`usable_final`、`stage3_final_exists`、`html_exists`、`failed_stage_records`、`verdict`。`verdict` 取值为 `complete_ok_final`、`usable_degraded_final`、`in_progress`、`failed_no_final`、`invalid_artifacts`。交付或写 `<run_id>-index.md` 前，状态必须来自 terminal manifest 加 validate JSON；不要用中途目录为空、run JSON 为空或自然语言观察判 failed。`degraded_ok 是可用结果`，成员失败不等于 run 失败。
+
+最终摘要不要笼统说“无 warnings”。必须分开记录和汇报 `manifest.warnings`、`validate.warnings` 与 `runtime/doctor.json ignored_errors`；例如 validate warnings 为空但 manifest 有 `traecli doctor reported warnings` 时，应写成 validate 无 warnings、manifest 有非阻断 doctor warning。
 
 带 auto-backfill 的 run 还会在 manifest / validate / HTML 中暴露 quorum 和补位 provenance **（注释：来源证据，指结果由哪些模型、哪些补位和哪些降级规则组成）**。索引和汇报至少记录：`valid_stage1_models`、`quorum_default`、`quorum_effective`、`low_quorum_used`、`backfill_attempts`、`stage2_reviewers`、`stage1_backfill_members`、`stage2_reviewer_backfill`、`review_subject_count`、`reviewer_count`、`chairman_fallback_used`。
 

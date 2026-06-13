@@ -263,6 +263,58 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
                 for term in required_terms:
                     self.assertIn(term, text)
 
+    def test_readme_and_skill_document_debate_natural_language_contract(self):
+        required_terms = [
+            "启用 debate",
+            "开质询轮",
+            "让成员答辩",
+            "加一轮反驳",
+            "challenge",
+            "rebuttal",
+            "互相挑战",
+            "让成员回应批评后再综合",
+            "多模型讨论",
+            "多模型评估",
+            "深入评估",
+            "更严格评审",
+            "不自动启用 debate",
+            "追加 `--debate`",
+        ]
+        for relative in [
+            "README.md",
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+
+    def test_readme_and_skill_debate_index_and_warning_contract(self):
+        required_terms = [
+            "debate_enabled",
+            "debate_rounds",
+            "debate_participants",
+            "debate_completed",
+            "debate_failed",
+            "debate_failed_all",
+            "stage2_5_count",
+            "debate_used_by_stage3",
+            "manifest.warnings",
+            "validate.warnings",
+            "runtime/doctor.json ignored_errors",
+            "不要笼统说“无 warnings”",
+        ]
+        for relative in [
+            "README.md",
+            "skills/llm-council-for-trae/SKILL.md",
+            ".trae/skills/llm-council-for-trae/SKILL.md",
+        ]:
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+
     def test_skills_no_longer_instruct_full_recommended_rerun_as_primary_recovery(self):
         forbidden_terms = [
             "$RUN_ID-recommended",
