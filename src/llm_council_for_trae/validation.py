@@ -759,9 +759,13 @@ def debate_semantic_checks(
     stage2_5: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     metadata = manifest.get("metadata") if isinstance(manifest.get("metadata"), dict) else {}
-    debate = metadata.get("debate") if isinstance(metadata.get("debate"), dict) else {}
+    raw_debate = metadata.get("debate")
+    debate = raw_debate if isinstance(raw_debate, dict) else {}
     config = manifest.get("config") if isinstance(manifest.get("config"), dict) else {}
-    enabled = debate.get("enabled") is True or config.get("debate_enabled") is True
+    stages = manifest.get("stages") if isinstance(manifest.get("stages"), dict) else {}
+    config_enabled = config.get("debate_enabled") is True
+    debate_enabled = debate.get("enabled") is True
+    enabled = debate_enabled or config_enabled
     if not enabled:
         return []
 
@@ -790,9 +794,34 @@ def debate_semantic_checks(
     }
     checks: list[dict[str, Any]] = [
         {
+            "name": "debate_metadata_present",
+            "ok": isinstance(raw_debate, dict),
+            "message": "metadata.debate must be present when debate is enabled",
+        },
+        {
+            "name": "debate_metadata_enabled",
+            "ok": debate.get("enabled") is True,
+            "message": f"metadata.debate.enabled={debate.get('enabled')}",
+        },
+        {
+            "name": "debate_stage2_5_present",
+            "ok": "stage2_5" in stages and isinstance(stages.get("stage2_5"), list),
+            "message": "stages.stage2_5 must be present when debate is enabled",
+        },
+        {
+            "name": "debate_stage2_5_nonempty_for_valid_stage1",
+            "ok": not valid_models or bool(stage2_5),
+            "message": f"valid_stage1={sorted(valid_models)}, stage2_5_count={len(stage2_5)}",
+        },
+        {
             "name": "debate_participants_effective_stage1",
             "ok": stage2_5_models.issubset(valid_models) and declared_participants.issubset(valid_models),
             "message": f"participants={sorted(declared_participants or stage2_5_models)}, valid_stage1={sorted(valid_models)}",
+        },
+        {
+            "name": "debate_participants_match_valid_stage1",
+            "ok": not valid_models or (stage2_5_models == valid_models and declared_participants == valid_models),
+            "message": f"declared={sorted(declared_participants)}, observed={sorted(stage2_5_models)}, valid_stage1={sorted(valid_models)}",
         },
         {
             "name": "debate_completed_matches_stage2_5",
@@ -805,18 +834,134 @@ def debate_semantic_checks(
             "message": f"failed_all={debate.get('failed_all')}, completed={sorted(completed_models)}",
         },
     ]
+    successful_rebuttals: list[tuple[dict[str, Any], str]] = []
     for item in stage2_5:
-        if not isinstance(item, dict) or item.get("status") != "ok":
+        if not isinstance(item, dict):
             continue
         label = item.get("file_label")
+        prompt_path_value = item.get("prompt_path")
+        meta_path_value = item.get("meta_path")
+        response_path_value = item.get("response_path")
+        label_valid = is_safe_artifact_label(label)
+        item_check_label = str(label) if label_valid else str(item.get("model") or "unknown")
+        expected_prompt_path = f"stage2_5/{label}.rebuttal.prompt.md" if label_valid else None
+        expected_meta_path = f"stage2_5/{label}.meta.json" if label_valid else None
+        expected_response_path = f"stage2_5/{label}.rebuttal.md" if label_valid else None
+        checks.append(
+            {
+                "name": "debate_stage2_5_file_label",
+                "ok": label_valid,
+                "message": f"model={item.get('model')}, file_label={label}",
+            }
+        )
+        checks.append(
+            {
+                "name": f"debate_stage2_5_prompt_path_{item_check_label}",
+                "ok": stage2_5_path_contract_ok(prompt_path_value, expected_prompt_path),
+                "message": f"prompt_path={prompt_path_value}, expected={expected_prompt_path}",
+            }
+        )
+        checks.append(
+            {
+                "name": f"debate_stage2_5_meta_path_{item_check_label}",
+                "ok": stage2_5_path_contract_ok(meta_path_value, expected_meta_path),
+                "message": f"meta_path={meta_path_value}, expected={expected_meta_path}",
+            }
+        )
+        prompt_relative = expected_prompt_path if expected_prompt_path else (
+            str(prompt_path_value) if is_safe_artifact_relative_path(prompt_path_value) else None
+        )
+        prompt_check_label = str(label) if isinstance(label, str) and label else (
+            Path(prompt_relative).name.split(".")[0] if prompt_relative else str(item.get("model") or "unknown")
+        )
+        prompt_text = ""
+        if prompt_relative:
+            prompt_path = root / prompt_relative
+            prompt_text = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else ""
+            checks.append(
+                {
+                    "name": f"debate_prompt_file_{prompt_check_label}",
+                    "ok": nonempty_file(prompt_path),
+                    "message": prompt_relative,
+                }
+            )
+            leaked_models = sorted(model for model in valid_models if model and model in prompt_text)
+            checks.append(
+                {
+                    "name": f"debate_prompt_anonymized_{prompt_check_label}",
+                    "ok": not leaked_models,
+                    "message": f"leaked_models={leaked_models}",
+                }
+            )
+            checks.append(
+                {
+                    "name": f"debate_prompt_no_final_ranking_{prompt_check_label}",
+                    "ok": "FINAL RANKING:" not in prompt_text,
+                    "message": prompt_relative,
+                }
+            )
+        if item.get("status") != "ok":
+            continue
+        checks.append(
+            {
+                "name": f"debate_stage2_5_response_path_{item_check_label}",
+                "ok": stage2_5_path_contract_ok(response_path_value, expected_response_path),
+                "message": f"response_path={response_path_value}, expected={expected_response_path}",
+            }
+        )
+        response_relative = expected_response_path if expected_response_path else (
+            str(response_path_value) if is_safe_artifact_relative_path(response_path_value) else None
+        )
+        rebuttal_path = root / response_relative if response_relative else None
+        rebuttal_text = rebuttal_path.read_text(encoding="utf-8").strip() if rebuttal_path and rebuttal_path.exists() else ""
         checks.append(
             {
                 "name": f"debate_rebuttal_file_{label}",
-                "ok": bool(label) and nonempty_file(root / f"stage2_5/{label}.rebuttal.md"),
-                "message": f"stage2_5/{label}.rebuttal.md",
+                "ok": bool(label) and bool(rebuttal_text),
+                "message": response_relative or f"stage2_5/{label}.rebuttal.md",
+            }
+        )
+        if rebuttal_text:
+            successful_rebuttals.append((item, rebuttal_text))
+    if successful_rebuttals:
+        stage3_prompt = root / "stage3/chairman.prompt.md"
+        stage3_text = stage3_prompt.read_text(encoding="utf-8") if stage3_prompt.exists() else ""
+        missing_labels: list[str] = []
+        for item, rebuttal_text in successful_rebuttals:
+            snippet = rebuttal_text[:120]
+            if snippet and snippet not in stage3_text:
+                missing_labels.append(str(item.get("file_label") or item.get("label") or item.get("model")))
+        checks.append(
+            {
+                "name": "debate_stage3_reads_stage2_5",
+                "ok": "阶段 2.5" in stage3_text and not missing_labels,
+                "message": f"missing_rebuttals={missing_labels}",
             }
         )
     return checks
+
+
+def stage2_5_path_contract_ok(value: Any, expected: str | None) -> bool:
+    if not is_safe_artifact_relative_path(value):
+        return False
+    return expected is None or value == expected
+
+
+def is_safe_artifact_label(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value)
+        and value not in (".", "..")
+        and "/" not in value
+        and "\\" not in value
+    )
+
+
+def is_safe_artifact_relative_path(value: Any) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    path = Path(value)
+    return not path.is_absolute() and ".." not in path.parts
 
 
 def contribution_map_checks(root: Path, manifest: dict[str, Any], stage1: list[dict[str, Any]]) -> list[dict[str, Any]]:

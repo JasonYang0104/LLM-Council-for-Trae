@@ -17,7 +17,7 @@ from llm_council_for_trae.council import (
 from llm_council_for_trae.html_export import export_html, render_html
 from llm_council_for_trae.models import RuntimeHealth
 from llm_council_for_trae.store import ArtifactStore
-from llm_council_for_trae.validation import validate_run
+from llm_council_for_trae.validation import is_safe_artifact_label, validate_run
 from support.runtime_fakes import FakeRuntime, ScriptedReply
 
 
@@ -57,7 +57,11 @@ def direct_script(
     }
 
 
-async def run_fake_debate(script: dict[tuple[str, str], ScriptedReply]) -> tuple[dict, ArtifactStore, FakeRuntime, tempfile.TemporaryDirectory]:
+async def run_fake_debate(
+    script: dict[tuple[str, str], ScriptedReply],
+    *,
+    debate_enabled: bool = True,
+) -> tuple[dict, ArtifactStore, FakeRuntime, tempfile.TemporaryDirectory]:
     tmp = tempfile.TemporaryDirectory()
     store = ArtifactStore.create(Path(tmp.name), "run-debate")
     fake_runtime = FakeRuntime(script, member_tool_mode="search_enabled")
@@ -73,7 +77,7 @@ async def run_fake_debate(script: dict[tuple[str, str], ScriptedReply]) -> tuple
         stage2_timeout=30,
         chairman_timeout=45,
         chairman_contribution_enabled=False,
-        debate_enabled=True,
+        debate_enabled=debate_enabled,
     )
     with patch(
         "llm_council_for_trae.council.runtime_doctor",
@@ -126,6 +130,28 @@ class DebateStage25Tests(unittest.TestCase):
 
         self.assertEqual(with_none, without_arg)
 
+    def test_artifact_label_safety_rejects_path_segments(self):
+        self.assertTrue(is_safe_artifact_label("A"))
+        self.assertTrue(is_safe_artifact_label("openrouter-3o"))
+        for value in ["", ".", "..", "../A", "A/B", r"A\\B"]:
+            with self.subTest(value=value):
+                self.assertFalse(is_safe_artifact_label(value))
+
+    def test_validate_accepts_legacy_non_debate_run_without_stage2_5(self):
+        manifest, store, _runtime, tmp = asyncio.run(run_fake_debate(direct_script(), debate_enabled=False))
+        try:
+            export_html(store)
+            self.assertFalse(manifest["config"].get("debate_enabled"))
+            self.assertNotIn("stage2_5", manifest["stages"])
+            self.assertNotIn("debate", manifest["metadata"])
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["status"], "ok", validation["failures"])
+            self.assertTrue(validation["usable_final"])
+        finally:
+            tmp.cleanup()
+
     def test_debate_direct_fake_run_writes_artifacts_and_validates(self):
         manifest, store, runtime, tmp = asyncio.run(run_fake_debate(direct_script()))
         try:
@@ -141,6 +167,278 @@ class DebateStage25Tests(unittest.TestCase):
             self.assertTrue((store.root / "stage2_5" / "B.traecli.stream.jsonl").exists())
             self.assertIn("阶段 2.5 - 成员答辩", (store.root / "stage3" / "chairman.prompt.md").read_text(encoding="utf-8"))
             self.assertEqual([call["label"] for call in runtime.calls if call["stage"] == "stage2_5"], ["A", "B", "C"])
+        finally:
+            tmp.cleanup()
+
+    def test_validate_rejects_debate_enabled_missing_stage2_5(self):
+        manifest, store, _runtime, tmp = asyncio.run(run_fake_debate(direct_script()))
+        try:
+            export_html(store)
+            manifest["stages"].pop("stage2_5")
+            store.write_manifest(manifest)
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["verdict"], "invalid_artifacts")
+            self.assertFalse(validation["usable_final"])
+            self.assertTrue(
+                any(check["name"] == "debate_stage2_5_present" for check in validation["failures"]),
+                validation["failures"],
+            )
+        finally:
+            tmp.cleanup()
+
+    def test_validate_rejects_debate_enabled_missing_metadata_debate(self):
+        manifest, store, _runtime, tmp = asyncio.run(run_fake_debate(direct_script()))
+        try:
+            export_html(store)
+            manifest["metadata"].pop("debate")
+            store.write_manifest(manifest)
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["verdict"], "invalid_artifacts")
+            self.assertFalse(validation["usable_final"])
+            self.assertTrue(
+                any(check["name"] == "debate_metadata_present" for check in validation["failures"]),
+                validation["failures"],
+            )
+        finally:
+            tmp.cleanup()
+
+    def test_validate_rejects_debate_enabled_empty_stage2_5_when_valid_stage1_exists(self):
+        manifest, store, _runtime, tmp = asyncio.run(run_fake_debate(direct_script()))
+        try:
+            export_html(store)
+            manifest["stages"]["stage2_5"] = []
+            manifest["metadata"]["debate"]["participants"] = []
+            manifest["metadata"]["debate"]["completed"] = []
+            store.write_manifest(manifest)
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["verdict"], "invalid_artifacts")
+            self.assertFalse(validation["usable_final"])
+            self.assertTrue(
+                any(check["name"] == "debate_stage2_5_nonempty_for_valid_stage1" for check in validation["failures"]),
+                validation["failures"],
+            )
+        finally:
+            tmp.cleanup()
+
+    def test_validate_rejects_stage2_5_prompt_leaking_model_names(self):
+        manifest, store, _runtime, tmp = asyncio.run(run_fake_debate(direct_script()))
+        try:
+            export_html(store)
+            (store.root / "stage2_5" / "A.rebuttal.prompt.md").write_text(
+                "评审材料泄露 Model-B 和 Model-C。\n",
+                encoding="utf-8",
+            )
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["verdict"], "invalid_artifacts")
+            self.assertFalse(validation["usable_final"])
+            self.assertTrue(
+                any(check["name"] == "debate_prompt_anonymized_A" for check in validation["failures"]),
+                validation["failures"],
+            )
+        finally:
+            tmp.cleanup()
+
+    def test_validate_rejects_failed_stage2_5_prompt_leaking_model_names(self):
+        manifest, store, _runtime, tmp = asyncio.run(run_fake_debate(direct_script(rebuttal_b_status="failed")))
+        try:
+            export_html(store)
+            (store.root / "stage2_5" / "B.rebuttal.prompt.md").write_text(
+                "失败答辩的 prompt 也泄露 Model-A。\n",
+                encoding="utf-8",
+            )
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["verdict"], "invalid_artifacts")
+            self.assertFalse(validation["usable_final"])
+            self.assertTrue(
+                any(check["name"] == "debate_prompt_anonymized_B" for check in validation["failures"]),
+                validation["failures"],
+            )
+        finally:
+            tmp.cleanup()
+
+    def test_validate_rejects_failed_stage2_5_prompt_leak_without_file_label(self):
+        manifest, store, _runtime, tmp = asyncio.run(run_fake_debate(direct_script(rebuttal_b_status="failed")))
+        try:
+            export_html(store)
+            failed_record = next(item for item in manifest["stages"]["stage2_5"] if item.get("status") != "ok")
+            failed_record.pop("file_label", None)
+            failed_record["prompt_path"] = "stage2_5/B.rebuttal.prompt.md"
+            store.write_manifest(manifest)
+            (store.root / "stage2_5" / "B.rebuttal.prompt.md").write_text(
+                "失败答辩的 prompt 泄露 Model-A。\n",
+                encoding="utf-8",
+            )
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["verdict"], "invalid_artifacts")
+            self.assertFalse(validation["usable_final"])
+            self.assertTrue(
+                any(check["name"] == "debate_stage2_5_file_label" for check in validation["failures"]),
+                validation["failures"],
+            )
+            self.assertTrue(
+                any(check["name"] == "debate_prompt_anonymized_B" for check in validation["failures"]),
+                validation["failures"],
+            )
+        finally:
+            tmp.cleanup()
+
+    def test_validate_rejects_prompt_path_decoy_when_canonical_prompt_leaks(self):
+        manifest, store, _runtime, tmp = asyncio.run(run_fake_debate(direct_script()))
+        try:
+            export_html(store)
+            record = manifest["stages"]["stage2_5"][0]
+            record["prompt_path"] = "stage2_5/not-the-real-prompt.md"
+            store.write_manifest(manifest)
+            (store.root / "stage2_5" / "not-the-real-prompt.md").write_text(
+                "干净 decoy prompt。\n",
+                encoding="utf-8",
+            )
+            (store.root / "stage2_5" / "A.rebuttal.prompt.md").write_text(
+                "真实 canonical prompt 泄露 Model-B。\n",
+                encoding="utf-8",
+            )
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["verdict"], "invalid_artifacts")
+            self.assertFalse(validation["usable_final"])
+            self.assertTrue(
+                any(check["name"] == "debate_stage2_5_prompt_path_A" for check in validation["failures"]),
+                validation["failures"],
+            )
+            self.assertTrue(
+                any(check["name"] == "debate_prompt_anonymized_A" for check in validation["failures"]),
+                validation["failures"],
+            )
+        finally:
+            tmp.cleanup()
+
+    def test_validate_rejects_unsafe_stage2_5_paths(self):
+        manifest, store, _runtime, tmp = asyncio.run(run_fake_debate(direct_script()))
+        try:
+            export_html(store)
+            record = manifest["stages"]["stage2_5"][0]
+            record["prompt_path"] = "/tmp/A.rebuttal.prompt.md"
+            record["meta_path"] = "../stage2_5/A.meta.json"
+            record["response_path"] = "../stage2_5/A.rebuttal.md"
+            store.write_manifest(manifest)
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["verdict"], "invalid_artifacts")
+            self.assertFalse(validation["usable_final"])
+            self.assertTrue(
+                any(check["name"] == "debate_stage2_5_prompt_path_A" for check in validation["failures"]),
+                validation["failures"],
+            )
+            self.assertTrue(
+                any(check["name"] == "debate_stage2_5_meta_path_A" for check in validation["failures"]),
+                validation["failures"],
+            )
+            self.assertTrue(
+                any(check["name"] == "debate_stage2_5_response_path_A" for check in validation["failures"]),
+                validation["failures"],
+            )
+        finally:
+            tmp.cleanup()
+
+    def test_validate_rejects_unsafe_stage2_5_file_label(self):
+        manifest, store, _runtime, tmp = asyncio.run(run_fake_debate(direct_script()))
+        try:
+            export_html(store)
+            record = manifest["stages"]["stage2_5"][0]
+            record["file_label"] = "../../outside"
+            record["prompt_path"] = "stage2_5/../../outside.rebuttal.prompt.md"
+            record["meta_path"] = "stage2_5/../../outside.meta.json"
+            record["response_path"] = "stage2_5/../../outside.rebuttal.md"
+            store.write_manifest(manifest)
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["verdict"], "invalid_artifacts")
+            self.assertFalse(validation["usable_final"])
+            self.assertTrue(
+                any(check["name"] == "debate_stage2_5_file_label" for check in validation["failures"]),
+                validation["failures"],
+            )
+            self.assertTrue(
+                any(check["name"] == "debate_stage2_5_prompt_path_Model-A" for check in validation["failures"]),
+                validation["failures"],
+            )
+        finally:
+            tmp.cleanup()
+
+    def test_validate_rejects_stage2_5_prompt_with_final_ranking(self):
+        manifest, store, _runtime, tmp = asyncio.run(run_fake_debate(direct_script()))
+        try:
+            export_html(store)
+            (store.root / "stage2_5" / "A.rebuttal.prompt.md").write_text(
+                "批评材料\n\nFINAL RANKING:\n1. Response A\n",
+                encoding="utf-8",
+            )
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["verdict"], "invalid_artifacts")
+            self.assertFalse(validation["usable_final"])
+            self.assertTrue(
+                any(check["name"] == "debate_prompt_no_final_ranking_A" for check in validation["failures"]),
+                validation["failures"],
+            )
+        finally:
+            tmp.cleanup()
+
+    def test_validate_rejects_stage3_prompt_missing_stage2_5_when_rebuttals_exist(self):
+        manifest, store, _runtime, tmp = asyncio.run(run_fake_debate(direct_script()))
+        try:
+            export_html(store)
+            (store.root / "stage3" / "chairman.prompt.md").write_text(
+                "Question\n\n阶段 1 和阶段 2 材料。\n",
+                encoding="utf-8",
+            )
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["verdict"], "invalid_artifacts")
+            self.assertFalse(validation["usable_final"])
+            self.assertTrue(
+                any(check["name"] == "debate_stage3_reads_stage2_5" for check in validation["failures"]),
+                validation["failures"],
+            )
+        finally:
+            tmp.cleanup()
+
+    def test_validate_uses_rebuttal_file_for_stage3_read_check(self):
+        manifest, store, _runtime, tmp = asyncio.run(run_fake_debate(direct_script()))
+        try:
+            export_html(store)
+            manifest["stages"]["stage2_5"][0]["response"] = ""
+            store.write_manifest(manifest)
+            (store.root / "stage3" / "chairman.prompt.md").write_text(
+                "Question\n\n阶段 2.5 - 成员答辩：\nB rebuttal: I revise the caveat.\nC rebuttal: I maintain my position.\n",
+                encoding="utf-8",
+            )
+
+            validation = validate_run(store)
+
+            self.assertEqual(validation["verdict"], "invalid_artifacts")
+            self.assertFalse(validation["usable_final"])
+            self.assertTrue(
+                any(check["name"] == "debate_stage3_reads_stage2_5" for check in validation["failures"]),
+                validation["failures"],
+            )
         finally:
             tmp.cleanup()
 
