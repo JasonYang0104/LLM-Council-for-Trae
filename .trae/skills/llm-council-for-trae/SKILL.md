@@ -229,6 +229,8 @@ llm-council-for-trae run \
   --json
 ```
 
+可选质询轮：在 run 命令追加 `--debate`，CLI 会在 Stage 2 匿名互评之后、Stage 3 主席综合之前插入一轮 Stage 2.5，每个有效 Stage 1 成员只看到针对自己的匿名批评并输出一份答辩（写入 `stage2_5/<label>.rebuttal.prompt.md`、`stage2_5/<label>.rebuttal.md`、`stage2_5/<label>.meta.json`）。未传 `--debate` 时不生成 `stage2_5/`，现有 Stage 1 / 2 / 3 prompt 和 artifact 结构保持旧路径。
+
 如果 Preflight 触发 runtime override，run 和 validate 必须都显式使用同一个 runtime command：
 
 ```bash
