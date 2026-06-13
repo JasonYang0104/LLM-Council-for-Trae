@@ -61,6 +61,9 @@ STAGE_META_COMPAT_OPTIONAL_FIELDS = {
     "acp_transcript_path",
     "acp_startup_status",
 }
+CONFIG_COMPAT_OPTIONAL_FIELDS = {"debate_enabled"}
+STAGES_COMPAT_OPTIONAL_FIELDS = {"stage2_5"}
+METADATA_COMPAT_OPTIONAL_FIELDS = {"debate"}
 
 
 def validate_run(store: ArtifactStore) -> dict[str, Any]:
@@ -86,9 +89,9 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
             "warnings": [],
         }
 
-    checks.extend(validate_schema("manifest.config", manifest.get("config"), CONFIG_SCHEMA))
-    checks.extend(validate_schema("manifest.stages", manifest.get("stages"), STAGES_SCHEMA))
-    checks.extend(validate_schema("manifest.metadata", manifest.get("metadata"), METADATA_SCHEMA))
+    checks.extend(validate_schema("manifest.config", manifest.get("config"), CONFIG_SCHEMA, optional=CONFIG_COMPAT_OPTIONAL_FIELDS))
+    checks.extend(validate_schema("manifest.stages", manifest.get("stages"), STAGES_SCHEMA, optional=STAGES_COMPAT_OPTIONAL_FIELDS))
+    checks.extend(validate_schema("manifest.metadata", manifest.get("metadata"), METADATA_SCHEMA, optional=METADATA_COMPAT_OPTIONAL_FIELDS))
     config = manifest.get("config") if isinstance(manifest.get("config"), dict) else {}
     stages = manifest.get("stages") if isinstance(manifest.get("stages"), dict) else {}
     provider_mode = config.get("provider_mode")
@@ -188,6 +191,32 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
             }
         )
 
+    stage2_5 = stage_items(stages, "stage2_5", checks)
+    for item in stage2_5:
+        stage_record_entries.append((f"manifest.stage2_5.{item.get('file_label')}", item))
+        label = item.get("file_label")
+        if label:
+            checks.extend(
+                [
+                    file_check(store.root, f"stage2_5/{label}.rebuttal.prompt.md"),
+                    file_check(store.root, f"stage2_5/{label}.meta.json"),
+                ]
+            )
+            if item.get("status") == "ok":
+                checks.append(file_check(store.root, f"stage2_5/{label}.rebuttal.md"))
+            if runtime_backend != "acp":
+                checks.append(stage_stream_file_check(store.root, f"stage2_5/{label}.traecli.stream.jsonl", item))
+            meta, meta_checks = validate_json_file(
+                f"stage2_5.{label}.meta",
+                store.root / f"stage2_5/{label}.meta.json",
+                STAGE_META_SCHEMA,
+                optional=STAGE_META_COMPAT_OPTIONAL_FIELDS,
+            )
+            checks.extend(meta_checks)
+            if isinstance(meta, dict):
+                stage_meta_records.append((f"stage2_5.{label}.meta", meta))
+        checks.append(model_match_check("stage2_5", item))
+
     raw_stage3 = stages.get("stage3")
     stage3 = raw_stage3 if isinstance(raw_stage3, dict) else {}
     if stage3:
@@ -211,9 +240,10 @@ def validate_run(store: ArtifactStore) -> dict[str, Any]:
         stage_meta_records.append(("stage3.final.meta", final_meta))
     _, final_json_checks = validate_json_file("stage3.final", store.root / "stage3/final.json", FINAL_JSON_SCHEMA)
     checks.extend(final_json_checks)
-    checks.extend(tool_contamination_checks(manifest_status, stage1, stage2, stage3, stage_meta_records))
+    checks.extend(tool_contamination_checks(manifest_status, stage1, stage2, stage3, stage_meta_records, stage2_5=stage2_5))
     checks.extend(acp_evidence_checks(store.root, config, stage_record_entries, stage_meta_records))
     checks.extend(quorum_semantic_checks(manifest_status, manifest, stage1, stage2))
+    checks.extend(debate_semantic_checks(store.root, manifest, stage1, stage2_5))
     checks.extend(contribution_map_checks(store.root, manifest, stage1))
 
     html_path = store.root / "html" / "index.html"
@@ -292,7 +322,7 @@ def search_delivery_warnings(manifest: dict[str, Any]) -> list[dict[str, Any]]:
 def collect_failed_stage_records(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     stages = manifest.get("stages") if isinstance(manifest.get("stages"), dict) else {}
-    for stage_name in ("stage1", "stage2"):
+    for stage_name in ("stage1", "stage2", "stage2_5"):
         stage_items_raw = stages.get(stage_name)
         if isinstance(stage_items_raw, list):
             for item in stage_items_raw:
@@ -374,10 +404,13 @@ def tool_contamination_checks(
     stage2: list[dict[str, Any]],
     stage3: dict[str, Any],
     stage_meta_records: list[tuple[str, dict[str, Any]]] | None = None,
+    stage2_5: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     records: list[tuple[str, dict[str, Any]]] = []
     records.extend(("stage1", item) for item in stage1)
     records.extend(("stage2", item) for item in stage2)
+    if stage2_5:
+        records.extend(("stage2_5", item) for item in stage2_5)
     if stage3:
         records.append(("stage3", stage3))
     if stage_meta_records:
@@ -719,6 +752,73 @@ def quorum_semantic_checks(
     return checks
 
 
+def debate_semantic_checks(
+    root: Path,
+    manifest: dict[str, Any],
+    stage1: list[dict[str, Any]],
+    stage2_5: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    metadata = manifest.get("metadata") if isinstance(manifest.get("metadata"), dict) else {}
+    debate = metadata.get("debate") if isinstance(metadata.get("debate"), dict) else {}
+    config = manifest.get("config") if isinstance(manifest.get("config"), dict) else {}
+    enabled = debate.get("enabled") is True or config.get("debate_enabled") is True
+    if not enabled:
+        return []
+
+    valid_models = {
+        item.get("model")
+        for item in stage1
+        if isinstance(item.get("model"), str) and item.get("status") == "ok" and not item.get("forbidden_tool_calls")
+    }
+    stage2_5_models = {
+        item.get("model")
+        for item in stage2_5
+        if isinstance(item, dict) and item.get("model")
+    }
+    completed_models = {
+        item.get("model")
+        for item in stage2_5
+        if isinstance(item, dict) and item.get("status") == "ok" and item.get("model")
+    }
+    declared_participants = {
+        item for item in debate.get("participants") or []
+        if isinstance(item, str)
+    }
+    declared_completed = {
+        item for item in debate.get("completed") or []
+        if isinstance(item, str)
+    }
+    checks: list[dict[str, Any]] = [
+        {
+            "name": "debate_participants_effective_stage1",
+            "ok": stage2_5_models.issubset(valid_models) and declared_participants.issubset(valid_models),
+            "message": f"participants={sorted(declared_participants or stage2_5_models)}, valid_stage1={sorted(valid_models)}",
+        },
+        {
+            "name": "debate_completed_matches_stage2_5",
+            "ok": declared_completed == completed_models,
+            "message": f"declared={sorted(declared_completed)}, observed={sorted(completed_models)}",
+        },
+        {
+            "name": "debate_failed_all_consistency",
+            "ok": bool(debate.get("failed_all")) == bool(stage2_5_models and not completed_models),
+            "message": f"failed_all={debate.get('failed_all')}, completed={sorted(completed_models)}",
+        },
+    ]
+    for item in stage2_5:
+        if not isinstance(item, dict) or item.get("status") != "ok":
+            continue
+        label = item.get("file_label")
+        checks.append(
+            {
+                "name": f"debate_rebuttal_file_{label}",
+                "ok": bool(label) and nonempty_file(root / f"stage2_5/{label}.rebuttal.md"),
+                "message": f"stage2_5/{label}.rebuttal.md",
+            }
+        )
+    return checks
+
+
 def contribution_map_checks(root: Path, manifest: dict[str, Any], stage1: list[dict[str, Any]]) -> list[dict[str, Any]]:
     metadata = manifest.get("metadata") if isinstance(manifest.get("metadata"), dict) else {}
     contribution = metadata.get("chairman_contribution") if isinstance(metadata.get("chairman_contribution"), dict) else {}
@@ -794,7 +894,7 @@ def stage_stream_file_check(root: Path, relative: str, record: dict[str, Any]) -
         and path.exists()
         and path.stat().st_size == 0
         and record.get("status") != "ok"
-        and "cancelled_by_stage_timeout" in str(record.get("error") or "")
+        and "cancelled_by_stage" in str(record.get("error") or "")
     ):
         return {"name": f"file:{relative}", "ok": True, "message": "empty accepted for cancelled stage record"}
     return check

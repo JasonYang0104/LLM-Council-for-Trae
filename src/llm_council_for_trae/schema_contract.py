@@ -67,12 +67,14 @@ CONFIG_SCHEMA: dict[str, JsonTypeCheck] = {
     "runtime_command": is_str,
     "query_timeout": is_int,
     "export_html": is_bool,
+    "debate_enabled": is_bool,
 }
 
 
 STAGES_SCHEMA: dict[str, JsonTypeCheck] = {
     "stage1": is_list,
     "stage2": is_list,
+    "stage2_5": is_list,
     "stage3": lambda value: isinstance(value, dict) or value is None,
 }
 
@@ -80,6 +82,7 @@ STAGES_SCHEMA: dict[str, JsonTypeCheck] = {
 METADATA_SCHEMA: dict[str, JsonTypeCheck] = {
     "label_to_model": is_dict,
     "aggregate_rankings": is_list,
+    "debate": is_dict,
 }
 
 

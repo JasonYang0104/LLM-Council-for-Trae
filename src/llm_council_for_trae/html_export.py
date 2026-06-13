@@ -288,6 +288,7 @@ def render_html(root: Path, manifest: dict[str, Any]) -> str:
     metadata = manifest.get("metadata") if isinstance(manifest.get("metadata"), dict) else {}
     stage1 = stages.get("stage1") if isinstance(stages.get("stage1"), list) else []
     stage2 = stages.get("stage2") if isinstance(stages.get("stage2"), list) else []
+    stage2_5 = stages.get("stage2_5") if isinstance(stages.get("stage2_5"), list) else []
     stage3 = stages.get("stage3") if isinstance(stages.get("stage3"), dict) else {}
     aggregate = metadata.get("aggregate_rankings") if isinstance(metadata.get("aggregate_rankings"), list) else []
     failures = manifest.get("failures") if isinstance(manifest.get("failures"), list) else []
@@ -320,15 +321,29 @@ def render_html(root: Path, manifest: dict[str, Any]) -> str:
             if isinstance(item, dict)
         ],
     )
+    stage2_5_tabs = render_tabs(
+        "stage2_5",
+        [
+            (
+                item.get("file_label", "?"),
+                f"<h3>{esc(item.get('label') or item.get('file_label'))} · {esc(item.get('model'))}</h3>"
+                f"<p class='meta'>期望模型：{esc(item.get('expected_model'))} · 实际模型：{esc(item.get('actual_model'))} · 状态：{esc(item.get('status'))}</p>"
+                f"<pre><code>{esc(item.get('response'))}</code></pre>",
+            )
+            for item in stage2_5
+            if isinstance(item, dict)
+        ],
+    )
 
     final_html = render_contribution_map(root, manifest) or render_markdown(strip_contribution_map_fence(final_text))
     config = manifest.get("config") if isinstance(manifest.get("config"), dict) else {}
     # acp-only badge: direct-run HTML stays byte-identical to the pinned golden snapshot.
     backend_badge = " · Backend <strong>acp</strong>" if config.get("runtime_backend") == "acp" else ""
     metadata_html = render_metadata(manifest, warnings, failures)
-    trace_html = render_trace(stage1, stage2, stage3)
+    trace_html = render_trace(stage1, stage2, stage3, stage2_5=stage2_5)
     ranking_html = render_ranking_matrix(aggregate)
     manifest_html = f"<pre><code>{esc(json.dumps(manifest, ensure_ascii=False, indent=2))}</code></pre>"
+    stage2_5_section = render_stage2_5_section(stage2_5, stage2_5_tabs)
 
     return f"""<!doctype html>
 <html lang="zh-CN">
@@ -606,7 +621,7 @@ svg {{ width:100%; max-width:760px; height:auto; display:block; }}
       <h2 class="appendix-title">证据附录</h2>
       <details id="stage1"><summary>附录 A · 阶段 1 候选回答</summary><div class="details-body">{stage1_tabs}</div></details>
       <details id="stage2"><summary>附录 B · 阶段 2 匿名互评</summary><div class="details-body">{ranking_html}{stage2_tabs}</div></details>
-      <details id="trace"><summary>附录 C · Provider trace</summary><div class="details-body">{trace_html}</div></details>
+{stage2_5_section}      <details id="trace"><summary>附录 C · Provider trace</summary><div class="details-body">{trace_html}</div></details>
       <details id="metadata"><summary>附录 D · Manifest metadata</summary><div class="details-body">{metadata_html}{manifest_html}</div></details>
       <details id="flow"><summary>附录 E · Council flow</summary><div class="details-body">{render_flow_svg()}</div></details>
     </section>
@@ -1021,6 +1036,7 @@ def render_summary_cards(manifest: dict[str, Any], aggregate: list[dict[str, Any
     metadata = manifest.get("metadata") if isinstance(manifest.get("metadata"), dict) else {}
     quorum = metadata.get("quorum") if isinstance(metadata.get("quorum"), dict) else {}
     stage2_reviewers = metadata.get("stage2_reviewers") if isinstance(metadata.get("stage2_reviewers"), dict) else {}
+    debate = metadata.get("debate") if isinstance(metadata.get("debate"), dict) else {}
     chairman = metadata.get("chairman") if isinstance(metadata.get("chairman"), dict) else {}
     top_model = aggregate[0].get("model") if aggregate and isinstance(aggregate[0], dict) else "暂无聚合排序"
     search = summarize_search_usage(manifest)
@@ -1048,6 +1064,15 @@ def render_summary_cards(manifest: dict[str, Any], aggregate: list[dict[str, Any
             "<div class='summary-card'><h3>Stage 2 reviewer backfill</h3>"
             f"<p>{esc(attempted or 'none')} · reviewer-only</p>"
             f"<p class='meta'>subjects：{esc(subject_count)} · reviewers：{esc(reviewer_count)}</p></div>"
+        )
+
+    if debate.get("enabled"):
+        completed = len(debate.get("completed") or [])
+        failed = len(debate.get("failed") or [])
+        cards.append(
+            "<div class='summary-card'><h3>成员答辩</h3>"
+            f"<p>enabled · completed {esc(completed)}</p>"
+            f"<p class='meta'>failed {esc(failed)} · rounds {esc(debate.get('rounds'))}</p></div>"
         )
 
     if chairman.get("fallback_used") or chairman.get("fallback_from"):
@@ -1222,7 +1247,7 @@ def summarize_acp_tool_state(manifest: dict[str, Any]) -> dict[str, Any]:
 def iter_stage_records(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     stages = manifest.get("stages") if isinstance(manifest.get("stages"), dict) else {}
     records: list[dict[str, Any]] = []
-    for stage_name in ("stage1", "stage2"):
+    for stage_name in ("stage1", "stage2", "stage2_5"):
         stage_items = stages.get(stage_name)
         if isinstance(stage_items, list):
             records.extend(item for item in stage_items if isinstance(item, dict))
@@ -1240,6 +1265,7 @@ def render_model_performance_summary(manifest: dict[str, Any]) -> str:
     stages = manifest.get("stages") if isinstance(manifest.get("stages"), dict) else {}
     stage1 = stages.get("stage1") if isinstance(stages.get("stage1"), list) else []
     stage2 = stages.get("stage2") if isinstance(stages.get("stage2"), list) else []
+    stage2_5 = stages.get("stage2_5") if isinstance(stages.get("stage2_5"), list) else []
     stage3 = stages.get("stage3") if isinstance(stages.get("stage3"), dict) else {}
     rows = []
     for item in stage1:
@@ -1250,6 +1276,10 @@ def render_model_performance_summary(manifest: dict[str, Any]) -> str:
         if not isinstance(item, dict):
             continue
         rows.append(_performance_row(item.get("model", "?"), "阶段 2", item))
+    for item in stage2_5:
+        if not isinstance(item, dict):
+            continue
+        rows.append(_performance_row(item.get("model", "?"), "阶段 2.5", item))
     if stage3:
         rows.append(_performance_row(stage3.get("model", "?"), "阶段 3", stage3))
     if not rows:
@@ -1315,9 +1345,9 @@ def render_alerts(
     return "".join(alerts)
 
 
-def render_trace(stage1: list[Any], stage2: list[Any], stage3: dict[str, Any] | None) -> str:
+def render_trace(stage1: list[Any], stage2: list[Any], stage3: dict[str, Any] | None, *, stage2_5: list[Any] | None = None) -> str:
     rows: list[str] = []
-    for stage_name, items in (("stage1", stage1), ("stage2", stage2)):
+    for stage_name, items in (("stage1", stage1), ("stage2", stage2), ("stage2_5", stage2_5 or [])):
         for item in items:
             if not isinstance(item, dict):
                 continue
@@ -1342,6 +1372,12 @@ def render_trace(stage1: list[Any], stage2: list[Any], stage3: dict[str, Any] | 
             f"<div class='cell'><h3>stage3 · 主席</h3><p>{esc(stage3.get('expected_model'))} -> {esc(stage3.get('actual_model'))}</p><p class='meta'>{esc(stage3.get('status'))}{budget_html}</p>{render_acp_tool_state(stage3)}</div>"
         )
     return "<div class='matrix'>" + "".join(rows) + "</div>"
+
+
+def render_stage2_5_section(stage2_5: list[Any], stage2_5_tabs: str) -> str:
+    if not stage2_5:
+        return ""
+    return f"      <details id=\"stage2_5\"><summary>附录 B2 · 成员答辩</summary><div class=\"details-body\">{stage2_5_tabs}</div></details>\n"
 
 
 def render_acp_tool_state(item: dict[str, Any]) -> str:

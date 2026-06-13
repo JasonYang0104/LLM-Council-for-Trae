@@ -8,7 +8,7 @@
 
 ## Highlights
 
-- **三阶段 council run**：Stage 1 独立回答，Stage 2 匿名互评排序，Stage 3 主席综合。
+- **三阶段 council run**：Stage 1 独立回答，Stage 2 匿名互评排序，Stage 3 主席综合；传 `--debate` 时在 Stage 2 和 Stage 3 之间插入一轮可审计成员答辩。
 - **traecli-first runtime**：默认通过 `traecli` 调用模型，不维护第二套模型清单。
 - **显式 runtime override**：默认 runtime 仍是 traecli；当 `traecli models --json` 返回空列表、失败或超时，但 `coco` 入口有证据可用时，外层 Agent 可以显式传 `--runtime-command coco`。coco 只在显式 override 中使用；这不是 CLI silent fallback，也不是把默认入口改写为 `coco`。
 - **主动模型选择**：只传问题文件时，CLI 会读取当前 `traecli models --json`，展示模型列表和推荐 council 套装，再询问是否采用；models --recommend 只会从成员整体优先级中推荐可用模型，并排除 Seed/Doubao/GLM 模型。
@@ -278,6 +278,8 @@ chairman: DeepSeek-V4-Pro
 
 `--default-models` 始终使用这套静态默认阵容。run 内 auto-backfill 默认启用：默认 auto-backfill 只从成员整体优先级中选择候补，排除 primary members、已尝试成员、主席和当前不可用/不安全模型；不会追加未批准的 runtime safe models。显式传 `--backfill-members` 时，CLI 按显式列表过滤后使用。在同一个 run 内追加候补只为补到 3 个有效成员；它不整轮重跑，也不会把已成功 Stage 1 输出替换掉。交付索引里只能记录 terminal manifest 的 `metadata.quorum.backfill_candidates`；如果没有记录则写 `not recorded`，不得从默认成员阵容或 `models --recommend --json` 的 primary roster 替代。
 
+可选质询轮通过 `--debate` 启用。启用后，CLI 会在 Stage 2 匿名互评之后、Stage 3 主席综合之前生成 Stage 2.5：每个有效 Stage 1 成员只看到针对自己的匿名批评材料，并输出一份答辩。未传 `--debate` 时不会生成 `stage2_5/`，现有 Stage 1 / 2 / 3 prompt 和 artifact 结构保持旧路径。
+
 如果用户明确要挑成员或指定主席，外层 Agent 可以进入 agent-assisted 自选模型路径：先读取当前模型清单，必要时用 `AskUserQuestionTool` 展示选择卡片；工具不可用时使用文本 fallback。该路径必须调用独立参数 `--selected-members` / `--selected-chairman`，不要复用原生 `--members`。原生 `--members` 是 power-user 精确路径，给几个跑几个，不补足、不裁剪；agent-assisted 自选路径才会归一化到 3 并记录 `selection_surface=agent_assisted`、用户请求、解析结果、补足成员、裁剪成员和最终 config。
 
 模型选择意图边界必须分清。用户只问“有什么模型”时，只展示 `models --recommend --json` / 当前模型清单和推荐套装，不擅自启动 run。用户说“我想指定模型”“我想自己选模型”“想挑成员/指定主席/比较模型阵容”，但想指定模型但没有给具体模型时，外层 Agent 应先读取当前模型清单和推荐阵容，再追问用户或给文本 fallback；拿到选择后再传 `--selected-members/--selected-chairman`。`--selected-chairman` 当前不能单独出现；如果只想指定主席且成员保持默认，需明确改用原生 `--members/--chairman` 并说明这是 power-user 精确路径。
@@ -325,6 +327,7 @@ llm-council-for-trae validate demo-direct --json
 |---|---|---|
 | Stage 1 | 多个模型分别回答同一个问题 | `stage1/*.response.md`、`stage1/*.meta.json` |
 | Stage 2 | 把 Stage 1 回答匿名成 `Response A/B/C`，让模型互评排序 | `stage2/*.review.md`、`stage2/*.review.json`、`stage2/aggregate.json` |
+| Stage 2.5（可选） | 传 `--debate` 时，成员回应针对自己的匿名批评 | `stage2_5/*.rebuttal.md`、`stage2_5/*.meta.json` |
 | Stage 3 | 主席模型读取问题、候选回答、互评结果，生成最终答案 | `stage3/final.md`、`stage3/final.json` |
 | HTML | 把已保存 artifacts 渲染成单文件报告 | `html/index.html`、`html/export.json` |
 
@@ -337,7 +340,7 @@ HTML export 是独立步骤。主席模型只负责 Stage 3 综合，HTML 只负
 | `llm-council-for-trae doctor --json` | 检查 traecli 和本 CLI 状态 | 否 |
 | `llm-council-for-trae models --recommend --json` | 列出 `traecli` 当前可用模型和推荐 council 套装 | 否 |
 | `llm-council-for-trae subagents --json` | 检查项目级 fixed council subagent 模板 | 否 |
-| `llm-council-for-trae run --input <file> --json` | 先询问模型选择，再执行 Stage 1 / 2 / 3，并默认导出 HTML | 是 |
+| `llm-council-for-trae run --input <file> --json` | 先询问模型选择，再执行 Stage 1 / 2 / 可选 2.5 / 3，并默认导出 HTML | 是 |
 | `llm-council-for-trae show <run_id> --json` | 读取 run manifest | 否 |
 | `llm-council-for-trae validate <run_id> --json` | 校验 artifact 完整性、模型一致性和 schema contract | 否 |
 | `llm-council-for-trae replay <run_id> --stage stage3` | 打印已保存 prompt，方便复查 | 否 |
@@ -411,6 +414,9 @@ stage2/A.review.md
 stage2/A.review.json
 stage2/aggregate.json
 stage2/label_to_model.json
+stage2_5/A.rebuttal.prompt.md    # 仅 --debate
+stage2_5/A.rebuttal.md           # 仅 --debate
+stage2_5/A.meta.json             # 仅 --debate
 stage3/chairman.prompt.md
 stage3/final.md
 stage3/final.json
@@ -429,6 +435,7 @@ html/export.json
 - manifest、stage meta、review json、final json、html export json 是否包含最小必填字段和正确类型。
 - Stage 1 / 2 / 3 的 expected model 和 actual model 是否一致。
 - Stage 2 ranking 是否能解析出有效排序。
+- Stage 2.5 启用时，参与者是否来自有效 Stage 1 成员、答辩文件是否完整、ACP transcript 是否进入证据校验。
 - subagent mode 是否真的触发 traecli Agent tool，而不是普通 prompt 直答。
 - HTML export JSON 是否存在并可被消费。
 

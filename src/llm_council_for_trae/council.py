@@ -57,6 +57,7 @@ class CouncilConfig:
     chairman_contribution_enabled: bool = True
     chairman_contribution_required: bool = False
     chairman_contribution_repair_attempts: int = 2
+    debate_enabled: bool = False
 
     def agent_for_member(self, index: int) -> str | None:
         if not self.member_agents or index >= len(self.member_agents):
@@ -441,6 +442,188 @@ async def stage2_collect_rankings(
     return stage2_results, label_to_model
 
 
+def strip_final_ranking_section(text: str) -> str:
+    if "FINAL RANKING:" not in text:
+        return text.strip()
+    return text.split("FINAL RANKING:", 1)[0].strip()
+
+
+def redact_model_names(text: str, models: list[str]) -> str:
+    redacted = text
+    for model in sorted({model for model in models if model}, key=len, reverse=True):
+        redacted = redacted.replace(model, "[模型名已隐藏]")
+    return redacted
+
+
+def build_stage2_5_prompt(
+    user_query: str,
+    target: dict[str, Any],
+    stage2_results: list[dict[str, Any]],
+    stage1_results: list[dict[str, Any]],
+) -> str:
+    models = [str(result.get("model")) for result in stage1_results if result.get("model")]
+    target_label = str(target.get("label") or f"Response {target.get('file_label', '?')}")
+    target_response = redact_model_names(str(target.get("response") or ""), models)
+    review_blocks: list[str] = []
+    for index, review in enumerate([item for item in stage2_results if item.get("status") == "ok"], start=1):
+        prose = strip_final_ranking_section(str(review.get("ranking") or ""))
+        prose = redact_model_names(prose, models)
+        if prose:
+            review_blocks.append(f"评审 {index}：\n{prose}")
+    reviews_text = "\n\n".join(review_blocks) if review_blocks else "没有可用的匿名评审 prose。"
+    safe_query = redact_model_names(user_query, models)
+    return f"""你正在参加 LLM Council 的 Stage 2.5 质询轮。
+
+{DEFAULT_READER_LANGUAGE_INSTRUCTION}
+
+用户原始问题：
+{safe_query}
+
+你的匿名回答标签：{target_label}
+
+你的 Stage 1 原回答：
+{target_response}
+
+以下是匿名评审对所有候选回答的批评材料。评审者身份和最终排序已被移除；你只需要回应其中涉及 {target_label} 的批评。
+
+{reviews_text}
+
+请输出一份有界答辩，必须包含三部分：
+1. 承认成立的批评：哪些批评成立，你会如何修正。
+2. 反驳不成立的批评：哪些批评不成立，理由是什么。
+3. 修正后立场：给出你当前的最新结论；如维持原立场，也要说明理由。
+
+不要猜测评审者或其他回答背后的模型身份。不要输出 FINAL RANKING。"""
+
+
+async def stage2_5_collect_rebuttals(
+    user_query: str,
+    stage1_results: list[dict[str, Any]],
+    stage2_results: list[dict[str, Any]],
+    config: CouncilConfig,
+    provider: ModelRuntime,
+    store: ArtifactStore,
+) -> list[dict[str, Any]]:
+    if not config.debate_enabled:
+        return []
+
+    participants = [result for result in stage1_results if stage1_record_is_valid(result)]
+    output_dir = store.path("stage2_5")
+    task_map: dict[asyncio.Task, tuple[int, dict[str, Any], str, str, str]] = {}
+    for index, target in enumerate(participants):
+        model = str(target["model"])
+        label = stage_file_label(target, index)
+        prompt = build_stage2_5_prompt(user_query, target, stage2_results, participants)
+        prompt_path = f"stage2_5/{label}.rebuttal.prompt.md"
+        store.write_text(prompt_path, prompt + "\n")
+        task = asyncio.create_task(
+            provider.query_model(
+                model=model,
+                prompt=prompt,
+                run_id=store.root.name,
+                stage="stage2_5",
+                label=label,
+                output_dir=output_dir,
+                agent=config.agent_for_member(config.members.index(model)) if model in config.members else None,
+            )
+        )
+        task_map[task] = (index, target, model, label, prompt_path)
+
+    call_results: list[ModelCallResult | None] = [None] * len(participants)
+    stage_timeout = max(config.query_timeout + 30, 240)
+    loop = asyncio.get_running_loop()
+    stage_start = loop.time()
+    pending: set[asyncio.Task] = set(task_map.keys())
+
+    try:
+        while pending:
+            elapsed = loop.time() - stage_start
+            remaining = stage_timeout - elapsed
+            if remaining <= 0:
+                store.event("stage2_5_timeout", {"elapsed_seconds": round(elapsed, 2)})
+                break
+            done, pending = await asyncio.wait(
+                pending,
+                timeout=min(10, max(0.01, remaining)),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in done:
+                idx, _target, model, label, _prompt_path = task_map[task]
+                try:
+                    call_results[idx] = task.result()
+                except (asyncio.CancelledError, Exception) as exc:
+                    call_results[idx] = synthetic_failed_call(
+                        model,
+                        f"cancelled_by_stage2_5_timeout: {exc}",
+                        config,
+                        stdout_path=runtime_stdout_path(config.runtime_backend, label),
+                        stderr_path=runtime_stderr_path(config.runtime_backend, label),
+                        acp_transcript_path=runtime_acp_transcript_path(config.runtime_backend, "stage2_5", label),
+                    )
+    finally:
+        await cancel_and_drain(pending)
+
+    for task, (idx, _target, model, label, _prompt_path) in task_map.items():
+        if call_results[idx] is None:
+            call_results[idx] = synthetic_failed_call(
+                model,
+                "cancelled_by_stage2_5_timeout",
+                config,
+                stdout_path=runtime_stdout_path(config.runtime_backend, label),
+                stderr_path=runtime_stderr_path(config.runtime_backend, label),
+                acp_transcript_path=runtime_acp_transcript_path(config.runtime_backend, "stage2_5", label),
+            )
+
+    rebuttals: list[dict[str, Any]] = []
+    for target, call in zip(participants, call_results):
+        label = stage_file_label(target, 0)
+        if call is None:
+            call = synthetic_failed_call(
+                str(target["model"]),
+                "cancelled_by_stage2_5_timeout",
+                config,
+                stdout_path=runtime_stdout_path(config.runtime_backend, label),
+                stderr_path=runtime_stderr_path(config.runtime_backend, label),
+                acp_transcript_path=runtime_acp_transcript_path(config.runtime_backend, "stage2_5", label),
+            )
+        status = call.status
+        error = call.error
+        if status == "ok" and not call.response.strip():
+            status = "failed"
+            error = "empty_rebuttal"
+        store.write_text(f"stage2_5/{label}.rebuttal.md", call.response + "\n")
+        store.write_json(f"stage2_5/{label}.meta.json", call.to_json() | {"captured_at": utc_now()})
+        if call.runtime_backend == "direct":
+            stream_path = output_dir / f"{label}.traecli.stream.jsonl"
+            if not stream_path.exists() or stream_path.stat().st_size == 0:
+                stream_text = call.response or error or status
+                store.write_text(f"stage2_5/{label}.traecli.stream.jsonl", stream_text + "\n")
+        rebuttals.append(
+            {
+                "label": target.get("label"),
+                "file_label": label,
+                "model": target.get("model"),
+                "expected_model": call.expected_model,
+                "actual_model": call.actual_model,
+                "agent": call.agent,
+                "subagent_invocation": call.subagent_invocation,
+                "status": status,
+                "error": error,
+                "prompt_path": f"stage2_5/{label}.rebuttal.prompt.md",
+                "response_path": f"stage2_5/{label}.rebuttal.md",
+                "meta_path": f"stage2_5/{label}.meta.json",
+                "response": call.response,
+                "tool_calls_count": call.tool_calls_count,
+                "turns_count": call.turns_count,
+                "tool_budget_status": call.tool_budget_status,
+                "raw_partial_recoverable": call.raw_partial_recoverable,
+                "retried": call.retried,
+                "retry_error": call.retry_error,
+            } | tool_policy_record(call)
+        )
+    return rebuttals
+
+
 async def backfill_stage2_reviewers(
     user_query: str,
     review_subjects: list[dict[str, Any]],
@@ -676,6 +859,7 @@ async def stage3_synthesize_final(
     provider: ModelRuntime,
     store: ArtifactStore,
     fallback_chain: list[str] | None = None,
+    rebuttal_results: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     label_to_model = {
         result["label"]: result["model"]
@@ -692,6 +876,7 @@ async def stage3_synthesize_final(
         stage2_results,
         aggregate_rankings=aggregate_rankings,
         contribution_map_enabled=config.chairman_contribution_enabled,
+        rebuttal_results=rebuttal_results,
     )
     store.write_text("stage3/chairman.prompt.md", chairman_prompt + "\n")
 
@@ -1037,6 +1222,7 @@ def build_stage3_prompt(
     stage2_results: list[dict[str, Any]],
     aggregate_rankings: list[dict[str, Any]] | None = None,
     contribution_map_enabled: bool = True,
+    rebuttal_results: list[dict[str, Any]] | None = None,
 ) -> str:
     stage1_text = "\n\n".join(
         f"{result.get('label', 'Response ?')}:\nModel: {result['model']}\nResponse: {result['response']}" for result in stage1_results
@@ -1067,6 +1253,21 @@ def build_stage3_prompt(
                 f"rankings_count={item.get('rankings_count')} | positions={positions}"
             )
         aggregate_text = "\n".join(aggregate_lines)
+    rebuttal_section = ""
+    rebuttal_instruction = ""
+    if rebuttal_results:
+        rebuttal_text = "\n\n".join(
+            f"{result.get('label', 'Response ?')} | model={result.get('model')}:\n{result.get('response', '')}"
+            for result in rebuttal_results
+            if result.get("status") == "ok" and str(result.get("response") or "").strip()
+        )
+        if rebuttal_text:
+            rebuttal_section = f"""
+
+阶段 2.5 - 成员答辩：
+{rebuttal_text}
+"""
+            rebuttal_instruction = "\n- Stage 2.5 答辩中的让步或修正代表该成员最新立场；与原答案冲突时，以答辩后的修正为准。"
     contribution_instruction = ""
     if contribution_map_enabled:
         contribution_instruction = """
@@ -1116,12 +1317,12 @@ Contribution map 输出约束：
 {stage2_text}
 
 Stage 2 综合排序（按 average_rank 从低到高，越靠前代表同侪排序越好）：
-{aggregate_text}
+{aggregate_text}{rebuttal_section}
 
 你的任务是综合以上所有信息，给出一个直接、清晰、有判断力的综述答案。请考虑：
 - 各个回答提供的有效洞察。
 - 同侪排序反映出的回答质量差异。
-- 模型之间的一致意见和分歧。
+- 模型之间的一致意见和分歧。{rebuttal_instruction}
 - 必须显式融合 top-ranked responses 的不同洞察，尤其是综合排序靠前回答的关键证据、判断和边界条件。
 
 重要：
@@ -1393,6 +1594,18 @@ async def run_full_council(
         store.write_manifest(manifest)
         return manifest
     stage2_degraded = any(r.get("status") != "ok" for r in stage2_results)
+    stage2_5_results: list[dict[str, Any]] = []
+    if config.debate_enabled:
+        store.event("stage2_5_start")
+        stage2_5_results = await stage2_5_collect_rebuttals(user_query, valid_stage1, stage2_results, config, provider, store)
+        manifest["stages"]["stage2_5"] = stage2_5_results
+        manifest["metadata"]["debate"] = debate_metadata(config, stage2_5_results)
+        for item in stage2_5_results:
+            if item.get("status") != "ok":
+                manifest["warnings"].append(
+                    f"stage2_5 rebuttal unavailable for {item.get('label') or item.get('model')}: {item.get('error') or item.get('status')}"
+                )
+        store.write_manifest(manifest)
 
     fallback_chain = config.chairman_fallback
     if not fallback_chain:
@@ -1400,10 +1613,17 @@ async def run_full_council(
         fallback_chain = CHAIRMAN_FALLBACK_CHAIN
 
     store.event("stage3_start", {"chairman": config.chairman})
-    stage3_result, chairman_meta = await stage3_synthesize_final(
-        user_query, valid_stage1, stage2_results, config, provider, store,
-        fallback_chain=fallback_chain,
-    )
+    if config.debate_enabled:
+        stage3_result, chairman_meta = await stage3_synthesize_final(
+            user_query, valid_stage1, stage2_results, config, provider, store,
+            fallback_chain=fallback_chain,
+            rebuttal_results=stage2_5_results,
+        )
+    else:
+        stage3_result, chairman_meta = await stage3_synthesize_final(
+            user_query, valid_stage1, stage2_results, config, provider, store,
+            fallback_chain=fallback_chain,
+        )
     manifest["stages"]["stage3"] = stage3_result
     manifest["metadata"]["chairman"] = chairman_meta
     contribution_path = "stage3/contribution_map.json"
@@ -1468,6 +1688,8 @@ def initial_metadata(config: CouncilConfig) -> dict[str, Any]:
         "aggregate_rankings": [],
         "chairman_contribution": chairman_contribution_metadata(config),
     }
+    if config.debate_enabled:
+        metadata["debate"] = debate_metadata(config)
     if config.model_selection_provenance:
         metadata["model_selection"] = config.model_selection_provenance
     return metadata
@@ -1492,8 +1714,27 @@ def chairman_contribution_metadata(
     }
 
 
-def config_to_json(config: CouncilConfig) -> dict[str, Any]:
+def debate_metadata(config: CouncilConfig, rebuttals: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    rebuttals = rebuttals or []
+    participants = [str(item.get("model")) for item in rebuttals if item.get("model")]
+    completed = [str(item.get("model")) for item in rebuttals if item.get("model") and item.get("status") == "ok"]
+    failed = [str(item.get("model")) for item in rebuttals if item.get("model") and item.get("status") != "ok"]
     return {
+        "enabled": bool(config.debate_enabled),
+        "rounds": 1 if config.debate_enabled else 0,
+        "participants": participants,
+        "participant_labels": [str(item.get("label")) for item in rebuttals if item.get("label")],
+        "completed": completed,
+        "completed_labels": [str(item.get("label")) for item in rebuttals if item.get("label") and item.get("status") == "ok"],
+        "failed": failed,
+        "failed_labels": [str(item.get("label")) for item in rebuttals if item.get("label") and item.get("status") != "ok"],
+        "failed_all": bool(config.debate_enabled and participants and not completed),
+        "review_material": "stage2_reviews_ranking_stripped_reviewer_anonymized" if config.debate_enabled else None,
+    }
+
+
+def config_to_json(config: CouncilConfig) -> dict[str, Any]:
+    payload = {
         "members": config.members,
         "chairman": config.chairman,
         "provider_mode": config.provider_mode,
@@ -1528,6 +1769,9 @@ def config_to_json(config: CouncilConfig) -> dict[str, Any]:
         "chairman_contribution_required": config.chairman_contribution_required,
         "chairman_contribution_repair_attempts": config.chairman_contribution_repair_attempts,
     }
+    if config.debate_enabled:
+        payload["debate_enabled"] = True
+    return payload
 
 
 def build_model_runtime(

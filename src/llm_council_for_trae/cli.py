@@ -75,6 +75,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--chairman-contribution-map", dest="chairman_contribution_map", action="store_true", default=None, help="Compatibility alias: Stage 3 requests a contribution-map sidecar by default.")
     run_p.add_argument("--no-chairman-contribution-map", dest="chairman_contribution_map", action="store_false", help="Do not ask Stage 3 to emit a contribution-map sidecar.")
     run_p.add_argument("--require-chairman-contribution-map", action="store_true", help="Fail validation when the contribution-map sidecar is missing or invalid.")
+    run_p.add_argument("--debate", action="store_true", help="Enable one fixed Stage 2.5 rebuttal round before chairman synthesis.")
     run_p.add_argument("--json", dest="json_output", action="store_true", default=argparse.SUPPRESS)
     run_p.set_defaults(func=cmd_run)
 
@@ -305,6 +306,7 @@ def build_config(args: argparse.Namespace) -> CouncilConfig:
         model_selection_provenance=model_selection_provenance,
         chairman_contribution_enabled=bool(chairman_contribution_requested),
         chairman_contribution_required=chairman_contribution_required,
+        debate_enabled=bool(getattr(args, "debate", False)),
     )
 
 
