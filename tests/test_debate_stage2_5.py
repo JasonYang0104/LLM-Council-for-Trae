@@ -499,7 +499,12 @@ class DebateStage25Tests(unittest.TestCase):
         self.assertIn('id="stage2_5"', html)
         self.assertIn("成员答辩", html)
         self.assertIn("Rebuttal text.", html)
-        self.assertIn("completed 1", html)
+        summary = html[html.index('id="decision-summary"'):html.index('id="final-answer"')]
+        self.assertNotIn("enabled · completed", summary)
+        self.assertNotIn("failed 0 · rounds", summary)
+        self.assertIn("已完成：1 位成员", summary)
+        self.assertIn("1 轮", summary)
+        self.assertIn("失败：0 位", summary)
 
     def test_validate_routes_stage2_5_acp_records_through_evidence_gate(self):
         with tempfile.TemporaryDirectory() as tmp:

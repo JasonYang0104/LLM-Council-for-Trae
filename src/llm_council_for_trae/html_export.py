@@ -1069,10 +1069,17 @@ def render_summary_cards(manifest: dict[str, Any], aggregate: list[dict[str, Any
     if debate.get("enabled"):
         completed = len(debate.get("completed") or [])
         failed = len(debate.get("failed") or [])
+        rounds = debate.get("rounds")
+        rounds_text = f"{rounds} 轮" if rounds is not None else "轮次未记录"
+        completed_text = (
+            f"已完成：{completed} 位成员"
+            if completed
+            else "未完成有效答辩"
+        )
         cards.append(
             "<div class='summary-card'><h3>成员答辩</h3>"
-            f"<p>enabled · completed {esc(completed)}</p>"
-            f"<p class='meta'>failed {esc(failed)} · rounds {esc(debate.get('rounds'))}</p></div>"
+            f"<p>{esc(completed_text)} · {esc(rounds_text)}</p>"
+            f"<p class='meta'>失败：{esc(failed)} 位</p></div>"
         )
 
     if chairman.get("fallback_used") or chairman.get("fallback_from"):
@@ -1087,9 +1094,7 @@ def render_summary_cards(manifest: dict[str, Any], aggregate: list[dict[str, Any
         search_text = f"调用次数：{search['lct_web_tool_calls']}"
         cards.append(f"<div class='summary-card'><h3>搜索工具</h3><p>{esc(search_text)}</p></div>")
     acp_state = summarize_acp_tool_state(manifest)
-    if acp_state["state"] == "not_applicable":
-        cards.append("<div class='summary-card'><h3>ACP 工具证据</h3><p>not_applicable</p></div>")
-    else:
+    if acp_state["state"] != "not_applicable":
         cards.append(
             "<div class='summary-card'><h3>ACP 工具证据</h3>"
             f"<p>Allowed {esc(acp_state['allowed_count'])} · Disabled {esc(acp_state['disabled_count'])}</p>"

@@ -88,7 +88,7 @@
     "stage3/final.traecli.stream.jsonl"
   ],
   "html_checks": {
-    "chars": 67866,
+    "chars": 67796,
     "contains_final_answer": true,
     "contains_search_summary": false,
     "contains_stage1_appendix": true,
