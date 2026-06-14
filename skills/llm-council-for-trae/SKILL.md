@@ -1,13 +1,13 @@
 ---
 name: llm-council-for-trae
-description: 当用户要求安装/更新 LCT、从 GitHub main 全局安装最新版 LCT、使用 LCT、跑 LCT、council run、用委员会回答、让多个模型讨论，或需要 LLM-Council-for-Trae 生成可复盘答案时使用。默认在干净问题 workspace 中调用全局安装的 llm-council-for-trae CLI，运行后必须 validate，并汇报最终答案与 HTML artifact。
+description: 当用户要求安装/更新 LCT、从 GitHub main 全局安装最新版 LCT、使用 LCT、跑 LCT、council run、用委员会回答、用智囊团回答，或需要 LLM-Council-for-Trae 生成可复盘综合答案时使用。默认在干净问题 workspace 中调用全局安装的 llm-council-for-trae CLI，运行后必须 validate，并汇报最终答案与 HTML artifact。
 ---
 
 # LLM-Council-for-Trae Workflow
 
 ## Trigger
 
-当用户说“安装 LCT”“更新 LCT”“从 GitHub main 全局安装最新版 LCT”“使用 LCT”“跑 LCT”“council run”“用委员会回答”“让多个模型讨论”或明确要求 `LLM-Council-for-Trae` 时触发。
+当用户说“安装 LCT”“更新 LCT”“从 GitHub main 全局安装最新版 LCT”“使用 LCT”“跑 LCT”“council run”“用委员会回答”“用智囊团回答”“主席综合”或明确要求 `LLM-Council-for-Trae` 时触发。单独说“Trae 多模型”或“用 Trae 多模型做/评估/分析”不触发本 Skill，优先交给 raw fanout。
 
 当用户明确说“启用 debate”“开质询轮”“让成员答辩”“加一轮反驳”“challenge”“rebuttal”“互相挑战”或“让成员回应批评后再综合”时，仍按本 Skill 触发，并且 run 命令必须追加 `--debate`。只说“多模型讨论”“多模型评估”“深入评估”或“更严格评审”不自动启用 debate；普通 LCT run 保持 Stage 1 / Stage 2 / Stage 3 三阶段，不追加 `--debate`。
 
