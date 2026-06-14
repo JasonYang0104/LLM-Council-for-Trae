@@ -51,7 +51,23 @@ Keep three directories separate. 中文口径：开发仓库、`~/.LCT` 全局�
 
 ## 4. Prerequisites
 
-Check `traecli` first:
+Agent shell may not inherit the user's interactive shell PATH. Always prepend the user-level bin directory before checking LCT or TraeCLI commands:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+command -v traecli
+command -v llm-council-for-trae
+test -x "$HOME/.local/bin/traecli"
+test -x "$HOME/.local/bin/llm-council-for-trae"
+```
+
+Use these status names consistently:
+
+- `not_installed`: `command -v <cmd>` and `$HOME/.local/bin/<cmd>` both fail or are not executable.
+- `installed_but_not_on_agent_path`: `command -v <cmd>` fails, but `$HOME/.local/bin/<cmd>` is executable. This is not a runtime override; fix PATH and continue the default `traecli` path.
+- `models_empty_or_runtime_unhealthy`: the command is executable, but `models --json` is empty, fails, times out, or returns no structured output.
+
+Check `traecli` after PATH preflight:
 
 ```bash
 traecli --version
@@ -62,7 +78,7 @@ traecli models --json
 
 If `traecli` is not installed or not logged in, use `docs/traecli-installation-and-paths.md`.
 
-Runtime override rule: 默认 runtime 仍是 traecli，coco 只在显式 override 中使用. If `traecli models --json` returns an empty list, fails, times out, or produces no structured output, the operator may probe `coco` before declaring live LCT unavailable. This is a runtime override, not CLI silent fallback.
+Runtime override rule: 默认 runtime 仍是 traecli，coco 只在显式 override 中使用. If `traecli models --json` returns an empty list, fails, times out, or produces no structured output, the operator may probe `coco` before declaring live LCT unavailable. This is a runtime override, not CLI silent fallback. `installed_but_not_on_agent_path` is not a runtime override trigger; after `export PATH="$HOME/.local/bin:$PATH"`, continue the default `traecli` path.
 
 The probe must record default-entry evidence and then check the override entry:
 
@@ -84,7 +100,7 @@ llm-council-for-trae --runtime-command coco validate <run_id> --json
 
 ## 5. Install Or Update LCT In `~/.LCT`
 
-Natural-language install intent: when the user says `请从 GitHub 仓库 https://github.com/JasonYang0104/LLM-Council-for-Trae 的最新版 LCT`, treat it as 等同于从 GitHub main 安装或更新. 必须使用 `~/.LCT + make install-global`: clone/fetch/pull `~/.LCT`, then run `make -C ~/.LCT install-global`; 不得使用 `uv tool install`. 安装成功必须同时证明: `~/.LCT HEAD == GitHub refs/heads/main`, the `command -v llm-council-for-trae` wrapper 包含 `.LCT/src`, and the Skill symlink 指向 `~/.LCT/skills/llm-council-for-trae`.
+Natural-language install intent: when the user says `请从 GitHub 仓库 https://github.com/JasonYang0104/LLM-Council-for-Trae 的最新版 LCT`, treat it as 等同于从 GitHub main 安装或更新. 必须使用 `~/.LCT + make install-global`: clone/fetch/pull `~/.LCT`, then run `make -C ~/.LCT install-global`; 不得使用 `uv tool install`. 安装成功必须同时证明: `~/.LCT HEAD == GitHub refs/heads/main`, `command -v llm-council-for-trae` is visible or `$HOME/.local/bin/llm-council-for-trae` fallback wrapper 指向 `$HOME/.LCT/src`, wrapper 包含 `.LCT/src`, and the Skill symlink 指向 `~/.LCT/skills/llm-council-for-trae`.
 
 Fresh install:
 
@@ -103,6 +119,7 @@ git -C ~/.LCT pull --ff-only origin main
 Verification:
 
 ```bash
+export PATH="$HOME/.local/bin:$PATH"
 test -d ~/.LCT/.git
 test -d ~/.LCT/src/llm_council_for_trae
 git -C ~/.LCT remote get-url origin
@@ -117,6 +134,15 @@ git -C ~/.LCT log --oneline -3
 ```
 
 For a user request to install the latest LCT from GitHub main, `~/.LCT HEAD == GitHub refs/heads/main` is required. The operator notes must record each actual command, exit code, key stdout/stderr, and pass/fail result, including the GitHub SHA comparison.
+
+If `command -v llm-council-for-trae` fails but `$HOME/.local/bin/llm-council-for-trae` is executable, report `installed_but_not_on_agent_path`, not `not_installed`, and validate the wrapper fallback before continuing:
+
+```bash
+head -5 "$HOME/.local/bin/llm-council-for-trae"
+grep -F '.LCT/src' "$HOME/.local/bin/llm-council-for-trae"
+```
+
+The wrapper 指向 `$HOME/.LCT/src` check is the freshness signal; after PATH is fixed, rerun `command -v llm-council-for-trae` and the normal checks.
 
 Keep `~/.LCT` clean. Do development work in a separate development repo or worktree.
 
@@ -146,9 +172,12 @@ chmod +x ~/.local/bin/llm-council-for-trae
 Verification:
 
 ```bash
+export PATH="$HOME/.local/bin:$PATH"
 command -v llm-council-for-trae
 head -5 "$(command -v llm-council-for-trae)"
 grep -F '.LCT/src' "$(command -v llm-council-for-trae)"
+head -5 "$HOME/.local/bin/llm-council-for-trae"
+grep -F '.LCT/src' "$HOME/.local/bin/llm-council-for-trae"
 llm-council-for-trae --help
 PYTHONPATH="$HOME/.LCT/src${PYTHONPATH:+:$PYTHONPATH}" python3 - <<'PY'
 from pathlib import Path

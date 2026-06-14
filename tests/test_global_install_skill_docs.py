@@ -33,6 +33,72 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
             "docs/lct-deployment-guide-20260601.md",
         ]
 
+    def test_agent_path_preflight_status_contract_is_documented(self):
+        required_terms = [
+            'export PATH="$HOME/.local/bin:$PATH"',
+            "command -v traecli",
+            "command -v llm-council-for-trae",
+            "installed_but_not_on_agent_path",
+            "not_installed",
+            "models_empty_or_runtime_unhealthy",
+            "$HOME/.local/bin/traecli",
+            "$HOME/.local/bin/llm-council-for-trae",
+        ]
+        for relative in self.runtime_override_main_docs():
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+
+    def test_agent_path_gap_is_not_runtime_override_trigger(self):
+        required_terms = [
+            "installed_but_not_on_agent_path",
+            "不是 runtime override",
+            "补 PATH",
+            "继续默认 `traecli`",
+            "runtime override",
+            "models_empty_or_runtime_unhealthy",
+        ]
+        forbidden_patterns = [
+            r"installed_but_not_on_agent_path[\s\S]{0,220}(?:--runtime-command\s+coco|coco models --json)",
+            r"PATH[\s\S]{0,220}自动\s*fallback\s*到\s*`?coco`?",
+        ]
+        for relative in self.runtime_override_main_docs():
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+                for pattern in forbidden_patterns:
+                    self.assertIsNone(re.search(pattern, text, re.IGNORECASE), pattern)
+
+    def test_install_freshness_checks_use_local_bin_wrapper_fallback(self):
+        required_terms = [
+            "$HOME/.local/bin/llm-council-for-trae",
+            "command -v llm-council-for-trae",
+            "installed_but_not_on_agent_path",
+            "wrapper 指向 `$HOME/.LCT/src`",
+            "head -5 \"$HOME/.local/bin/llm-council-for-trae\"",
+            "grep -F '.LCT/src' \"$HOME/.local/bin/llm-council-for-trae\"",
+        ]
+        for relative in self.runtime_override_main_docs() + self.runtime_override_support_docs():
+            with self.subTest(relative=relative):
+                text = self.read_text(relative)
+                for term in required_terms:
+                    self.assertIn(term, text)
+
+    def test_traecli_installation_doc_records_agent_path_gap_diagnosis(self):
+        text = self.read_text("docs/traecli-installation-and-paths.md")
+        for term in [
+            'export PATH="$HOME/.local/bin:$PATH"',
+            "installed_but_not_on_agent_path",
+            "not_installed",
+            "models_empty_or_runtime_unhealthy",
+            "command -v traecli",
+            "$HOME/.local/bin/traecli",
+            "不是 runtime override",
+        ]:
+            self.assertIn(term, text)
+
     def test_readme_defaults_to_global_install_and_clean_workspace(self):
         readme = self.read_text("README.md")
 

@@ -15,7 +15,7 @@ description: 当用户要求安装/更新 LCT、从 GitHub main 全局安装最�
 
 当用户只要求安装或更新 LCT，而不是立即运行 council，先完成安装并写 `notes.md`，不要把安装成功包装成 E2E 成功。执行顺序：
 
-自然语言安装入口：用户说 `请从 GitHub 仓库 https://github.com/JasonYang0104/LLM-Council-for-Trae 的最新版 LCT` 时，等同于从 GitHub main 安装或更新。必须使用 `~/.LCT + make install-global`：clone/fetch/pull `~/.LCT` 后运行 `make -C "$HOME/.LCT" install-global`；不得使用 `uv tool install`。安装成功必须同时证明：`~/.LCT HEAD == GitHub refs/heads/main`、`command -v llm-council-for-trae` 的 wrapper 包含 `.LCT/src`、Skill symlink 指向 `~/.LCT/skills/llm-council-for-trae`。
+自然语言安装入口：用户说 `请从 GitHub 仓库 https://github.com/JasonYang0104/LLM-Council-for-Trae 的最新版 LCT` 时，等同于从 GitHub main 安装或更新。必须使用 `~/.LCT + make install-global`：clone/fetch/pull `~/.LCT` 后运行 `make -C "$HOME/.LCT" install-global`；不得使用 `uv tool install`。安装成功必须同时证明：`~/.LCT HEAD == GitHub refs/heads/main`、`command -v llm-council-for-trae` 可见或 `$HOME/.local/bin/llm-council-for-trae` fallback wrapper 指向 `$HOME/.LCT/src`、wrapper 包含 `.LCT/src`、Skill symlink 指向 `~/.LCT/skills/llm-council-for-trae`。
 
 ```bash
 if [ ! -d "$HOME/.LCT/.git" ]; then
@@ -27,7 +27,13 @@ git -C "$HOME/.LCT" pull --ff-only origin main
 make -C "$HOME/.LCT" install-global
 ```
 
-安装最新版不能只看 `llm-council-for-trae --version`。必须在 `notes.md` 记录每条 actual command、exit code、key stdout/stderr 和 pass/fail 结论：
+安装最新版不能只看 `llm-council-for-trae --version`。必须在 `notes.md` 记录每条 actual command、exit code、key stdout/stderr 和 pass/fail 结论。先补 Agent PATH：
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+如果 `command -v llm-council-for-trae` 失败，但 `$HOME/.local/bin/llm-council-for-trae` 可执行且 wrapper 指向 `$HOME/.LCT/src`，诊断为 `installed_but_not_on_agent_path`，不是 `not_installed`：
 
 ```bash
 git -C "$HOME/.LCT" remote get-url origin
@@ -37,9 +43,17 @@ git ls-remote https://github.com/JasonYang0104/LLM-Council-for-Trae.git refs/hea
 LOCAL_HEAD="$(git -C "$HOME/.LCT" rev-parse HEAD)"
 GITHUB_MAIN="$(git ls-remote https://github.com/JasonYang0104/LLM-Council-for-Trae.git refs/heads/main | awk '{print $1}')"
 test "$LOCAL_HEAD" = "$GITHUB_MAIN"
-command -v llm-council-for-trae
-head -5 "$(command -v llm-council-for-trae)"
-grep -F '.LCT/src' "$(command -v llm-council-for-trae)"
+LCT_BIN="$(command -v llm-council-for-trae || true)"
+if [ -z "$LCT_BIN" ] && [ -x "$HOME/.local/bin/llm-council-for-trae" ]; then
+  LCT_BIN="$HOME/.local/bin/llm-council-for-trae"
+  echo "installed_but_not_on_agent_path: llm-council-for-trae"
+fi
+test -n "$LCT_BIN"
+head -5 "$LCT_BIN"
+grep -F '.LCT/src' "$LCT_BIN"
+# fallback checks, useful when command -v failed before PATH was repaired:
+head -5 "$HOME/.local/bin/llm-council-for-trae"
+grep -F '.LCT/src' "$HOME/.local/bin/llm-council-for-trae"
 PYTHONPATH="$HOME/.LCT/src${PYTHONPATH:+:$PYTHONPATH}" python3 - <<'PY'
 from pathlib import Path
 import llm_council_for_trae.contribution_map as cm
@@ -53,7 +67,7 @@ assert hasattr(cm, "strip_contribution_map_fence")
 PY
 ```
 
-`~/.LCT HEAD == GitHub refs/heads/main` 是硬门槛。如果 `origin` 不是 `https://github.com/JasonYang0104/LLM-Council-for-Trae.git`、本地 `HEAD` 与 GitHub main SHA 不一致、`command -v` 指向 uv tool、`site-packages`、旧开发 checkout，或 wrapper 不包含 `.LCT/src`，重新执行 `make -C "$HOME/.LCT" install-global` 后再验证。只有以上 freshness checks 通过，才可以说“已从 GitHub main 全局安装最新版 LCT”。
+`~/.LCT HEAD == GitHub refs/heads/main` 是硬门槛。如果 `origin` 不是 `https://github.com/JasonYang0104/LLM-Council-for-Trae.git`、本地 `HEAD` 与 GitHub main SHA 不一致、`command -v` 指向 uv tool、`site-packages`、旧开发 checkout，或 wrapper 不包含 `.LCT/src`，重新执行 `make -C "$HOME/.LCT" install-global` 后再验证。只有以上 freshness checks 通过，才可以说“已从 GitHub main 全局安装最新版 LCT”。如果 `command -v` 不可见但 `$HOME/.local/bin/llm-council-for-trae` 通过上述 wrapper 检查，应报告 `installed_but_not_on_agent_path` 并用补 PATH 后的命令继续验证，不能说成未安装。
 
 ## Preflight
 
@@ -61,10 +75,24 @@ PY
    - `src/llm_council_for_trae/`
    - `.trae/agents/`
    - `profiles/subagents.json`
-2. 确认 `traecli --version` 可用，并记录输出。
-3. 确认 `traecli models --json` 返回非空模型列表。默认 runtime 仍是 traecli；正常路径继续使用 `llm-council-for-trae run` 和 `llm-council-for-trae validate`。
-4. 如果 `traecli models --json` 返回空列表、非 0 退出、明显超时或无结构化输出，不要立刻启动 run，也不要把问题包装成普通 live `traecli` 可用。先记录默认入口阻断证据，再 probe explicit runtime override。runtime override 是外层 Agent 有证据时显式传 `--runtime-command coco`；coco 只在显式 override 中使用；这不是 CLI silent fallback，也不是把默认入口改写为 `coco`。
-5. override probe 必须记录：
+2. 先补 Agent PATH，再检查命令可见性：
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+command -v traecli
+command -v llm-council-for-trae
+test -x "$HOME/.local/bin/traecli"
+test -x "$HOME/.local/bin/llm-council-for-trae"
+```
+
+3. 诊断状态必须分开：
+   - `not_installed`：`command -v <cmd>` 和 `$HOME/.local/bin/<cmd>` 都找不到或不可执行。
+   - `installed_but_not_on_agent_path`：`command -v <cmd>` 找不到，但 `$HOME/.local/bin/<cmd>` 可执行；这不是 runtime override，应补 PATH 后继续默认 `traecli` 路径。
+   - `models_empty_or_runtime_unhealthy`：命令可执行，但 `models --json` 为空、失败、超时或无结构化输出；只有这类默认 runtime health 问题才进入 explicit runtime override probe。
+4. 确认 `traecli --version` 可用，并记录输出。
+5. 确认 `traecli models --json` 返回非空模型列表。默认 runtime 仍是 traecli；正常路径继续使用 `llm-council-for-trae run` 和 `llm-council-for-trae validate`。
+6. 如果 `traecli models --json` 返回空列表、非 0 退出、明显超时或无结构化输出，不要立刻启动 run，也不要把问题包装成普通 live `traecli` 可用。先记录默认入口阻断证据，再 probe explicit runtime override。runtime override 是外层 Agent 有证据时显式传 `--runtime-command coco`；coco 只在显式 override 中使用；这不是 CLI silent fallback，也不是把默认入口改写为 `coco`。`installed_but_not_on_agent_path` 只说明 Agent PATH 缺少 `$HOME/.local/bin`，应补 PATH 后继续默认 `traecli`；这不是 runtime override。该状态到此为止，不进入后续 probe；只有 `models_empty_or_runtime_unhealthy` 才执行下面的 explicit runtime override 取证。
+7. override probe 必须记录：
 
 ```bash
 traecli --version
@@ -76,9 +104,9 @@ llm-council-for-trae --runtime-command coco models --recommend --json
 ```
 
 只有 `coco models --json` 返回非空、`llm-council-for-trae --runtime-command coco doctor --json` 没有非 MCP 阻断错误，并且 `llm-council-for-trae --runtime-command coco models --recommend --json` 的 `recommendation.members` 和 `recommendation.chairman` 都可用时，才允许本次显式 override。
-6. 确认 `command -v llm-council-for-trae` 可找到全局 CLI。
-7. 尽量确认 wrapper 内容指向 `~/.LCT/src`，而不是旧开发 checkout。
-8. 如果 CLI 不可用，提示用户先完成 `~/.LCT` 全局安装，并把本 Skill 安装到 `~/.agents/skills/llm-council-for-trae`。
+8. 确认 `command -v llm-council-for-trae` 可找到全局 CLI；如果不可见但 `$HOME/.local/bin/llm-council-for-trae` 可执行，先按 `installed_but_not_on_agent_path` 补 PATH 并继续。
+9. 尽量确认 wrapper 内容指向 `~/.LCT/src`，而不是旧开发 checkout。
+10. 如果 CLI 不可用，提示用户先完成 `~/.LCT` 全局安装，并把本 Skill 安装到 `~/.agents/skills/llm-council-for-trae`。
 
 ## Input Preparation
 
