@@ -1,0 +1,37 @@
+name: Python CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: python-ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Compile sources
+        run: PYTHONPATH=src python3 -m compileall src
+
+      - name: Run targeted docs contract tests
+        run: PYTHONPATH=src:tests python3 -m unittest tests.test_global_install_skill_docs -v
+
+      - name: Run full test suite
+        run: make test
+
+      - name: Check whitespace
+        run: git diff --check

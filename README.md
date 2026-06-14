@@ -25,7 +25,7 @@
 
 安装或更新时，可以直接对 Agent 说：`请从 GitHub 仓库 https://github.com/JasonYang0104/LLM-Council-for-Trae 安装最新版 LCT。` 这句话等同于从 GitHub main 安装或更新，正确路径是 `~/.LCT + make install-global`，不得使用 `uv tool install`。
 
-自然语言安装入口：用户说 `请从 GitHub 仓库 https://github.com/JasonYang0104/LLM-Council-for-Trae 的最新版 LCT` 时，等同于从 GitHub main 安装或更新。必须使用 `~/.LCT + make install-global`：clone/fetch/pull `~/.LCT` 后运行 `make -C ~/.LCT install-global`；不得使用 `uv tool install`。安装成功必须同时证明：`~/.LCT HEAD == GitHub refs/heads/main`、`command -v llm-council-for-trae` 的 wrapper 包含 `.LCT/src`、Skill symlink 指向 `~/.LCT/skills/llm-council-for-trae`。
+自然语言安装入口：用户说 `请从 GitHub 仓库 https://github.com/JasonYang0104/LLM-Council-for-Trae 的最新版 LCT` 时，等同于从 GitHub main 安装或更新。必须使用 `~/.LCT + make install-global`：clone/fetch/pull `~/.LCT` 后运行 `make -C ~/.LCT install-global`；不得使用 `uv tool install`。安装成功必须同时证明：`~/.LCT HEAD == GitHub refs/heads/main`、`command -v llm-council-for-trae` 可见或 `$HOME/.local/bin/llm-council-for-trae` fallback wrapper 指向 `$HOME/.LCT/src`、wrapper 包含 `.LCT/src`、Skill symlink 指向 `~/.LCT/skills/llm-council-for-trae`。
 
 首次安装：
 
@@ -52,7 +52,13 @@ make -C ~/.LCT install-global
 - `~/.local/bin/llm-council-for-trae`：wrapper 指向 `~/.LCT/src`。
 - `~/.agents/skills/llm-council-for-trae`：用户级 Skill 链接到 `~/.LCT/skills/llm-council-for-trae`。
 
-安装最新版不能只看 `llm-council-for-trae --version`，版本号可能没变，旧 uv tool wrapper 或旧 `site-packages` 仍可能被 shell 先找到。每次用户明确要求「从 GitHub main 全局安装最新版 LCT」时，执行 Agent 必须在 `notes.md` 记录 actual command、exit code、key stdout/stderr 和 pass/fail 结论，并跑下面的 freshness checks **（注释：新鲜度检查，证明当前命令实际来自最新源码，而不是旧安装包）**：
+安装最新版不能只看 `llm-council-for-trae --version`，版本号可能没变，旧 uv tool wrapper 或旧 `site-packages` 仍可能被 shell 先找到。每次用户明确要求「从 GitHub main 全局安装最新版 LCT」时，执行 Agent 必须在 `notes.md` 记录 actual command、exit code、key stdout/stderr 和 pass/fail 结论，并先补 Agent PATH：
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+然后跑下面的 freshness checks **（注释：新鲜度检查，证明当前命令实际来自最新源码，而不是旧安装包）**。如果 `command -v llm-council-for-trae` 失败，但 `$HOME/.local/bin/llm-council-for-trae` 可执行且 wrapper 指向 `$HOME/.LCT/src`，诊断为 `installed_but_not_on_agent_path`，不是 `not_installed`：
 
 ```bash
 git -C "$HOME/.LCT" remote get-url origin
@@ -62,9 +68,17 @@ git ls-remote https://github.com/JasonYang0104/LLM-Council-for-Trae.git refs/hea
 LOCAL_HEAD="$(git -C "$HOME/.LCT" rev-parse HEAD)"
 GITHUB_MAIN="$(git ls-remote https://github.com/JasonYang0104/LLM-Council-for-Trae.git refs/heads/main | awk '{print $1}')"
 test "$LOCAL_HEAD" = "$GITHUB_MAIN"
-command -v llm-council-for-trae
-head -5 "$(command -v llm-council-for-trae)"
-grep -F '.LCT/src' "$(command -v llm-council-for-trae)"
+LCT_BIN="$(command -v llm-council-for-trae || true)"
+if [ -z "$LCT_BIN" ] && [ -x "$HOME/.local/bin/llm-council-for-trae" ]; then
+  LCT_BIN="$HOME/.local/bin/llm-council-for-trae"
+  echo "installed_but_not_on_agent_path: llm-council-for-trae"
+fi
+test -n "$LCT_BIN"
+head -5 "$LCT_BIN"
+grep -F '.LCT/src' "$LCT_BIN"
+# fallback checks, useful when command -v failed before PATH was repaired:
+head -5 "$HOME/.local/bin/llm-council-for-trae"
+grep -F '.LCT/src' "$HOME/.local/bin/llm-council-for-trae"
 PYTHONPATH="$HOME/.LCT/src${PYTHONPATH:+:$PYTHONPATH}" python3 - <<'PY'
 from pathlib import Path
 import llm_council_for_trae.contribution_map as cm
@@ -78,7 +92,7 @@ assert hasattr(cm, "strip_contribution_map_fence")
 PY
 ```
 
-`~/.LCT HEAD == GitHub refs/heads/main` 是硬门槛。如果 `origin` 不是 `https://github.com/JasonYang0104/LLM-Council-for-Trae.git`、本地 `HEAD` 与 GitHub main SHA 不一致、`command -v` 指向 uv tool、`site-packages`、旧开发 checkout，或者 wrapper 中没有 `.LCT/src`，必须重新执行 `make -C ~/.LCT install-global` 并重做验证，不能继续跑 E2E。
+`~/.LCT HEAD == GitHub refs/heads/main` 是硬门槛。如果 `origin` 不是 `https://github.com/JasonYang0104/LLM-Council-for-Trae.git`、本地 `HEAD` 与 GitHub main SHA 不一致、`command -v` 指向 uv tool、`site-packages`、旧开发 checkout，或者 wrapper 中没有 `.LCT/src`，必须重新执行 `make -C ~/.LCT install-global` 并重做验证，不能继续跑 E2E。如果 `command -v` 不可见但 `$HOME/.local/bin/llm-council-for-trae` 通过上述 wrapper 检查，应报告 `installed_but_not_on_agent_path` 并用补 PATH 后的命令继续验证，不能说成未安装。
 
 在干净问题 workspace 里对 Agent 说：
 
@@ -102,7 +116,7 @@ PY
 
 Agent 应先确认 `_lct_question.md` 的输入边界：它只写 council-facing 问题、必要事实背景、输出要求和 `Report topic: <中文议题>`。`Report topic` 是报告元数据，供 HTML 标题稳定生成 `<中文议题>：多模型智囊团评估`，不是成员任务指令。外层执行指令不得写入 _lct_question.md：包括维护 notes.md、运行 validate、写 final/index、生成 HTML、Git/PR/测试职责、开 branch 或提交代码。
 
-Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo（出现 `src/llm_council_for_trae/`、`.trae/agents/` 或 `profiles/subagents.json` 时停止）→ 确认 `traecli` 和 `llm-council-for-trae` 可用 → 检查 `traecli models --json` → 准备 `_lct_question.md` → 先记录 `models --recommend --json`，作为当前模型可用性和安全过滤参考 → 使用 `--default-models`、`--json` 非交互运行，auto-backfill **（注释：自动补位，指 CLI 在同一次运行里追加候补模型而不是重新跑整轮）** 默认启用，必要时可用 `--backfill-members` 显式提供候补优先级；用户明确要求 debate / 质询 / 答辩 / 反驳时追加 `--debate` → 如果默认成员失败、超时或不可用，CLI 在同一个 run 内追加 backfill 成员补足 quorum，不整轮重跑，不覆盖已成功 Stage 1 输出 → 如果 Stage 1 quorum 已满足但 Stage 2 reviewer 失败，CLI 只做 reviewer-only backfill **（注释：仅评审者补位，指候补模型只补交 Stage 2 评审，不新增 Stage 1 候选答案）** → 先读取 terminal manifest 并执行 `llm-council-for-trae validate <run_id> --json` → 只有 validate JSON 显示 `usable_final: true` 时读取 `stage3/final.md` → 在问题 workspace 根目录写出 `<run_id>-final.md` 和 `<run_id>-index.md`（必须包含 run status、validate status、validate verdict、HTML path、Input mode、runtime_default_command、runtime_default_version、runtime_default_models_status、runtime_default_models_count、runtime_override_used、runtime_override_command、runtime_override_reason、runtime_override_version、runtime_override_doctor_ok、runtime_override_models_count、runtime_override_recommendation_members、runtime_used_by_lct、lct_search_allowed、lct_search_used、lct_web_tool_calls、lct_web_tool_effective_calls、lct_search_conversion_errors、debate_enabled、debate_rounds、debate_participants、debate_completed、debate_failed、debate_failed_all、stage2_5_count、debate_used_by_stage3、agent_external_search_allowed、agent_external_search_used、agent_sources、agent_fact_pack_path、agent_added_context、final_answer_source、valid_stage1_models、quorum_default、quorum_effective、low_quorum_used、backfill_candidates、backfill_attempts、stage2_reviewers、stage1_backfill_members、stage2_reviewer_backfill、review_subject_count、reviewer_count、chairman_fallback_used、failed models / timeout）→ 返回 run status、validate status、最终答案路径、HTML 报告路径和 live runtime，并分开汇报 `manifest.warnings`、`validate.warnings`、`runtime/doctor.json ignored_errors`。`degraded_ok 是可用结果`；成员失败不等于 run 失败。
+Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo（出现 `src/llm_council_for_trae/`、`.trae/agents/` 或 `profiles/subagents.json` 时停止）→ 先执行 `export PATH="$HOME/.local/bin:$PATH"` → 用 `command -v traecli`、`command -v llm-council-for-trae`、`$HOME/.local/bin/traecli` 和 `$HOME/.local/bin/llm-council-for-trae` 区分 `not_installed`、`installed_but_not_on_agent_path` 与 `models_empty_or_runtime_unhealthy` → 确认 `traecli` 和 `llm-council-for-trae` 可用 → 检查 `traecli models --json` → 准备 `_lct_question.md` → 先记录 `models --recommend --json`，作为当前模型可用性和安全过滤参考 → 使用 `--default-models`、`--json` 非交互运行，auto-backfill **（注释：自动补位，指 CLI 在同一次运行里追加候补模型而不是重新跑整轮）** 默认启用，必要时可用 `--backfill-members` 显式提供候补优先级；用户明确要求 debate / 质询 / 答辩 / 反驳时追加 `--debate` → 如果默认成员失败、超时或不可用，CLI 在同一个 run 内追加 backfill 成员补足 quorum，不整轮重跑，不覆盖已成功 Stage 1 输出 → 如果 Stage 1 quorum 已满足但 Stage 2 reviewer 失败，CLI 只做 reviewer-only backfill **（注释：仅评审者补位，指候补模型只补交 Stage 2 评审，不新增 Stage 1 候选答案）** → 先读取 terminal manifest 并执行 `llm-council-for-trae validate <run_id> --json` → 只有 validate JSON 显示 `usable_final: true` 时读取 `stage3/final.md` → 在问题 workspace 根目录写出 `<run_id>-final.md` 和 `<run_id>-index.md`（必须包含 run status、validate status、validate verdict、HTML path、Input mode、runtime_default_command、runtime_default_version、runtime_default_models_status、runtime_default_models_count、runtime_override_used、runtime_override_command、runtime_override_reason、runtime_override_version、runtime_override_doctor_ok、runtime_override_models_count、runtime_override_recommendation_members、runtime_used_by_lct、lct_search_allowed、lct_search_used、lct_web_tool_calls、lct_web_tool_effective_calls、lct_search_conversion_errors、debate_enabled、debate_rounds、debate_participants、debate_completed、debate_failed、debate_failed_all、stage2_5_count、debate_used_by_stage3、agent_external_search_allowed、agent_external_search_used、agent_sources、agent_fact_pack_path、agent_added_context、final_answer_source、valid_stage1_models、quorum_default、quorum_effective、low_quorum_used、backfill_candidates、backfill_attempts、stage2_reviewers、stage1_backfill_members、stage2_reviewer_backfill、review_subject_count、reviewer_count、chairman_fallback_used、failed models / timeout）→ 返回 run status、validate status、最终答案路径、HTML 报告路径和 live runtime，并分开汇报 `manifest.warnings`、`validate.warnings`、`runtime/doctor.json ignored_errors`。`degraded_ok 是可用结果`；成员失败不等于 run 失败。
 
 `<run_id>-index.md` 的 `backfill_candidates` 必须来自 terminal manifest 的 `metadata.quorum.backfill_candidates`。如果 terminal manifest 没有记录该字段，写 `backfill_candidates: not recorded`；不得从默认成员阵容、不得从 models --recommend --json 的 primary roster、不得从实际有效 Stage 1 成员猜测候补池。
 
@@ -111,6 +125,22 @@ Agent 应按这条路径执行：确认当前目录不是 LCT 源码 repo（出�
 本项目要求本机已经安装并登录 traecli，且 `traecli models --json` 能返回模型列表。
 
 如果当前 traecli 临时不可用，可以先验证 CLI 自身、模型推荐逻辑、schema contract 和 HTML export fixture；不要把 fake runtime 或 fixture 结果说成 live traecli 验证。默认 runtime 仍是 traecli。
+
+Agent shell 先补用户级 bin 目录，再做命令可见性检查：
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+command -v traecli
+command -v llm-council-for-trae
+test -x "$HOME/.local/bin/traecli"
+test -x "$HOME/.local/bin/llm-council-for-trae"
+```
+
+诊断状态必须分开：
+
+- `not_installed`：`command -v <cmd>` 和 `$HOME/.local/bin/<cmd>` 都找不到或不可执行。
+- `installed_but_not_on_agent_path`：`command -v <cmd>` 找不到，但 `$HOME/.local/bin/<cmd>` 可执行；这不是 runtime override，应补 PATH 后继续默认 `traecli` 路径。
+- `models_empty_or_runtime_unhealthy`：命令可执行，但 `models --json` 为空、失败、超时或无结构化输出；只有这类默认 runtime health 问题才进入 explicit runtime override probe。
 
 ```bash
 traecli --version

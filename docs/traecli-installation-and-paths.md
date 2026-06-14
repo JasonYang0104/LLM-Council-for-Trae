@@ -29,6 +29,22 @@ OK
 
 如果这些命令当前失败，先按本文“本次踩坑记录”排查鉴权、插件和模型列表；在 Trae CLI 恢复前，不要声称 `llm-council-for-trae` 完成了新的 live model run。
 
+Agent 进程的 PATH 可能不同于用户的交互 shell。排查 `traecli` 或 LCT 不可见时，先临时补齐用户级 bin，再判断安装状态：
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+command -v traecli
+command -v llm-council-for-trae
+test -x "$HOME/.local/bin/traecli"
+test -x "$HOME/.local/bin/llm-council-for-trae"
+```
+
+诊断口径：
+
+- `not_installed`：`command -v <cmd>` 和 `$HOME/.local/bin/<cmd>` 都找不到或不可执行。
+- `installed_but_not_on_agent_path`：`command -v <cmd>` 找不到，但 `$HOME/.local/bin/<cmd>` 可执行。它说明 Agent shell 没吃到 `~/.local/bin`，不是 runtime override；补 PATH 后继续默认 `traecli` 路径。
+- `models_empty_or_runtime_unhealthy`：命令可执行，但 `models --json` 为空、失败、超时或没有结构化输出。只有这类 runtime health 问题才可能进入显式 `--runtime-command coco` probe。
+
 ## 安装参考
 
 安装命令来自 Trae CLI 官方 wiki 及相关内部文档。原始入口是：
