@@ -102,6 +102,12 @@ def stage_meta(*, transcript_path: str, requests: list[dict[str, Any]] | None = 
     } | tool_policy() | acp_policy(transcript_path=transcript_path, requests=requests, backend=backend)
 
 
+def decision_summary(html: str) -> str:
+    start = html.index('id="decision-summary"')
+    end = html.index('id="final-answer"')
+    return html[start:end]
+
+
 def stage_record(*, label: str, transcript_path: str, response: str = "ACP answer.", requests: list[dict[str, Any]] | None = None, backend: str = "acp") -> dict[str, Any]:
     return {
         "label": f"Response {label}",
@@ -291,23 +297,28 @@ class AcpEvidenceValidationTests(unittest.TestCase):
 
             rendered = render_html(store.root, manifest)
 
-        self.assertIn("ACP 工具证据", rendered)
-        self.assertIn("Allowed", rendered)
-        self.assertIn("Disabled", rendered)
-        self.assertIn("Requested", rendered)
-        self.assertIn("Denied", rendered)
-        self.assertIn("Used", rendered)
-        self.assertIn("Bash", rendered)
+        summary = decision_summary(rendered)
+        self.assertIn("ACP 工具证据", summary)
+        self.assertIn("Allowed", summary)
+        self.assertIn("Disabled", summary)
+        self.assertIn("Requested", summary)
+        self.assertIn("Denied", summary)
+        self.assertIn("Used", summary)
+        self.assertIn("Requested 1", summary)
+        self.assertIn("Denied 1", summary)
 
-    def test_html_marks_direct_acp_state_not_applicable(self):
+    def test_html_hides_direct_acp_state_not_applicable_from_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = ArtifactStore.create(Path(tmp), "run-direct-html")
             manifest = write_acp_run(store, config_backend="direct", stage1_record_overrides={"runtime_backend": "direct"})
+            manifest["stages"]["stage2"][0]["runtime_backend"] = "direct"
+            manifest["stages"]["stage3"]["runtime_backend"] = "direct"
 
             rendered = render_html(store.root, manifest)
 
-        self.assertIn("ACP 工具证据", rendered)
-        self.assertIn("not_applicable", rendered)
+        summary = decision_summary(rendered)
+        self.assertNotIn("ACP 工具证据", summary)
+        self.assertNotIn("not_applicable", summary)
 
 
 if __name__ == "__main__":
