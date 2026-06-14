@@ -304,19 +304,20 @@ class GlobalInstallSkillDocsTests(unittest.TestCase):
 
     def test_lct_trigger_excludes_plain_trae_multimodel(self):
         for relative in [
+            "README.md",
             "skills/llm-council-for-trae/SKILL.md",
             ".trae/skills/llm-council-for-trae/SKILL.md",
         ]:
             with self.subTest(relative=relative):
                 text = self.read_text(relative)
-                metadata = text.split("---", 2)[1]
-                trigger = text.split("## Trigger", 1)[1].split("## Global Install", 1)[0]
 
-                self.assertIn("用智囊团回答", metadata)
-                self.assertIn("可复盘综合答案", metadata)
-                self.assertNotIn("让多个模型讨论", metadata)
-                self.assertIn("单独说“Trae 多模型”", trigger)
-                self.assertIn("优先交给 raw fanout", trigger)
+                self.assertIn("单独说“Trae 多模型”", text)
+                self.assertIn("优先交给 raw fanout", text)
+                if relative != "README.md":
+                    metadata = text.split("---", 2)[1]
+                    self.assertIn("用智囊团回答", metadata)
+                    self.assertIn("可复盘综合答案", metadata)
+                    self.assertNotIn("让多个模型讨论", metadata)
 
     def test_validate_status_contract_is_documented_in_readme_and_skills(self):
         required_terms = [
